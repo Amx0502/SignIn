@@ -1,0 +1,27 @@
+[
+  {
+    "name": "x",
+    "mobile": "13645019705",
+    "password": "995295753",
+    "token": "77c54fd979eb435f9388bd67be90f8a7",
+    "tasks": [
+      {
+        "index": 1,
+        "title": "1",
+        "times": [
+          "8:00:00",
+          "15:00:00"
+        ],
+        "enable": true,
+        "use_location": true,
+        "text": "测试",
+        "pic_path": [
+          "C:\\Users\\ASUS\\Desktop\\SignIn-Vue\\backend\\uploads\\20260718002408_d6d3fd70.jpg",
+          "C:\\Users\\ASUS\\Desktop\\SignIn-Vue\\backend\\uploads\\20260718002408_79796c05.jpg"
+        ],
+        "skip_weekends": false,
+        "mode": "image"
+      }
+    ]
+  }
+]

@@ -1,0 +1,95 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  background: #f3f6fb;
+  color: #1f2937;
+}
+
+.page-container {
+  padding: 20px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.metric-card {
+  text-align: center;
+  padding: 12px 0;
+}
+
+.metric-value {
+  font-size: 34px;
+  font-weight: 800;
+  color: #2563eb;
+  letter-spacing: -0.5px;
+}
+
+.metric-label {
+  font-size: 14px;
+  color: #6b7280;
+  margin-top: 10px;
+  font-weight: 500;
+}
+
+.el-card {
+  border-radius: 16px !important;
+  border: none !important;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06) !important;
+  transition: box-shadow 0.3s ease;
+}
+
+.el-card:hover {
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.1) !important;
+}
+
+.el-card__header {
+  border-bottom: 1px solid #f1f5f9 !important;
+  padding: 16px 20px !important;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.el-card__body {
+  padding: 20px !important;
+}
+
+.form-section {
+  margin-bottom: 20px;
+}
+
+.el-form-item {
+  margin-bottom: 18px;
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-input-number {
+  border-radius: 10px !important;
+}
+
+.el-button {
+  border-radius: 10px !important;
+  font-weight: 500;
+}
+
+.el-table {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.el-table th.el-table__cell {
+  background: #f8fafc !important;
+  color: #475569;
+  font-weight: 600;
+}
+
+.el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  background: #f1f5f9 !important;
+}
