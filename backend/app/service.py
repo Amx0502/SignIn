@@ -554,17 +554,31 @@ class AppState:
         return {"success_count": success}
 
     def _refresh_single_token(self, mobile: str, password: str) -> None:
-        token = self.service.login(mobile, password)
-        if token:
-            with self.lock:
-                for account in self.accounts:
-                    if account["mobile"] == mobile:
-                        account["token"] = token
-                        break
-                save_accounts_to_disk(self.accounts)
-            self.logger.info("用户[%s] Token 刷新成功", mobile)
-        else:
-            self.logger.warning("用户[%s] Token 刷新失败", mobile)
+        self.logger.debug("[Token刷新] 开始刷新用户[%s]的Token", mobile)
+        try:
+            token = self.service.login(mobile, password)
+            if token:
+                self.logger.debug("[Token刷新] 用户[%s] 登录成功，获取到Token", mobile)
+                with self.lock:
+                    account_found = False
+                    for account in self.accounts:
+                        if account["mobile"] == mobile:
+                            old_token = account.get("token", "")[:20] + "..." if account.get("token") else "None"
+                            account["token"] = token
+                            account_found = True
+                            self.logger.debug("[Token刷新] 用户[%s] Token已更新，旧Token=%s，新Token=%s", 
+                                              mobile, old_token, token[:20] + "...")
+                            break
+                    if account_found:
+                        save_accounts_to_disk(self.accounts)
+                        self.logger.debug("[Token刷新] 用户[%s] 账号数据已保存到磁盘", mobile)
+                    else:
+                        self.logger.warning("[Token刷新] 用户[%s] 在账号列表中未找到", mobile)
+                self.logger.info("[Token刷新] 用户[%s] Token 刷新成功", mobile)
+            else:
+                self.logger.error("[Token刷新] 用户[%s] 登录失败，未获取到Token", mobile)
+        except Exception as exc:
+            self.logger.error("[Token刷新] 用户[%s] 刷新过程异常：%s", mobile, str(exc))
 
     def fetch_projects(self, account_index: int) -> list[dict]:
         with self.lock:
@@ -725,17 +739,32 @@ class AppState:
                     
                     refresh_target = target - dt.timedelta(minutes=30)
                     refresh_time_diff = abs((now - refresh_target).total_seconds())
+                    refresh_time_str = refresh_target.strftime("%H:%M:%S")
+                    
+                    self.logger.debug("[Token刷新] 用户[%s] 任务时间[%s] 刷新目标时间[%s] 当前时间[%s] 时间差[%s秒]", 
+                                      mobile, target_time, refresh_time_str, now.strftime("%H:%M:%S"), int(refresh_time_diff))
                     
                     if refresh_time_diff <= 300:
                         refresh_record_key = f"{mobile}_{target_time}_refresh"
+                        self.logger.debug("[Token刷新] 用户[%s] 在时间窗口内，检查是否已刷新", mobile)
                         should_refresh = False
                         with self.lock:
-                            if self.token_refresh_records.get(refresh_record_key) != current_date:
+                            last_refresh_date = self.token_refresh_records.get(refresh_record_key)
+                            self.logger.debug("[Token刷新] 用户[%s] 上次刷新日期[%s] 当前日期[%s]", 
+                                              mobile, last_refresh_date, current_date)
+                            if last_refresh_date != current_date:
                                 self.token_refresh_records[refresh_record_key] = current_date
                                 should_refresh = True
+                                self.logger.info("[Token刷新] 用户[%s] 标记为待刷新，记录已更新", mobile)
+                            else:
+                                self.logger.info("[Token刷新] 用户[%s] 今日已刷新，跳过", mobile)
                         if should_refresh:
-                            self.logger.info("为用户[%s]在任务时间[%s]前30分钟刷新Token", mobile, target_time)
+                            self.logger.info("[Token刷新] 用户[%s] 开始执行刷新，任务时间[%s]，刷新时间[%s]", 
+                                             mobile, target_time, refresh_time_str)
                             self.executor.submit(self._refresh_single_token, mobile, account["password"])
+                    else:
+                        self.logger.debug("[Token刷新] 用户[%s] 不在时间窗口内（差%s秒），跳过", 
+                                          mobile, int(refresh_time_diff))
                     
                     if time_diff <= 300:
                         record_key = f"{mobile}_{task.get('title')}_{target_time}"
