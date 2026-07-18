@@ -713,6 +713,38 @@ class AppState:
         target = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
         return now >= target
 
+    _REFRESH_THRESHOLD_SECONDS = 3600
+
+    def _parse_time_to_timestamp(self, time_str: str, now: dt.datetime) -> int | None:
+        try:
+            hour, minute, second = map(int, time_str.split(":"))
+            target = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
+            return int(target.timestamp() * 1000)
+        except (ValueError, AttributeError):
+            self.logger.error("[Token刷新] 时间格式解析失败：%s", time_str)
+            return None
+
+    def _should_skip_task_refresh(self, task_refresh_time: str, global_refresh_times: list[str], now: dt.datetime) -> tuple[bool, float | None]:
+        task_ts = self._parse_time_to_timestamp(task_refresh_time, now)
+        if not task_ts:
+            return False, None
+        
+        min_diff = float('inf')
+        matched_global_time = None
+        
+        for global_time in global_refresh_times:
+            global_ts = self._parse_time_to_timestamp(global_time, now)
+            if global_ts:
+                diff = abs(task_ts - global_ts) / 1000
+                if diff < min_diff:
+                    min_diff = diff
+                    matched_global_time = global_time
+        
+        if min_diff <= self._REFRESH_THRESHOLD_SECONDS:
+            return True, min_diff
+        
+        return False, min_diff
+
     def process_schedule(self) -> None:
         now = dt.datetime.now()
         current_date = now.strftime("%Y-%m-%d")
@@ -724,6 +756,20 @@ class AppState:
             accounts = deep_copy(self.accounts)
         if not auto_enabled:
             return
+
+        for refresh_time in refresh_times:
+            hour, minute, second = map(int, refresh_time.split(":"))
+            target = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
+            time_diff = abs((now - target).total_seconds())
+            if time_diff <= 300:
+                should_refresh = False
+                with self.lock:
+                    if self.token_refresh_records.get(refresh_time) != current_date:
+                        self.token_refresh_records[refresh_time] = current_date
+                        should_refresh = True
+                if should_refresh:
+                    self.logger.info("[Token刷新] 全局刷新时间[%s]触发，执行批量刷新", refresh_time)
+                    self.executor.submit(self.refresh_all_tokens)
 
         for account in accounts:
             mobile = account.get("mobile")
@@ -744,7 +790,11 @@ class AppState:
                     self.logger.debug("[Token刷新] 用户[%s] 任务时间[%s] 刷新目标时间[%s] 当前时间[%s] 时间差[%s秒]", 
                                       mobile, target_time, refresh_time_str, now.strftime("%H:%M:%S"), int(refresh_time_diff))
                     
-                    if refresh_time_diff <= 300:
+                    skip_refresh, diff_seconds = self._should_skip_task_refresh(refresh_time_str, refresh_times, now)
+                    if skip_refresh:
+                        self.logger.info("[Token刷新] 用户[%s] 任务刷新时间[%s]与全局刷新时间差[%s秒]<=阈值[%s秒]，取消任务单独刷新，由全局刷新机制处理", 
+                                         mobile, refresh_time_str, int(diff_seconds), self._REFRESH_THRESHOLD_SECONDS)
+                    elif refresh_time_diff <= 300:
                         refresh_record_key = f"{mobile}_{target_time}_refresh"
                         self.logger.debug("[Token刷新] 用户[%s] 在时间窗口内，检查是否已刷新", mobile)
                         should_refresh = False
