@@ -2,6 +2,7 @@ from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent.parent
 DATA_FILE = APP_DIR / "accounts.json"
+SETTINGS_FILE = APP_DIR / "settings.json"
 LOG_DIR = APP_DIR / "logs"
 UPLOAD_DIR = APP_DIR / "uploads"
 

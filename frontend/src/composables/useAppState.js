@@ -4,7 +4,7 @@ import api from '../api'
 const state = ref({
   accounts: [],
   refresh_times: [],
-  auto_enabled: false,
+  auto_enabled: true,
   account_count: 0,
   task_count: 0,
   enabled_task_count: 0,

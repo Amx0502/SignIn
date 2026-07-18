@@ -53,7 +53,7 @@ class TaskUpdate(TaskCreate):
 
 
 class Settings(BaseModel):
-    auto_enabled: bool = False
+    auto_enabled: bool = True
     refresh_times: List[str] = Field(default_factory=list)
 
 
