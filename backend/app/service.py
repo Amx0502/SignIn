@@ -342,37 +342,54 @@ class CheckinService:
 
         return False, {"error": f"[{name}] 任务《{task_title}》签到失败：{response.get('msg', '未知错误')}"}
 
-    def send_wechat_notification(self, webhook_url: str, account_name: str, result: dict) -> None:
+    def send_wechat_notification(self, webhook_url: str, account_name: str, result: dict, success: bool = True) -> None:
         if not webhook_url.strip():
+            self.logger.debug("企业微信通知：webhook_url 为空，跳过发送")
             return
 
         now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        detail_parts = []
-        detail_parts.append(f"**{result.get('real_title', '')}**")
+        if success:
+            detail_parts = []
+            detail_parts.append(f"**{result.get('real_title', '')}**")
+            
+            if result.get("location"):
+                detail_parts.append(f"📍 位置: {result['location'].get('address', '')}")
+            
+            if result.get("text"):
+                detail_parts.append(f"📝 文本: {result['text']}")
+            
+            if result.get("image_urls") and len(result["image_urls"]):
+                detail_parts.append(f"🖼️ 图片: {len(result['image_urls'])}张")
+            
+            detail_str = " | ".join(detail_parts)
+            
+            markdown_content = (
+                f"**📝 定时签到结果报告**\n\n"
+                f"> 执行时间：{now}\n"
+                f"> 触发项目目数：1个\n\n"
+                f"**执行详情：**\n"
+                f"- ✅ {account_name} -> 【{result.get('title', '')}】（实际项目：{detail_str}）\n\n"
+                f"日志已同步至服务器"
+            )
+        else:
+            error_msg = result.get("error", "未知错误")
+            markdown_content = (
+                f"**❌ 定时签到结果报告**\n\n"
+                f"> 执行时间：{now}\n"
+                f"> 触发项目目数：1个\n\n"
+                f"**执行详情：**\n"
+                f"- ❌ {account_name} -> 签到失败\n"
+                f"错误原因：{error_msg}\n\n"
+                f"日志已同步至服务器"
+            )
         
-        if result.get("location"):
-            detail_parts.append(f"📍 位置: {result['location'].get('address', '')}")
-        
-        if result.get("text"):
-            detail_parts.append(f"📝 文本: {result['text']}")
-        
-        if result.get("image_urls") and len(result["image_urls"]):
-            detail_parts.append(f"🖼️ 图片: {len(result['image_urls'])}张")
-        
-        detail_str = " | ".join(detail_parts)
-        
-        markdown_content = (
-            f"**📝 定时签到结果报告**\n\n"
-            f"> 执行时间：{now}\n"
-            f"> 触发项目目数：1个\n\n"
-            f"**执行详情：**\n"
-            f"- ✅ {account_name} -> 【{result.get('title', '')}】（实际项目：{detail_str}）\n\n"
-            f"日志已同步至服务器"
-        )
+        self.logger.info("企业微信通知：开始发送通知，success=%s，account=%s，webhook=%s", 
+                         success, account_name, webhook_url[:30] + "..." if len(webhook_url) > 30 else webhook_url)
+        self.logger.debug("企业微信通知：markdown内容长度=%d", len(markdown_content))
         
         try:
-            requests.post(
+            response = requests.post(
                 webhook_url,
                 json={
                     "msgtype": "markdown",
@@ -383,9 +400,26 @@ class CheckinService:
                 headers={"Content-Type": "application/json"},
                 timeout=10,
             )
-            self.logger.info("企业微信通知发送成功")
+            self.logger.debug("企业微信通知：HTTP状态码=%d，响应内容=%s", response.status_code, response.text[:200])
+            
+            if response.status_code == 200:
+                resp_json = response.json()
+                if resp_json.get("errcode") == 0:
+                    self.logger.info("企业微信通知：发送成功，errcode=%d，errmsg=%s", 
+                                     resp_json.get("errcode"), resp_json.get("errmsg"))
+                else:
+                    self.logger.error("企业微信通知：发送失败，errcode=%d，errmsg=%s", 
+                                      resp_json.get("errcode"), resp_json.get("errmsg"))
+            else:
+                self.logger.error("企业微信通知：HTTP请求失败，状态码=%d", response.status_code)
+        except requests.exceptions.Timeout:
+            self.logger.error("企业微信通知：请求超时（10秒）")
+        except requests.exceptions.ConnectionError as exc:
+            self.logger.error("企业微信通知：网络连接失败，错误=%s", str(exc))
+        except requests.exceptions.RequestException as exc:
+            self.logger.error("企业微信通知：请求异常，错误=%s", str(exc))
         except Exception as exc:
-            self.logger.error("企业微信通知发送失败：%s", exc)
+            self.logger.error("企业微信通知：未知异常，错误=%s", str(exc))
 
 
 class AppState:
@@ -561,8 +595,8 @@ class AppState:
             task = deep_copy(self.accounts[account_index]["tasks"][task_index])
             webhook_url = self.webhook_url
         ok, result = self.service.execute_task(account, task)
+        name = account.get("name") or account.get("mobile")
         if ok:
-            name = account.get("name") or account.get("mobile")
             real_title = result.get("real_title", "未知项目")
             message = f"[{name}] 任务《{result['title']}》签到成功，实际项目：{real_title}"
             if result.get("text"):
@@ -573,13 +607,18 @@ class AppState:
                 message += f"，位置：{result['location'].get('address', '')}"
             self.logger.info(message)
             try:
-                self.service.send_wechat_notification(webhook_url, name, result)
+                self.service.send_wechat_notification(webhook_url, name, result, success=True)
             except Exception:
                 pass
             return result
         else:
-            self.logger.error(result.get("error", "签到失败"))
-            raise RuntimeError(result.get("error", "签到失败"))
+            error_msg = result.get("error", "签到失败")
+            self.logger.error(error_msg)
+            try:
+                self.service.send_wechat_notification(webhook_url, name, result, success=False)
+            except Exception:
+                pass
+            raise RuntimeError(error_msg)
 
     def run_account_tasks(self, account_index: int) -> dict:
         with self.lock:
@@ -618,11 +657,18 @@ class AppState:
                 try:
                     with self.lock:
                         webhook_url = self.webhook_url
-                    self.service.send_wechat_notification(webhook_url, name, result)
+                    self.service.send_wechat_notification(webhook_url, name, result, success=True)
                 except Exception:
                     pass
             else:
-                self.logger.error(result.get("error", f"[{name}] 任务《{task_title}》签到失败"))
+                error_msg = result.get("error", f"[{name}] 任务《{task_title}》签到失败")
+                self.logger.error(error_msg)
+                try:
+                    with self.lock:
+                        webhook_url = self.webhook_url
+                    self.service.send_wechat_notification(webhook_url, name, result, success=False)
+                except Exception:
+                    pass
         except Exception as exc:
             self.logger.error("[%s] 执行任务异常：%s", account.get("name") or account.get("mobile"), exc)
 
