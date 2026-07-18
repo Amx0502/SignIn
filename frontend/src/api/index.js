@@ -27,7 +27,7 @@ export default {
   addTask: (index, data) => instance.post(`/accounts/${index}/tasks`, data),
   updateTask: (accountIndex, taskIndex, data) => instance.put(`/accounts/${accountIndex}/tasks/${taskIndex}`, data),
   deleteTask: (accountIndex, taskIndex) => instance.delete(`/accounts/${accountIndex}/tasks/${taskIndex}`),
-  runTask: (accountIndex, taskIndex) => instance.post(`/accounts/${accountIndex}/tasks/${taskIndex}/run`),
+  runTask: (accountIndex, taskIndex) => instance.post(`/accounts/${accountIndex}/tasks/${taskIndex}/run`, null, { timeout: 60000 }),
 
   runAccountTasks: index => instance.post(`/accounts/${index}/run-all`),
   refreshAllTokens: () => instance.post('/accounts/refresh-all'),

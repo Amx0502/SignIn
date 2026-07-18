@@ -82,6 +82,8 @@
       <el-form :model="settingsForm" label-width="120px" class="settings-form">
         <el-form-item label="Token 刷新时间"><el-input v-model="settingsForm.refresh_times"
             placeholder="07:30:00,11:30:00,14:00:00" /></el-form-item>
+        <el-form-item label="企业微信机器人"><el-input v-model="settingsForm.webhook_url"
+            placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx" /></el-form-item>
         <el-form-item><el-button type="primary" @click="toggleAuto">{{ state.auto_enabled ? '关闭自动调度' : '开启自动调度'
         }}</el-button><el-button @click="saveSettings">保存设置</el-button></el-form-item>
       </el-form>
@@ -106,7 +108,7 @@ import { useAppState } from '../composables/useAppState'
 import api from '../api'
 
 const { state, refreshState, refreshLogs } = useAppState()
-const settingsForm = reactive({ refresh_times: '' })
+const settingsForm = reactive({ refresh_times: '', webhook_url: '' })
 const refreshTimeCount = computed(() => (state.value.refresh_times || []).length)
 const completionRate = computed(() => state.value.task_count ? Math.round((state.value.enabled_task_count / state.value.task_count) * 100) : 0)
 const coverageRate = computed(() => state.value.account_count ? Math.min(100, Math.round((state.value.task_count / state.value.account_count) * 35)) : 0)
@@ -117,9 +119,10 @@ const metrics = computed(() => [
   { label: '当前时间', value: state.value.server_time, icon: Clock, trend: '服务端时间同步', small: true }
 ])
 watch(() => state.value.refresh_times, (val) => { settingsForm.refresh_times = (val || []).join(', ') }, { immediate: true })
+watch(() => state.value.webhook_url, (val) => { settingsForm.webhook_url = val || '' }, { immediate: true })
 async function toggleAuto() { await saveSettingsCore(!state.value.auto_enabled) }
 async function saveSettings() { await saveSettingsCore(state.value.auto_enabled) }
-async function saveSettingsCore(autoEnabled) { try { await api.setSettings({ auto_enabled: autoEnabled, refresh_times: settingsForm.refresh_times.split(',').map(s => s.trim()).filter(Boolean) }); ElMessage.success('设置已保存'); await refreshState(); await refreshLogs() } catch (err) { ElMessage.error(err.message) } }
+async function saveSettingsCore(autoEnabled) { try { await api.setSettings({ auto_enabled: autoEnabled, refresh_times: settingsForm.refresh_times.split(',').map(s => s.trim()).filter(Boolean), webhook_url: settingsForm.webhook_url }); ElMessage.success('设置已保存'); await refreshState(); await refreshLogs() } catch (err) { ElMessage.error(err.message) } }
 async function refreshAllTokens() { try { await api.refreshAllTokens(); ElMessage.success('已发起全部 Token 刷新'); await refreshLogs() } catch (err) { ElMessage.error(err.message) } }
 async function runAllEnabledTasks() { try { await api.runAllEnabledTasks(); ElMessage.success('已将全部启用任务加入队列'); await refreshLogs() } catch (err) { ElMessage.error(err.message) } }
 </script>

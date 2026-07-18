@@ -14,8 +14,8 @@ import rsa
 
 from .config import (
     DATA_FILE,
-    DEFAULT_FALLBACK_LOCATION,
     DEFAULT_REFRESH_TIMES,
+    DEFAULT_WEBHOOK_URL,
     HEADERS,
     LOG_DIR,
     PUBLIC_KEY,
@@ -118,6 +118,7 @@ def load_settings_from_disk() -> dict:
         return {
             "auto_enabled": True,
             "refresh_times": DEFAULT_REFRESH_TIMES.copy(),
+            "webhook_url": DEFAULT_WEBHOOK_URL,
         }
     with SETTINGS_FILE.open("r", encoding="utf-8") as file:
         data = json.load(file)
@@ -126,16 +127,18 @@ def load_settings_from_disk() -> dict:
     return {
         "auto_enabled": bool(data.get("auto_enabled", True)),
         "refresh_times": parse_time_list(data.get("refresh_times", DEFAULT_REFRESH_TIMES)),
+        "webhook_url": str(data.get("webhook_url", DEFAULT_WEBHOOK_URL)),
     }
 
 
-def save_settings_to_disk(auto_enabled: bool, refresh_times: list[str]) -> None:
+def save_settings_to_disk(auto_enabled: bool, refresh_times: list[str], webhook_url: str = "") -> None:
     ensure_dirs()
     with SETTINGS_FILE.open("w", encoding="utf-8") as file:
         json.dump(
             {
                 "auto_enabled": auto_enabled,
                 "refresh_times": refresh_times,
+                "webhook_url": webhook_url,
             },
             file,
             ensure_ascii=False,
@@ -270,26 +273,24 @@ class CheckinService:
                     "lat": round(float(location["latitude"]), 5),
                     "lon": round(float(location["longitude"]), 5),
                 })
-            else:
-                payload["wifi_location_info"] = DEFAULT_FALLBACK_LOCATION.copy()
-            payload["wifi_match"] = 0
+                payload["wifi_match"] = 0
         return payload
 
-    def execute_task(self, account: dict, task: dict) -> tuple[bool, str]:
+    def execute_task(self, account: dict, task: dict) -> tuple[bool, dict]:
         name = account["name"] or account["mobile"]
         task_title = task.get("title", "未命名任务")
 
         token = account.get("token", "").strip()
         if not token:
-            return False, f"[{name}] 任务《{task_title}》Token 为空，请先登录或刷新 Token"
+            return False, {"error": f"[{name}] 任务《{task_title}》Token 为空，请先登录或刷新 Token"}
 
         checkin_list = self.fetch_checkin_list(token)
         if not checkin_list:
-            return False, f"[{name}] 任务《{task_title}》无可用签到项目，Token 可能已失效"
+            return False, {"error": f"[{name}] 任务《{task_title}》无可用签到项目，Token 可能已失效"}
 
         target_index = int(task.get("index", 1)) - 1
         if target_index < 0 or target_index >= len(checkin_list):
-            return False, f"[{name}] 任务《{task_title}》指定的序号不存在"
+            return False, {"error": f"[{name}] 任务《{task_title}》指定的序号不存在"}
 
         target_item = checkin_list[target_index]
         cid = target_item["cid"]
@@ -305,7 +306,7 @@ class CheckinService:
             for idx, pic_path in enumerate(pic_paths, start=1):
                 image_url = self.upload_image(str(pic_path), token)
                 if not image_url:
-                    return False, f"[{name}] 任务《{task_title}》第 {idx} 张图片上传失败"
+                    return False, {"error": f"[{name}] 任务《{task_title}》第 {idx} 张图片上传失败"}
                 image_urls.append(image_url)
                 if idx < len(pic_paths):
                     time.sleep(6.5)
@@ -319,9 +320,72 @@ class CheckinService:
         ).json()
 
         if response.get("msg") == "ok" or response.get("sta") == 0:
-            return True, f"[{name}] 任务《{task_title}》签到成功，实际项目：{real_title}"
+            result = {
+                "title": task_title,
+                "real_title": real_title,
+            }
+            text = task.get("text", "").strip()
+            if text:
+                result["text"] = text
+            if image_urls:
+                result["image_urls"] = image_urls
+            if task.get("use_location"):
+                locations = (detail or {}).get("data", {}).get("locations") or []
+                if locations:
+                    location = locations[0]
+                    result["location"] = {
+                        "address": location.get("address", ""),
+                        "latitude": float(location.get("latitude", 0)),
+                        "longitude": float(location.get("longitude", 0)),
+                    }
+            return True, result
 
-        return False, f"[{name}] 任务《{task_title}》签到失败：{response.get('msg', '未知错误')}"
+        return False, {"error": f"[{name}] 任务《{task_title}》签到失败：{response.get('msg', '未知错误')}"}
+
+    def send_wechat_notification(self, webhook_url: str, account_name: str, result: dict) -> None:
+        if not webhook_url.strip():
+            return
+
+        now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        detail_parts = []
+        detail_parts.append(f"**{result.get('real_title', '')}**")
+        
+        if result.get("location"):
+            detail_parts.append(f"📍 位置: {result['location'].get('address', '')}")
+        
+        if result.get("text"):
+            detail_parts.append(f"📝 文本: {result['text']}")
+        
+        if result.get("image_urls") and len(result["image_urls"]):
+            detail_parts.append(f"🖼️ 图片: {len(result['image_urls'])}张")
+        
+        detail_str = " | ".join(detail_parts)
+        
+        markdown_content = (
+            f"**📝 定时签到结果报告**\n\n"
+            f"> 执行时间：{now}\n"
+            f"> 触发项目目数：1个\n\n"
+            f"**执行详情：**\n"
+            f"- ✅ {account_name} -> 【{result.get('title', '')}】（实际项目：{detail_str}）\n\n"
+            f"日志已同步至服务器"
+        )
+        
+        try:
+            requests.post(
+                webhook_url,
+                json={
+                    "msgtype": "markdown",
+                    "markdown": {
+                        "content": markdown_content
+                    }
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            self.logger.info("企业微信通知发送成功")
+        except Exception as exc:
+            self.logger.error("企业微信通知发送失败：%s", exc)
 
 
 class AppState:
@@ -336,8 +400,9 @@ class AppState:
         settings = load_settings_from_disk()
         self.auto_enabled = settings["auto_enabled"]
         self.refresh_times = settings["refresh_times"]
+        self.webhook_url = settings.get("webhook_url", "")
         if not SETTINGS_FILE.exists():
-            save_settings_to_disk(self.auto_enabled, self.refresh_times)
+            save_settings_to_disk(self.auto_enabled, self.refresh_times, self.webhook_url)
         self.run_records: dict[str, str] = {}
         self.token_refresh_records: dict[str, str] = {}
         self.scheduler_thread = threading.Thread(target=self.scheduler_loop, daemon=True)
@@ -359,6 +424,7 @@ class AppState:
                 "accounts": accounts,
                 "auto_enabled": self.auto_enabled,
                 "refresh_times": self.refresh_times.copy(),
+                "webhook_url": self.webhook_url,
                 "account_count": len(self.accounts),
                 "task_count": sum(len(account.get("tasks", [])) for account in self.accounts),
                 "enabled_task_count": enabled_task_count,
@@ -379,7 +445,9 @@ class AppState:
                 self.refresh_times = parse_time_list(data.get("refresh_times", []))
             if "auto_enabled" in data:
                 self.auto_enabled = bool(data["auto_enabled"])
-            save_settings_to_disk(self.auto_enabled, self.refresh_times)
+            if "webhook_url" in data:
+                self.webhook_url = str(data.get("webhook_url", ""))
+            save_settings_to_disk(self.auto_enabled, self.refresh_times, self.webhook_url)
         self.logger.info(
             "系统设置已更新：自动调度=%s，刷新时间=%s",
             "开启" if self.auto_enabled else "关闭",
@@ -491,8 +559,27 @@ class AppState:
         with self.lock:
             account = deep_copy(self.accounts[account_index])
             task = deep_copy(self.accounts[account_index]["tasks"][task_index])
-        self.enqueue_task(account, task)
-        return {"queued": True}
+            webhook_url = self.webhook_url
+        ok, result = self.service.execute_task(account, task)
+        if ok:
+            name = account.get("name") or account.get("mobile")
+            real_title = result.get("real_title", "未知项目")
+            message = f"[{name}] 任务《{result['title']}》签到成功，实际项目：{real_title}"
+            if result.get("text"):
+                message += f"，文本：{result['text']}"
+            if result.get("image_urls"):
+                message += f"，图片数量：{len(result['image_urls'])}"
+            if result.get("location"):
+                message += f"，位置：{result['location'].get('address', '')}"
+            self.logger.info(message)
+            try:
+                self.service.send_wechat_notification(webhook_url, name, result)
+            except Exception:
+                pass
+            return result
+        else:
+            self.logger.error(result.get("error", "签到失败"))
+            raise RuntimeError(result.get("error", "签到失败"))
 
     def run_account_tasks(self, account_index: int) -> dict:
         with self.lock:
@@ -515,11 +602,27 @@ class AppState:
 
     def _execute_task(self, account: dict, task: dict) -> None:
         try:
-            ok, message = self.service.execute_task(account, task)
+            ok, result = self.service.execute_task(account, task)
+            name = account.get("name") or account.get("mobile")
+            task_title = task.get("title", "未命名任务")
             if ok:
+                real_title = result.get("real_title", "未知项目")
+                message = f"[{name}] 任务《{task_title}》签到成功，实际项目：{real_title}"
+                if result.get("text"):
+                    message += f"，文本：{result['text']}"
+                if result.get("image_urls"):
+                    message += f"，图片数量：{len(result['image_urls'])}"
+                if result.get("location"):
+                    message += f"，位置：{result['location'].get('address', '')}"
                 self.logger.info(message)
+                try:
+                    with self.lock:
+                        webhook_url = self.webhook_url
+                    self.service.send_wechat_notification(webhook_url, name, result)
+                except Exception:
+                    pass
             else:
-                self.logger.error(message)
+                self.logger.error(result.get("error", f"[{name}] 任务《{task_title}》签到失败"))
         except Exception as exc:
             self.logger.error("[%s] 执行任务异常：%s", account.get("name") or account.get("mobile"), exc)
 

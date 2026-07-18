@@ -145,6 +145,8 @@ def run_task(account_index: int, task_index: int):
         return success(app_state.run_task(account_index, task_index))
     except IndexError:
         failure("索引越界，请重新选择账号或任务")
+    except RuntimeError as e:
+        failure(str(e))
 
 
 @app.post("/api/accounts/{account_index}/run-all")

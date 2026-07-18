@@ -245,8 +245,17 @@ async function saveTask() {
 
 async function runTask() {
   try {
-    await api.runTask(selectedAccountIndex.value, selectedActualIndex.value)
-    ElMessage.success('已加入执行队列')
+    const res = await api.runTask(selectedAccountIndex.value, selectedActualIndex.value)
+    const data = res.data || {}
+    let message = `<div style="line-height: 1.8;">`
+    message += `<p><strong>签到成功！</strong></p>`
+    message += `<p>任务标题：${data.title}</p>`
+    message += `<p>实际项目：${data.real_title}</p>`
+    if (data.text) message += `<p>文本内容：${data.text}</p>`
+    if (data.image_urls && data.image_urls.length) message += `<p>图片数量：${data.image_urls.length}</p>`
+    if (data.location) message += `<p>位置：${data.location.address}</p>`
+    message += `</div>`
+    ElMessageBox.alert(message, '签到结果', { dangerouslyUseHTMLString: true })
     await refreshLogs()
   } catch (err) {
     ElMessage.error(err.message)

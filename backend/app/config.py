@@ -7,12 +7,8 @@ LOG_DIR = APP_DIR / "logs"
 UPLOAD_DIR = APP_DIR / "uploads"
 
 DEFAULT_REFRESH_TIMES = ["07:30:00", "11:30:00", "14:00:00", "17:00:00", "18:30:00"]
-DEFAULT_FALLBACK_LOCATION = {
-    "latitude": 26.036513,
-    "longitude": 119.314487,
-    "accuracy": 323,
-    "wifi": "",
-}
+DEFAULT_WEBHOOK_URL = ""
+
 
 PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3IbkWjuSaZWr/UtdHFsZ
