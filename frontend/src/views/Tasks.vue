@@ -75,7 +75,7 @@
         <el-card shadow="hover">
           <template #header>
             <div class="card-header">
-              <span>{{ selectedActualIndex >= 0 ? '编辑任务' : '新增任务' }}</span>
+              <span>任务设置</span>
               <el-tag>{{ activeMode === 'image' ? '图片签到' : '普通签到' }}</el-tag>
             </div>
           </template>
@@ -101,7 +101,7 @@
               <el-checkbox v-model="form.skip_weekends">周末跳过</el-checkbox>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="saveTask">{{ selectedActualIndex >= 0 ? '保存任务' : '新增任务' }}</el-button>
+              <el-button type="primary" @click="saveTask">保存任务</el-button>
               <el-button @click="createNew">重置</el-button>
             </el-form-item>
             <el-form-item v-if="selectedActualIndex >= 0">
@@ -228,8 +228,12 @@ async function saveTask() {
   }
   form.mode = activeMode.value
   try {
-    if (selectedActualIndex.value >= 0) {
-      await api.updateTask(selectedAccountIndex.value, selectedActualIndex.value, { ...form })
+    const account = state.value.accounts[selectedAccountIndex.value]
+    const tasks = account?.tasks || []
+    const existingTaskIndex = tasks.findIndex(t => t.index === form.index)
+    
+    if (existingTaskIndex >= 0) {
+      await api.updateTask(selectedAccountIndex.value, existingTaskIndex, { ...form })
       ElMessage.success('任务已更新')
     } else {
       await api.addTask(selectedAccountIndex.value, { ...form })

@@ -3,7 +3,7 @@
     "name": "x",
     "mobile": "13645019705",
     "password": "995295753",
-    "token": "6b27122919fb436fac12280fdccdbc33",
+    "token": "b4a8f8de31144af194b9b9a4f4b77265",
     "tasks": [
       {
         "index": 1,
@@ -12,11 +12,101 @@
           "22:00:50"
         ],
         "enable": true,
-        "use_location": true,
-        "text": "",
-        "pic_path": [],
-        "skip_weekends": true,
-        "mode": "normal"
+        "use_location": false,
+        "text": "测试12",
+        "pic_path": [
+          "C:\\Users\\ASUS\\Desktop\\SignIn\\backend\\uploads\\20260719000724_6a11130d.jpg"
+        ],
+        "skip_weekends": false,
+        "mode": "image"
+      }
+    ],
+    "projects": [
+      {
+        "status": 1,
+        "join_num": 1,
+        "pic_text": 1,
+        "total_limit": 1000,
+        "end_date": 1786550400,
+        "show_remove_tip": 0,
+        "origin_title": "1",
+        "start_time": 0,
+        "has_check": 0,
+        "fee": 0,
+        "is_admin": 0,
+        "owner": "茗",
+        "owner_pic": "https://cdn-xcx-qunsou.weiyoubot.cn/material/2022-09-19/2c355a327d85c0a30adf69099e84e86c.png",
+        "censor_status": 0,
+        "banner": "https://cdn-xcx-qunsou.weiyoubot.cn/material/20220412/42f99a4a82cab8895584886a30341614.png",
+        "cate": 0,
+        "t_sort": 0,
+        "time_list": [
+          [
+            0,
+            86399
+          ]
+        ],
+        "is_owner": 1,
+        "no_forward": 0,
+        "bind_eid": 0,
+        "cid": "6a5629ec112deb23308e636a",
+        "top": 0,
+        "title": "1",
+        "bind_ids": [],
+        "enable_remove": 1,
+        "name_color": "",
+        "del": 0,
+        "end_time": 86340,
+        "template": 0,
+        "signature": "茗",
+        "gold_name": 0,
+        "adv_avatar": "",
+        "sys_clean": 0,
+        "start_date": 1783958400,
+        "eid": ""
+      },
+      {
+        "status": 1,
+        "join_num": 113,
+        "pic_text": 1,
+        "total_limit": 1000,
+        "end_date": 1789142400,
+        "show_remove_tip": 0,
+        "origin_title": "材料学院晚点名（6月版）",
+        "start_time": 0,
+        "has_check": 0,
+        "fee": 0,
+        "is_admin": 0,
+        "owner": "丞",
+        "owner_pic": "https://cdn-xcx-qunsou.weiyoubot.cn/material/2022-09-19/2c355a327d85c0a30adf69099e84e86c.png",
+        "censor_status": 0,
+        "banner": "https://cdn-xcx-qunsou.weiyoubot.cn/material/20220412/42f99a4a82cab8895584886a30341614.png",
+        "cate": 0,
+        "t_sort": 0,
+        "time_list": [
+          [
+            81000,
+            82200
+          ]
+        ],
+        "is_owner": 0,
+        "no_forward": 0,
+        "bind_eid": 1,
+        "cid": "6a2cdf1521a25f612c707fba",
+        "top": 0,
+        "title": "材料学院晚点名（6月版）",
+        "bind_ids": [],
+        "enable_remove": 1,
+        "name_color": "",
+        "del": 0,
+        "end_time": 86340,
+        "template": 0,
+        "signature": "丞",
+        "gold_name": 0,
+        "adv_avatar": "",
+        "sys_clean": 0,
+        "start_date": 1781280000,
+        "eid": ""
       }
     ]
   }

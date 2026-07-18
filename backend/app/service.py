@@ -587,9 +587,18 @@ class AppState:
             raise ValueError("当前账号没有 Token，请先登录")
         projects = self.service.fetch_checkin_list(account["token"])
         self.logger.info("[%s] 已获取签到项目列表，共 %s 个", account["name"], len(projects))
+        with self.lock:
+            self.accounts[account_index]["projects"] = projects
+            save_accounts_to_disk(self.accounts)
         return projects
 
     def add_task(self, account_index: int, data: dict) -> dict:
+        with self.lock:
+            account = self.accounts[account_index]
+            projects = account.get("projects", [])
+            tasks = account.get("tasks", [])
+            if len(projects) > 0 and len(tasks) >= len(projects):
+                raise ValueError(f"任务数量已达上限，当前账号最多可添加 {len(projects)} 个任务")
         task = normalize_task(data)
         with self.lock:
             self.accounts[account_index].setdefault("tasks", []).append(task)
@@ -792,8 +801,8 @@ class AppState:
                     
                     skip_refresh, diff_seconds = self._should_skip_task_refresh(refresh_time_str, refresh_times, now)
                     if skip_refresh:
-                        self.logger.info("[Token刷新] 用户[%s] 任务刷新时间[%s]与全局刷新时间差[%s秒]<=阈值[%s秒]，取消任务单独刷新，由全局刷新机制处理", 
-                                         mobile, refresh_time_str, int(diff_seconds), self._REFRESH_THRESHOLD_SECONDS)
+                        self.logger.debug("[Token刷新] 用户[%s] 任务刷新时间[%s]与全局刷新时间差[%s秒]<=阈值[%s秒]，取消任务单独刷新", 
+                                          mobile, refresh_time_str, int(diff_seconds) if diff_seconds else 'N/A', self._REFRESH_THRESHOLD_SECONDS)
                     elif refresh_time_diff <= 300:
                         refresh_record_key = f"{mobile}_{target_time}_refresh"
                         self.logger.debug("[Token刷新] 用户[%s] 在时间窗口内，检查是否已刷新", mobile)

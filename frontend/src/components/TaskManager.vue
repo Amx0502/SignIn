@@ -6,20 +6,25 @@
           <template #header>
             <div class="card-header">
               <span>任务列表</span>
-              <el-select
-                v-model="selectedAccountIndex"
-                placeholder="请选择用户"
-                clearable
-                style="width: 220px"
-                @change="onAccountChange"
-              >
-                <el-option
-                  v-for="(acc, idx) in state.accounts"
-                  :key="idx"
-                  :label="`${acc.name} (${acc.mobile})`"
-                  :value="idx"
-                />
-              </el-select>
+              <el-space>
+                <el-select
+                  v-model="selectedAccountIndex"
+                  placeholder="请选择用户"
+                  clearable
+                  style="width: 220px"
+                  @change="onAccountChange"
+                >
+                  <el-option
+                    v-for="(acc, idx) in state.accounts"
+                    :key="idx"
+                    :label="`${acc.name} (${acc.mobile})`"
+                    :value="idx"
+                  />
+                </el-select>
+                <el-tag v-if="currentAccount && currentAccount.projects && currentAccount.projects.length > 0" type="info" size="small">
+                  任务上限 {{ (currentAccount.tasks || []).length }}/{{ currentAccount.projects.length }}
+                </el-tag>
+              </el-space>
             </div>
           </template>
 
@@ -89,7 +94,7 @@
         <el-card shadow="hover" class="task-form-card">
           <template #header>
             <div class="card-header">
-              <span>{{ selectedActualIndex >= 0 ? '编辑任务' : '新增任务' }}</span>
+              <span>任务设置</span>
               <el-tag :type="(form.pic_path && form.pic_path.length) ? 'warning' : 'primary'">
                 {{ (form.pic_path && form.pic_path.length) ? '图片签到' : '普通签到' }}
               </el-tag>
@@ -134,9 +139,7 @@
               <el-checkbox v-model="form.skip_weekends">周末跳过</el-checkbox>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="saveTask">
-                {{ selectedActualIndex >= 0 ? '保存任务' : '新增任务' }}
-              </el-button>
+              <el-button type="primary" @click="saveTask">保存任务</el-button>
               <el-button @click="createNew">重置</el-button>
             </el-form-item>
             <el-form-item v-if="selectedActualIndex >= 0">
@@ -153,73 +156,6 @@
     <el-dialog v-model="previewVisible" title="图片预览" width="fit-content" align-center>
       <img :src="previewUrl" style="max-width: 100%; max-height: 70vh; border-radius: 8px;" />
     </el-dialog>
-
-    <el-card shadow="hover" style="margin-top: 20px;">
-      <template #header>
-        <div class="card-header">
-          <span>任务管理</span>
-          <el-tag type="info">{{ allTasks.length }} 个任务</el-tag>
-        </div>
-      </template>
-      <el-table
-        :data="allTasks"
-        style="width: 100%"
-        max-height="400"
-        empty-text="系统中暂无任务"
-      >
-        <el-table-column label="所属账号" min-width="120">
-          <template #default="scope">{{ scope.row.accountName }}</template>
-        </el-table-column>
-        <el-table-column prop="title" label="任务标题" min-width="120" />
-        <el-table-column label="项目序号" width="100">
-          <template #default="scope">{{ scope.row.index }}</template>
-        </el-table-column>
-        <el-table-column label="执行时间" min-width="150">
-          <template #default="scope">{{ (scope.row.times || []).join(', ') }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.enable ? 'success' : 'info'" size="small">
-              {{ scope.row.enable ? '启用' : '禁用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="签到类型" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.mode === 'image' ? 'warning' : 'primary'" size="small">
-              {{ scope.row.mode === 'image' ? '图片签到' : '普通签到' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="位置" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.use_location ? 'success' : 'info'" size="small">
-              {{ scope.row.use_location ? '自动获取' : '不使用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="图片数" width="80">
-          <template #default="scope">
-            <span>{{ Array.isArray(scope.row.pic_path) ? scope.row.pic_path.length : 0 }}张</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="周末跳过" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.skip_weekends ? 'warning' : 'info'" size="small">
-              {{ scope.row.skip_weekends ? '是' : '否' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180">
-          <template #default="scope">
-            <el-space>
-              <el-button type="success" size="small" :icon="VideoPlay" @click="runTaskFromManager(scope.row)">执行</el-button>
-              <el-button type="danger" size="small" :icon="Delete" @click="deleteTaskFromManager(scope.row)">删除</el-button>
-            </el-space>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
   </div>
 </template>
 
@@ -300,20 +236,7 @@ const accountTasks = computed(() => {
   return (currentAccount.value.tasks || []).map((task, actualIndex) => ({ task, actualIndex }))
 })
 
-const allTasks = computed(() => {
-  const tasks = []
-  state.value.accounts.forEach((account, accountIdx) => {
-    (account.tasks || []).forEach((task, taskIdx) => {
-      tasks.push({
-        ...task,
-        accountName: account.name,
-        accountIndex: accountIdx,
-        taskIndex: taskIdx
-      })
-    })
-  })
-  return tasks
-})
+
 
 onMounted(async () => {
   if (selectedAccountIndex.value != null) {
@@ -425,10 +348,19 @@ async function saveTask() {
   }
   form.mode = (form.pic_path && form.pic_path.length) ? 'image' : 'normal'
   try {
-    if (selectedActualIndex.value >= 0) {
-      await api.updateTask(selectedAccountIndex.value, selectedActualIndex.value, { ...form })
+    const account = state.value.accounts[selectedAccountIndex.value]
+    const tasks = account?.tasks || []
+    const existingTaskIndex = tasks.findIndex(t => t.index === form.index)
+    
+    if (existingTaskIndex >= 0) {
+      await api.updateTask(selectedAccountIndex.value, existingTaskIndex, { ...form })
       ElMessage.success('任务已更新')
     } else {
+      const projectCount = account?.projects?.length || 0
+      if (projectCount > 0 && tasks.length >= projectCount) {
+        ElMessage.warning(`任务数量已达上限，最多可添加 ${projectCount} 个任务`)
+        return
+      }
       await api.addTask(selectedAccountIndex.value, { ...form })
       ElMessage.success('任务已新增')
       createNew()
@@ -472,36 +404,7 @@ async function deleteTask() {
   }
 }
 
-async function runTaskFromManager(row) {
-  try {
-    const res = await api.runTask(row.accountIndex, row.taskIndex)
-    const data = res.data || {}
-    let message = `<div style="line-height: 1.8;">`
-    message += `<p><strong>签到成功！</strong></p>`
-    message += `<p>任务标题：${data.title}</p>`
-    message += `<p>实际项目：${data.real_title}</p>`
-    if (data.text) message += `<p>文本内容：${data.text}</p>`
-    if (data.image_urls && data.image_urls.length) message += `<p>图片数量：${data.image_urls.length}</p>`
-    if (data.location) message += `<p>位置：${data.location.address}</p>`
-    message += `</div>`
-    ElMessageBox.alert(message, '签到结果', { dangerouslyUseHTMLString: true })
-    await refreshLogs()
-  } catch (err) {
-    ElMessage.error(err.message)
-  }
-}
 
-async function deleteTaskFromManager(row) {
-  try {
-    await ElMessageBox.confirm(`确认删除任务「${row.title}」吗？`, '提示', { type: 'warning' })
-    await api.deleteTask(row.accountIndex, row.taskIndex)
-    await refreshState()
-    await refreshLogs()
-    ElMessage.success('任务已删除')
-  } catch (err) {
-    if (err !== 'cancel') ElMessage.error(err.message)
-  }
-}
 </script>
 
 <style scoped>

@@ -21,6 +21,7 @@
           <el-menu-item index="/overview"><el-icon><Odometer /></el-icon><span>系统概览</span></el-menu-item>
           <el-menu-item index="/accounts"><el-icon><User /></el-icon><span>账号管理</span></el-menu-item>
           <el-menu-item index="/checkin/auto"><el-icon><Timer /></el-icon><span>自动签到</span></el-menu-item>
+          <el-menu-item index="/tasks"><el-icon><List /></el-icon><span>任务管理</span></el-menu-item>
           <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>运行日志</span></el-menu-item>
         </el-sub-menu>
       </el-menu>
@@ -49,7 +50,7 @@
 </template>
 
 <script setup>
-import { Odometer, User, Document, Refresh, Calendar, Timer } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Refresh, Calendar, Timer, List } from '@element-plus/icons-vue'
 import { useAppState } from './composables/useAppState'
 
 const { loading, loadAll } = useAppState()
