@@ -553,6 +553,19 @@ class AppState:
             self.logger.info("批量刷新 Token 完成，成功 %s 个账号", success)
         return {"success_count": success}
 
+    def _refresh_single_token(self, mobile: str, password: str) -> None:
+        token = self.service.login(mobile, password)
+        if token:
+            with self.lock:
+                for account in self.accounts:
+                    if account["mobile"] == mobile:
+                        account["token"] = token
+                        break
+                save_accounts_to_disk(self.accounts)
+            self.logger.info("用户[%s] Token 刷新成功", mobile)
+        else:
+            self.logger.warning("用户[%s] Token 刷新失败", mobile)
+
     def fetch_projects(self, account_index: int) -> list[dict]:
         with self.lock:
             account = deep_copy(self.accounts[account_index])
@@ -722,7 +735,7 @@ class AppState:
                                 should_refresh = True
                         if should_refresh:
                             self.logger.info("为用户[%s]在任务时间[%s]前30分钟刷新Token", mobile, target_time)
-                            self.executor.submit(self.service.refresh_token, account)
+                            self.executor.submit(self._refresh_single_token, mobile, account["password"])
                     
                     if time_diff <= 300:
                         record_key = f"{mobile}_{task.get('title')}_{target_time}"
