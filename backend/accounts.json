@@ -3,19 +3,19 @@
     "name": "x",
     "mobile": "13645019705",
     "password": "995295753",
-    "token": "8ed05e08379e482797df870d0da147ba",
+    "token": "6b27122919fb436fac12280fdccdbc33",
     "tasks": [
       {
         "index": 1,
-        "title": "1",
+        "title": "725",
         "times": [
           "22:00:50"
         ],
         "enable": true,
         "use_location": true,
-        "text": "测试",
+        "text": "",
         "pic_path": [],
-        "skip_weekends": false,
+        "skip_weekends": true,
         "mode": "normal"
       }
     ]

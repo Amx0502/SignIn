@@ -6,7 +6,10 @@
           <template #header>
             <div class="card-header">
               <span>账号列表</span>
-              <el-button type="primary" :icon="Plus" size="small" @click="createNew">新增账号</el-button>
+              <el-space>
+                <el-button type="primary" :icon="Plus" size="small" @click="createNew">新增账号</el-button>
+                <el-button type="warning" :icon="Refresh" size="small" @click="refreshAllTokens">全局刷新Token</el-button>
+              </el-space>
             </div>
           </template>
           <el-table
@@ -180,6 +183,17 @@ async function deleteAccount() {
     ElMessage.success('账号已删除')
   } catch (err) {
     if (err !== 'cancel') ElMessage.error(err.message)
+  }
+}
+
+async function refreshAllTokens() {
+  try {
+    const res = await api.refreshAllTokens()
+    ElMessage.success(`全局刷新Token完成，成功${res.data?.success_count || 0}个账号`)
+    await refreshState()
+    await refreshLogs()
+  } catch (err) {
+    ElMessage.error(err.message)
   }
 }
 </script>
