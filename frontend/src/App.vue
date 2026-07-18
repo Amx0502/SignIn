@@ -1,48 +1,44 @@
 <template>
   <el-container class="app-wrapper">
-    <el-aside width="260px" class="sidebar">
+    <el-aside width="280px" class="sidebar">
       <div class="brand">
-        <h1>签到管理系统</h1>
-        <p>Vue3 + ElementPlus</p>
+        <div class="brand-mark">签</div>
+        <div>
+          <h1>签到管理系统</h1>
+          <p>Professional Admin Console</p>
+        </div>
       </div>
-      <el-menu
-        :default-active="$route.path"
-        router
-        class="sidebar-menu"
-        background-color="#0f172a"
-        text-color="#e5eefc"
-        active-text-color="#60a5fa"
-      >
+      <div class="sidebar-status">
+        <span class="pulse-dot"></span>
+        <span>{{ loading ? '正在同步数据' : '服务运行中' }}</span>
+      </div>
+      <el-menu :default-active="$route.path" router class="sidebar-menu">
         <el-sub-menu index="/checkin">
           <template #title>
             <el-icon><Calendar /></el-icon>
             <span>小小签到</span>
           </template>
-          <el-menu-item index="/overview">
-            <el-icon><Odometer /></el-icon>
-            <span>系统概览</span>
-          </el-menu-item>
-          <el-menu-item index="/accounts">
-            <el-icon><User /></el-icon>
-            <span>账号管理</span>
-          </el-menu-item>
-          <el-menu-item index="/checkin/auto">
-            <el-icon><Timer /></el-icon>
-            <span>自动签到</span>
-          </el-menu-item>
-          <el-menu-item index="/logs">
-            <el-icon><Document /></el-icon>
-            <span>运行日志</span>
-          </el-menu-item>
+          <el-menu-item index="/overview"><el-icon><Odometer /></el-icon><span>系统概览</span></el-menu-item>
+          <el-menu-item index="/accounts"><el-icon><User /></el-icon><span>账号管理</span></el-menu-item>
+          <el-menu-item index="/checkin/auto"><el-icon><Timer /></el-icon><span>自动签到</span></el-menu-item>
+          <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>运行日志</span></el-menu-item>
         </el-sub-menu>
       </el-menu>
+      <div class="sidebar-footer">
+        <span>自动化调度</span>
+        <strong>安全 · 稳定 · 高效</strong>
+      </div>
     </el-aside>
 
-    <el-container>
+    <el-container class="main-shell">
       <el-header class="top-header">
-        <h2>{{ $route.meta.title || '签到管理系统' }}</h2>
-        <el-space>
-          <el-button type="primary" :icon="Refresh" @click="loadAll" :loading="loading">刷新</el-button>
+        <div>
+          <p class="breadcrumb">后台控制台 / {{ $route.meta.title || '签到管理系统' }}</p>
+          <h2>{{ $route.meta.title || '签到管理系统' }}</h2>
+        </div>
+        <el-space wrap>
+          <el-tag effect="plain" type="success">实时轮询</el-tag>
+          <el-button type="primary" :icon="Refresh" @click="loadAll" :loading="loading">刷新数据</el-button>
         </el-space>
       </el-header>
       <el-main>
@@ -62,54 +58,28 @@ const { loading, loadAll } = useAppState()
 <style scoped>
 .app-wrapper { min-height: 100vh; }
 .sidebar {
-  background: linear-gradient(180deg, #0f172a, #111827);
-  color: #e5eefc;
-  padding: 20px 12px;
+  position: sticky; top: 0; height: 100vh; overflow: hidden auto;
+  background: linear-gradient(180deg, #07111f 0%, #0f172a 46%, #111827 100%);
+  color: #e5eefc; padding: 22px 14px; box-shadow: 18px 0 45px rgba(15, 23, 42, 0.18); z-index: 20;
 }
-.brand { margin-bottom: 20px; padding: 0 10px; }
-.brand h1 { margin: 0; font-size: 22px; color: #fff; }
-.brand p { margin: 8px 0 0; font-size: 12px; color: #9fb0cf; }
-.sidebar-menu {
-  border-right: none;
-  margin-bottom: 20px;
-  background: transparent;
-}
-.sidebar-menu :deep(.el-sub-menu__title),
-.sidebar-menu :deep(.el-menu-item) {
-  border-radius: 10px;
-  margin-bottom: 4px;
-  height: 48px;
-  line-height: 48px;
-  transition: all 0.2s ease;
-}
-.sidebar-menu :deep(.el-menu-item:hover) {
-  background: rgba(96, 165, 250, 0.12) !important;
-}
-.sidebar-menu :deep(.el-menu-item.is-active) {
-  background: rgba(96, 165, 250, 0.15) !important;
-  box-shadow: inset 3px 0 0 #60a5fa;
-  font-weight: 600;
-}
-.sidebar-menu :deep(.el-sub-menu .el-menu) {
-  background: rgba(255, 255, 255, 0.03) !important;
-  border-radius: 10px;
-  padding: 4px;
-  margin-top: 4px;
-}
-.sidebar-menu :deep(.el-sub-menu__title:hover) {
-  background: rgba(96, 165, 250, 0.1) !important;
-}
-.top-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(230, 235, 242, 0.8);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-.top-header h2 { margin: 0; font-size: 20px; color: #1e293b; }
+.sidebar::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 0%, rgba(59, 130, 246, 0.28), transparent 34%); pointer-events: none; }
+.brand { position: relative; display: flex; gap: 12px; align-items: center; margin-bottom: 18px; padding: 0 8px; }
+.brand-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 16px; background: linear-gradient(135deg, #60a5fa, #2563eb); color: #fff; font-weight: 900; box-shadow: 0 16px 30px rgba(37, 99, 235, 0.35); }
+.brand h1 { margin: 0; font-size: 21px; color: #fff; letter-spacing: -0.03em; }
+.brand p { margin: 6px 0 0; font-size: 11px; color: #9fb0cf; text-transform: uppercase; letter-spacing: 0.08em; }
+.sidebar-status, .sidebar-footer { position: relative; margin: 12px 8px 18px; padding: 12px 14px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 16px; background: rgba(255, 255, 255, 0.05); color: #cbd5e1; font-size: 13px; }
+.pulse-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #22c55e; margin-right: 8px; box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.12); animation: pulse 1.5s infinite; }
+.sidebar-menu { position: relative; border-right: none; background: transparent; }
+.sidebar-menu :deep(.el-sub-menu__title), .sidebar-menu :deep(.el-menu-item) { border-radius: 14px; margin: 5px 0; height: 48px; line-height: 48px; color: #dbeafe; transition: all 0.22s ease; }
+.sidebar-menu :deep(.el-sub-menu__title:hover), .sidebar-menu :deep(.el-menu-item:hover) { background: rgba(96, 165, 250, 0.14); transform: translateX(3px); }
+.sidebar-menu :deep(.el-menu-item.is-active) { background: linear-gradient(90deg, rgba(37, 99, 235, 0.28), rgba(14, 165, 233, 0.12)); box-shadow: inset 3px 0 0 #60a5fa; color: #fff; font-weight: 700; }
+.sidebar-menu :deep(.el-sub-menu .el-menu) { background: rgba(255, 255, 255, 0.035); border-radius: 14px; padding: 4px; }
+.sidebar-footer { position: absolute; left: 14px; right: 14px; bottom: 16px; display: grid; gap: 6px; }
+.sidebar-footer strong { color: #fff; }
+.main-shell { min-width: 0; }
+.top-header { min-height: 76px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 28px; background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(226, 232, 240, 0.8); position: sticky; top: 0; z-index: 10; }
+.breadcrumb { margin: 0 0 4px; color: #64748b; font-size: 12px; }
+.top-header h2 { margin: 0; font-size: 22px; color: #0f172a; letter-spacing: -0.03em; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); } }
+@media (max-width: 900px) { .app-wrapper { display: block; } .sidebar { position: relative; width: 100% !important; height: auto; } .sidebar-footer { position: relative; left: auto; right: auto; bottom: auto; } .top-header { padding: 14px 18px; height: auto; flex-wrap: wrap; } }
 </style>
