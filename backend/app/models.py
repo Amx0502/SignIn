@@ -12,6 +12,7 @@ class Task(BaseModel):
     pic_path: List[str] = Field(default_factory=list)
     skip_weekends: bool = Field(default=False)
     mode: str = Field(default="normal", pattern="^(normal|image)$")
+    notify_wechat: bool = Field(default=True)
 
 
 class Account(BaseModel):
@@ -46,6 +47,7 @@ class TaskCreate(BaseModel):
     use_location: bool = False
     skip_weekends: bool = False
     mode: str = "normal"
+    notify_wechat: bool = True
 
 
 class TaskUpdate(TaskCreate):

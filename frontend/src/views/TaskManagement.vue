@@ -34,6 +34,7 @@
                 <span v-if="task.use_location"><el-icon><MapLocation /></el-icon>位置</span>
                 <span v-if="task.pic_path && task.pic_path.length"><el-icon><Picture /></el-icon>{{ task.pic_path.length }}张图</span>
                 <span v-if="task.skip_weekends"><el-icon><Calendar /></el-icon>周末跳过</span>
+                <span v-if="task.notify_wechat !== false"><el-icon><VideoPlay /></el-icon>企微通知</span>
               </div>
             </div>
             <div class="task-actions">
@@ -70,8 +71,8 @@
                 </el-form-item>
                 <el-form-item label="签到位置">
                   <el-radio-group v-model="editLocationModes[getTaskKey(task)]">
-                    <el-radio label="none">不使用位置</el-radio>
-                    <el-radio label="auto">自动获取位置</el-radio>
+                    <el-radio value="none">不使用位置</el-radio>
+                    <el-radio value="auto">自动获取位置</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item label="签到图片">
@@ -92,6 +93,7 @@
                 <el-form-item>
                   <el-checkbox v-model="getEditForm(task).enable">启用任务</el-checkbox>
                   <el-checkbox v-model="getEditForm(task).skip_weekends">周末跳过</el-checkbox>
+                  <el-checkbox v-model="getEditForm(task).notify_wechat">发送企业微信通知</el-checkbox>
                 </el-form-item>
                 <el-form-item>
                   <el-button type="primary" @click="saveInlineEdit(task)">保存任务</el-button>
@@ -176,7 +178,8 @@ function getEditForm(task) {
       enable: task.enable !== false,
       use_location: task.use_location || false,
       skip_weekends: task.skip_weekends || false,
-      mode: task.mode || 'normal'
+      mode: task.mode || 'normal',
+      notify_wechat: task.notify_wechat !== false
     })
   }
   return editForms[key]
@@ -232,7 +235,8 @@ function toggleInlineEdit(task) {
       enable: task.enable !== false,
       use_location: task.use_location || false,
       skip_weekends: task.skip_weekends || false,
-      mode: task.mode || 'normal'
+      mode: task.mode || 'normal',
+      notify_wechat: task.notify_wechat !== false
     })
     
     const paths = Array.isArray(task.pic_path) ? task.pic_path : (task.pic_path ? [task.pic_path] : [])
@@ -247,11 +251,15 @@ function toggleInlineEdit(task) {
     editLocationModes[key] = task.use_location ? 'auto' : 'none'
     
     watch(() => editTimesInputs[key], (val) => {
-      editForms[key].times = val.split(',').map(t => t.trim()).filter(Boolean)
+      if (val != null && editForms[key]) {
+        editForms[key].times = val.split(',').map(t => t.trim()).filter(Boolean)
+      }
     })
     
     watch(() => editLocationModes[key], (val) => {
-      editForms[key].use_location = val === 'auto'
+      if (val != null && editForms[key]) {
+        editForms[key].use_location = val === 'auto'
+      }
     })
   }
 }

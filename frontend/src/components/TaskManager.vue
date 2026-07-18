@@ -65,6 +65,20 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column label="周末跳过" width="80">
+              <template #default="scope">
+                <el-tag :type="scope.row.task.skip_weekends ? 'warning' : 'info'" size="small">
+                  {{ scope.row.task.skip_weekends ? '是' : '否' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="企微通知" width="80">
+              <template #default="scope">
+                <el-tag :type="scope.row.task.notify_wechat !== false ? 'success' : 'info'" size="small">
+                  {{ scope.row.task.notify_wechat !== false ? '是' : '否' }}
+                </el-tag>
+              </template>
+            </el-table-column>
           </el-table>
 
           <div class="form-section project-section">
@@ -115,8 +129,8 @@
             </el-form-item>
             <el-form-item label="签到位置">
               <el-radio-group v-model="locationMode">
-                <el-radio label="none">不使用位置</el-radio>
-                <el-radio label="auto">自动获取位置</el-radio>
+                <el-radio value="none">不使用位置</el-radio>
+                <el-radio value="auto">自动获取位置</el-radio>
               </el-radio-group>
             </el-form-item>
             <el-form-item label="签到图片">
@@ -137,6 +151,7 @@
             <el-form-item>
               <el-checkbox v-model="form.enable">启用任务</el-checkbox>
               <el-checkbox v-model="form.skip_weekends">周末跳过</el-checkbox>
+              <el-checkbox v-model="form.notify_wechat">发送企业微信通知</el-checkbox>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="saveTask">保存任务</el-button>
@@ -186,7 +201,8 @@ const form = reactive({
   enable: true,
   use_location: false,
   skip_weekends: false,
-  mode: 'normal'
+  mode: 'normal',
+  notify_wechat: true
 })
 
 const timesText = computed({
@@ -272,6 +288,7 @@ function createNew() {
   form.use_location = false
   form.skip_weekends = false
   form.mode = 'normal'
+  form.notify_wechat = true
   locationMode.value = 'none'
   fileList.value = []
 }
@@ -290,6 +307,7 @@ function onSelectTask(row) {
   form.use_location = task.use_location
   form.skip_weekends = task.skip_weekends
   form.mode = task.mode || (taskPicPaths.length ? 'image' : 'normal')
+  form.notify_wechat = task.notify_wechat !== false
   syncLocationMode()
   syncFileList()
 }

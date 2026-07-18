@@ -83,6 +83,7 @@ def normalize_task(task: dict | None = None) -> dict:
         "pic_path": pic_paths,
         "skip_weekends": bool(task.get("skip_weekends", False)),
         "mode": mode,
+        "notify_wechat": bool(task.get("notify_wechat", True)),
     }
 
 
@@ -643,7 +644,10 @@ class AppState:
                 message += f"，位置：{result['location'].get('address', '')}"
             self.logger.info(message)
             try:
-                self.service.send_wechat_notification(webhook_url, name, result, success=True)
+                if task.get("notify_wechat", True):
+                    self.service.send_wechat_notification(webhook_url, name, result, success=True)
+                else:
+                    self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task.get("title"))
             except Exception:
                 pass
             return result
@@ -651,7 +655,10 @@ class AppState:
             error_msg = result.get("error", "签到失败")
             self.logger.error(error_msg)
             try:
-                self.service.send_wechat_notification(webhook_url, name, result, success=False)
+                if task.get("notify_wechat", True):
+                    self.service.send_wechat_notification(webhook_url, name, result, success=False)
+                else:
+                    self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task.get("title"))
             except Exception:
                 pass
             raise RuntimeError(error_msg)
@@ -691,18 +698,24 @@ class AppState:
                     message += f"，位置：{result['location'].get('address', '')}"
                 self.logger.info(message)
                 try:
-                    with self.lock:
-                        webhook_url = self.webhook_url
-                    self.service.send_wechat_notification(webhook_url, name, result, success=True)
+                    if task.get("notify_wechat", True):
+                        with self.lock:
+                            webhook_url = self.webhook_url
+                        self.service.send_wechat_notification(webhook_url, name, result, success=True)
+                    else:
+                        self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task_title)
                 except Exception:
                     pass
             else:
                 error_msg = result.get("error", f"[{name}] 任务《{task_title}》签到失败")
                 self.logger.error(error_msg)
                 try:
-                    with self.lock:
-                        webhook_url = self.webhook_url
-                    self.service.send_wechat_notification(webhook_url, name, result, success=False)
+                    if task.get("notify_wechat", True):
+                        with self.lock:
+                            webhook_url = self.webhook_url
+                        self.service.send_wechat_notification(webhook_url, name, result, success=False)
+                    else:
+                        self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task_title)
                 except Exception:
                     pass
         except Exception as exc:
