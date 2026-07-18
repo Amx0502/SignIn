@@ -127,8 +127,8 @@
               >
                 <el-button type="primary" :icon="Upload">点击上传图片</el-button>
               </el-upload>
-              <div class="upload-tip">最多可上传 3 张图片，留空表示不使用图片签到</div>
             </el-form-item>
+            <div class="upload-tip">最多可上传 3 张图片，留空表示不使用图片签到</div>
             <el-form-item>
               <el-checkbox v-model="form.enable">启用任务</el-checkbox>
               <el-checkbox v-model="form.skip_weekends">周末跳过</el-checkbox>

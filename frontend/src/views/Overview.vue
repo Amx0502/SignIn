@@ -98,7 +98,7 @@ async function saveSettingsCore(autoEnabled) {
   try {
     await api.setSettings({
       auto_enabled: autoEnabled,
-      refresh_times: settingsForm.refresh_times
+      refresh_times: settingsForm.refresh_times.split(',').map(s => s.trim()).filter(Boolean)
     })
     ElMessage.success('设置已保存')
     await refreshState()
