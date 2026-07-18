@@ -15,4 +15,3 @@ frontend/dist/
 *.log
 .DS_Store
 backend/accounts.json
-/.vscode
