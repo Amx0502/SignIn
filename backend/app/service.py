@@ -206,7 +206,6 @@ class CheckinService:
         ).json()
         if response.get("msg") == "ok":
             return response["data"]["access_token"]
-        self.logger.warning("登录失败 %s: %s", mobile, response.get("msg", "未知错误"))
         return None
 
     def fetch_checkin_list(self, token: str) -> list[dict]:
@@ -229,7 +228,6 @@ class CheckinService:
         if not path.is_absolute():
             path = DATA_FILE.parent / path
         if not path.exists():
-            self.logger.error("找不到图片文件: %s", path)
             return None
 
         upload_headers = dict(HEADERS)
@@ -242,7 +240,6 @@ class CheckinService:
         if response.get("sta") == 0 and response.get("data", {}).get("urls"):
             return response["data"]["urls"][0]
 
-        self.logger.error("图片上传失败: %s", response)
         return None
 
     def build_payload(self, token: str, cid: str, task: dict, detail: dict | None, image_urls: list[str] | None = None) -> dict:
