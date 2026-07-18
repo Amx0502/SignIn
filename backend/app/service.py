@@ -698,24 +698,34 @@ class AppState:
         if not auto_enabled:
             return
 
-        for refresh_time in refresh_times:
-            should_refresh = False
-            with self.lock:
-                if self._time_reached(now, refresh_time) and self.token_refresh_records.get(refresh_time) != current_date:
-                    self.token_refresh_records[refresh_time] = current_date
-                    should_refresh = True
-            if should_refresh:
-                self.executor.submit(self.refresh_all_tokens)
-
         for account in accounts:
+            mobile = account.get("mobile")
             for task in account.get("tasks", []):
                 if not task.get("enable", True):
                     continue
                 if task.get("skip_weekends", False) and weekday in (5, 6):
                     continue
                 for target_time in task.get("times", []):
-                    if self._time_reached(now, target_time):
-                        record_key = f"{account.get('mobile')}_{task.get('title')}_{target_time}"
+                    hour, minute, second = map(int, target_time.split(":"))
+                    target = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
+                    time_diff = abs((now - target).total_seconds())
+                    
+                    refresh_target = target - dt.timedelta(minutes=30)
+                    refresh_time_diff = abs((now - refresh_target).total_seconds())
+                    
+                    if refresh_time_diff <= 300:
+                        refresh_record_key = f"{mobile}_{target_time}_refresh"
+                        should_refresh = False
+                        with self.lock:
+                            if self.token_refresh_records.get(refresh_record_key) != current_date:
+                                self.token_refresh_records[refresh_record_key] = current_date
+                                should_refresh = True
+                        if should_refresh:
+                            self.logger.info("为用户[%s]在任务时间[%s]前30分钟刷新Token", mobile, target_time)
+                            self.executor.submit(self.service.refresh_token, account)
+                    
+                    if time_diff <= 300:
+                        record_key = f"{mobile}_{task.get('title')}_{target_time}"
                         should_run = False
                         with self.lock:
                             if self.run_records.get(record_key) != current_date:
