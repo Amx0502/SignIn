@@ -1,18 +1,18 @@
 <template>
   <el-container class="app-wrapper">
-    <el-aside :width="sidebarVisible ? '280px' : '0px'" class="sidebar" :class="{ 'sidebar-hidden': !sidebarVisible }">
+    <el-aside :width="sidebarCollapsed ? '80px' : '280px'" class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="brand">
         <div class="brand-mark">签</div>
-        <div>
+        <div v-if="!sidebarCollapsed">
           <h1>签到管理系统</h1>
           <p>Professional Admin Console</p>
         </div>
       </div>
-      <div class="sidebar-status">
+      <div v-if="!sidebarCollapsed" class="sidebar-status">
         <span class="pulse-dot"></span>
         <span>{{ loading ? '正在同步数据' : '服务运行中' }}</span>
       </div>
-      <el-menu :default-active="$route.path" router class="sidebar-menu" @select="closeSidebar">
+      <el-menu :default-active="$route.path" router class="sidebar-menu" :collapse="sidebarCollapsed" @select="closeSidebar">
         <el-sub-menu index="/checkin">
           <template #title>
             <el-icon><Calendar /></el-icon>
@@ -25,7 +25,7 @@
           <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>运行日志</span></el-menu-item>
         </el-sub-menu>
       </el-menu>
-      <div class="sidebar-footer">
+      <div v-if="!sidebarCollapsed" class="sidebar-footer">
         <span>自动化调度</span>
         <strong>安全 · 稳定 · 高效</strong>
       </div>
@@ -50,7 +50,7 @@
       </el-main>
     </el-container>
 
-    <div v-if="sidebarVisible && isMobile" class="sidebar-mask" @click="closeSidebar"></div>
+    <div v-if="!sidebarCollapsed && isMobile" class="sidebar-mask" @click="closeSidebar"></div>
   </el-container>
 </template>
 
@@ -61,25 +61,25 @@ import { useAppState } from './composables/useAppState'
 
 const { loading, loadAll } = useAppState()
 
-const sidebarVisible = ref(true)
+const sidebarCollapsed = ref(false)
 const isMobile = ref(false)
 
 function checkMobile() {
   isMobile.value = window.innerWidth <= 768
   if (isMobile.value) {
-    sidebarVisible.value = false
+    sidebarCollapsed.value = true
   } else {
-    sidebarVisible.value = true
+    sidebarCollapsed.value = false
   }
 }
 
 function toggleSidebar() {
-  sidebarVisible.value = !sidebarVisible.value
+  sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
 function closeSidebar() {
   if (isMobile.value) {
-    sidebarVisible.value = false
+    sidebarCollapsed.value = true
   }
 }
 
@@ -101,9 +101,8 @@ onUnmounted(() => {
   color: #e5eefc; padding: 22px 14px; box-shadow: 18px 0 45px rgba(15, 23, 42, 0.18); z-index: 20;
   transition: width 0.3s ease;
 }
-.sidebar.sidebar-hidden {
-  overflow: hidden;
-  padding: 0;
+.sidebar.sidebar-collapsed {
+  padding: 14px 8px;
 }
 .sidebar::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 0%, rgba(59, 130, 246, 0.28), transparent 34%); pointer-events: none; }
 .brand { position: relative; display: flex; gap: 12px; align-items: center; margin-bottom: 18px; padding: 0 8px; }
@@ -144,7 +143,13 @@ onUnmounted(() => {
   .top-header h2 { font-size: 18px; }
   .breadcrumb { font-size: 11px; }
   .header-right { margin-top: 8px; }
-  .sidebar { position: fixed; left: 0; top: 0; z-index: 100; height: 100vh; }
+  .sidebar { 
+    position: fixed; left: 0; top: 0; z-index: 100; height: 100vh; 
+    transition: transform 0.3s ease, width 0.3s ease;
+  }
+  .sidebar.sidebar-collapsed {
+    transform: translateX(-100%);
+  }
 }
 
 @media (max-width: 480px) {
