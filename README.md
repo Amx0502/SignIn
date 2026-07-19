@@ -36,10 +36,10 @@ cd backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python run.py
+./venv/Scripts/python.exe run.py
 ```
 
-后端默认运行在 `http://127.0.0.1:8765`，会自动读取原项目 `C:\Users\ASUS\Desktop\SignIn\accounts1.json`。
+后端默认运行在 `http://0.0.0.0:8765`，会自动读取原项目 `C:\Users\ASUS\Desktop\SignIn\accounts1.json`。
 
 ## 前端开发
 
@@ -49,7 +49,7 @@ npm install
 npm run dev
 ```
 
-开发服务器默认 `http://127.0.0.1:5173`，通过 `vite.config.js` 代理 `/api` 到后端。
+开发服务器默认 `http://0.0.0.0:5173`，通过 `vite.config.js` 代理 `/api` 到后端。
 
 ## 前端构建
 
@@ -58,7 +58,7 @@ cd frontend
 npm run build
 ```
 
-构建产物输出到 `frontend/dist`，FastAPI 启动时会自动托管该目录作为静态资源，直接访问 `http://127.0.0.1:8765/` 即可。
+构建产物输出到 `frontend/dist`，FastAPI 启动时会自动托管该目录作为静态资源，直接访问 `http://0.0.0.0:8765/` 即可。
 
 ## 主要功能
 

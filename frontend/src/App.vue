@@ -1,6 +1,6 @@
 <template>
   <el-container class="app-wrapper">
-    <el-aside width="280px" class="sidebar">
+    <el-aside :width="sidebarVisible ? '280px' : '0px'" class="sidebar" :class="{ 'sidebar-hidden': !sidebarVisible }">
       <div class="brand">
         <div class="brand-mark">签</div>
         <div>
@@ -12,7 +12,7 @@
         <span class="pulse-dot"></span>
         <span>{{ loading ? '正在同步数据' : '服务运行中' }}</span>
       </div>
-      <el-menu :default-active="$route.path" router class="sidebar-menu">
+      <el-menu :default-active="$route.path" router class="sidebar-menu" @select="closeSidebar">
         <el-sub-menu index="/checkin">
           <template #title>
             <el-icon><Calendar /></el-icon>
@@ -33,11 +33,14 @@
 
     <el-container class="main-shell">
       <el-header class="top-header">
-        <div>
-          <p class="breadcrumb">后台控制台 / {{ $route.meta.title || '签到管理系统' }}</p>
-          <h2>{{ $route.meta.title || '签到管理系统' }}</h2>
+        <div class="header-left">
+          <el-button class="menu-btn" link :icon="Menu" @click="toggleSidebar" style="margin-right: 12px;">菜单</el-button>
+          <div>
+            <p class="breadcrumb">后台控制台 / {{ $route.meta.title || '签到管理系统' }}</p>
+            <h2>{{ $route.meta.title || '签到管理系统' }}</h2>
+          </div>
         </div>
-        <el-space wrap>
+        <el-space wrap class="header-right">
           <el-tag effect="plain" type="success">实时轮询</el-tag>
           <el-button type="primary" :icon="Refresh" @click="loadAll" :loading="loading">刷新数据</el-button>
         </el-space>
@@ -46,14 +49,48 @@
         <router-view />
       </el-main>
     </el-container>
+
+    <div v-if="sidebarVisible && isMobile" class="sidebar-mask" @click="closeSidebar"></div>
   </el-container>
 </template>
 
 <script setup>
-import { Odometer, User, Document, Refresh, Calendar, Timer, List } from '@element-plus/icons-vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { Odometer, User, Document, Refresh, Calendar, Timer, List, Menu } from '@element-plus/icons-vue'
 import { useAppState } from './composables/useAppState'
 
 const { loading, loadAll } = useAppState()
+
+const sidebarVisible = ref(true)
+const isMobile = ref(false)
+
+function checkMobile() {
+  isMobile.value = window.innerWidth <= 768
+  if (isMobile.value) {
+    sidebarVisible.value = false
+  } else {
+    sidebarVisible.value = true
+  }
+}
+
+function toggleSidebar() {
+  sidebarVisible.value = !sidebarVisible.value
+}
+
+function closeSidebar() {
+  if (isMobile.value) {
+    sidebarVisible.value = false
+  }
+}
+
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+})
 </script>
 
 <style scoped>
@@ -62,6 +99,11 @@ const { loading, loadAll } = useAppState()
   position: sticky; top: 0; height: 100vh; overflow: hidden auto;
   background: linear-gradient(180deg, #07111f 0%, #0f172a 46%, #111827 100%);
   color: #e5eefc; padding: 22px 14px; box-shadow: 18px 0 45px rgba(15, 23, 42, 0.18); z-index: 20;
+  transition: width 0.3s ease;
+}
+.sidebar.sidebar-hidden {
+  overflow: hidden;
+  padding: 0;
 }
 .sidebar::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 0%, rgba(59, 130, 246, 0.28), transparent 34%); pointer-events: none; }
 .brand { position: relative; display: flex; gap: 12px; align-items: center; margin-bottom: 18px; padding: 0 8px; }
@@ -79,8 +121,34 @@ const { loading, loadAll } = useAppState()
 .sidebar-footer strong { color: #fff; }
 .main-shell { min-width: 0; }
 .top-header { min-height: 76px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 28px; background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(226, 232, 240, 0.8); position: sticky; top: 0; z-index: 10; }
+.header-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.menu-btn { display: none; }
 .breadcrumb { margin: 0 0 4px; color: #64748b; font-size: 12px; }
 .top-header h2 { margin: 0; font-size: 22px; color: #0f172a; letter-spacing: -0.03em; }
+.sidebar-mask {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 15;
+  animation: fadeIn 0.2s ease;
+}
 @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); } }
-@media (max-width: 900px) { .app-wrapper { display: block; } .sidebar { position: relative; width: 100% !important; height: auto; } .sidebar-footer { position: relative; left: auto; right: auto; bottom: auto; } .top-header { padding: 14px 18px; height: auto; flex-wrap: wrap; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+@media (max-width: 900px) {
+  .top-header { padding: 12px 16px; height: auto; flex-wrap: wrap; }
+  .header-left { flex-wrap: wrap; }
+  .menu-btn { display: block; }
+}
+
+@media (max-width: 768px) {
+  .top-header { min-height: 64px; padding: 10px 12px; }
+  .header-left { flex-direction: row; align-items: center; }
+  .top-header h2 { font-size: 18px; }
+  .breadcrumb { font-size: 11px; }
+  .header-right { margin-top: 8px; }
+  .sidebar { position: fixed; left: 0; top: 0; z-index: 100; height: 100vh; }
+}
+
+@media (max-width: 480px) {
+  .top-header { padding: 8px 10px; }
+  .top-header h2 { font-size: 16px; }
+}
 </style>

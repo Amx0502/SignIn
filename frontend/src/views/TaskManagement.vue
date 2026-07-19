@@ -642,4 +642,76 @@ async function deleteTask(row) {
   background: #fff;
   box-sizing: border-box;
 }
+
+@media (max-width: 768px) {
+  .task-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .task-main {
+    width: 100%;
+  }
+  
+  .task-info {
+    gap: 12px;
+    font-size: 12px;
+  }
+  
+  .task-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  
+  .task-actions .el-button {
+    flex: 1;
+    min-width: 70px;
+  }
+  
+  .edit-card .el-form-item__label {
+    width: 80px !important;
+    font-size: 12px;
+  }
+  
+  .edit-card .el-form-item__content {
+    margin-left: 80px !important;
+  }
+  
+  .result-dialog :deep(.el-message-box) {
+    width: 90vw;
+    max-width: 360px;
+  }
+}
+
+@media (max-width: 480px) {
+  .task-title {
+    font-size: 14px;
+  }
+  
+  .task-info {
+    flex-direction: column;
+    gap: 6px;
+  }
+  
+  .task-actions {
+    flex-direction: column;
+  }
+  
+  .task-actions .el-button {
+    width: 100%;
+    margin-bottom: 4px;
+  }
+  
+  .edit-card .el-form-item__label {
+    width: 70px !important;
+    font-size: 11px;
+  }
+  
+  .edit-card .el-form-item__content {
+    margin-left: 70px !important;
+  }
+}
 </style>

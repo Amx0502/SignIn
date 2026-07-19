@@ -130,4 +130,46 @@ watch(logs, () => {
 .log-level-warning .log-message {
   color: #fcd34d;
 }
+
+@media (max-width: 768px) {
+  .logs-container {
+    font-size: 12px;
+    max-height: 50vh;
+  }
+  
+  .log-line {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .log-time {
+    width: auto;
+    white-space: normal;
+    font-size: 11px;
+  }
+  
+  .log-level {
+    width: auto;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .el-space {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .logs-container {
+    font-size: 11px;
+  }
+  
+  .card-header .el-select {
+    width: 100% !important;
+  }
+}
 </style>

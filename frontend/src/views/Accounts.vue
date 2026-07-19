@@ -197,3 +197,13 @@ async function refreshAllTokens() {
   }
 }
 </script>
+
+<style scoped>
+@media (max-width: 768px) {
+  .card-header { flex-direction: column; align-items: flex-start; }
+}
+
+@media (max-width: 480px) {
+  .el-table { font-size: 11px; }
+}
+</style>

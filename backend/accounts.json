@@ -3,7 +3,7 @@
     "name": "x",
     "mobile": "13645019705",
     "password": "995295753",
-    "token": "b4a8f8de31144af194b9b9a4f4b77265",
+    "token": "881035979183487793a1938d532a38a9",
     "tasks": [
       {
         "index": 1,
@@ -14,12 +14,10 @@
         "enable": true,
         "use_location": true,
         "text": "测试12",
-        "pic_path": [
-          "C:\\Users\\ASUS\\Desktop\\SignIn\\backend\\uploads\\20260719004529_bccd0e19.jpg"
-        ],
+        "pic_path": [],
         "skip_weekends": false,
-        "mode": "image",
-        "notify_wechat": true
+        "mode": "normal",
+        "notify_wechat": false
       }
     ],
     "projects": [
@@ -107,6 +105,62 @@
         "adv_avatar": "",
         "sys_clean": 0,
         "start_date": 1781280000,
+        "eid": ""
+      }
+    ]
+  },
+  {
+    "name": "依盈泡芙",
+    "mobile": "15602924635",
+    "password": "123456",
+    "token": "febbedb4696145d18e48296c9fb6b5a3",
+    "tasks": [],
+    "projects": [
+      {
+        "status": 1,
+        "join_num": 58,
+        "pic_text": 0,
+        "total_limit": 1000,
+        "end_date": 1787673600,
+        "show_remove_tip": 0,
+        "origin_title": "25W3",
+        "start_time": 0,
+        "has_check": 1,
+        "fee": 0,
+        "is_admin": 0,
+        "owner": "张老师",
+        "owner_pic": "https://cdn-xcx-qunsou.weiyoubot.cn/material/2022-09-19/2c355a327d85c0a30adf69099e84e86c.png",
+        "censor_status": 0,
+        "banner": "https://cdn-xcx-qunsou.weiyoubot.cn/material/20220412/eb868defc9de84e20c16e462fb52e0c6.png",
+        "cate": 1,
+        "t_sort": 0,
+        "time_list": [
+          [
+            28800,
+            36000
+          ],
+          [
+            54000,
+            86340
+          ]
+        ],
+        "is_owner": 0,
+        "no_forward": 0,
+        "bind_eid": 1,
+        "cid": "6a16b0fbac7e4f15da9edc8a",
+        "top": 0,
+        "title": "25W3",
+        "bind_ids": [],
+        "enable_remove": 1,
+        "name_color": "",
+        "del": 0,
+        "end_time": 0,
+        "template": 0,
+        "signature": "张老师",
+        "gold_name": 0,
+        "adv_avatar": "",
+        "sys_clean": 0,
+        "start_date": 1779811200,
         "eid": ""
       }
     ]

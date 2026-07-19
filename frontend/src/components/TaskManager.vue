@@ -662,4 +662,69 @@ async function deleteTask() {
   background: #fff;
   box-sizing: border-box;
 }
+
+@media (max-width: 768px) {
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .project-item {
+    padding: 10px;
+  }
+  
+  .project-title {
+    font-size: 13px;
+  }
+  
+  .result-dialog :deep(.el-message-box) {
+    width: 90vw;
+    max-width: 360px;
+  }
+  
+  .el-form-item__label {
+    width: 80px !important;
+    font-size: 12px;
+  }
+  
+  .el-form-item__content {
+    margin-left: 80px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .project-section {
+    padding: 12px;
+  }
+  
+  .project-item {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .project-index {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+  }
+  
+  .project-title {
+    font-size: 12px;
+  }
+  
+  .el-form-item__label {
+    width: 70px !important;
+    font-size: 11px;
+  }
+  
+  .el-form-item__content {
+    margin-left: 70px !important;
+  }
+  
+  .el-button {
+    width: 100%;
+    margin-bottom: 4px;
+  }
+}
 </style>
