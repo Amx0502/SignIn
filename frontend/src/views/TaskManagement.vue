@@ -31,6 +31,12 @@
                 <span><el-icon><User /></el-icon>{{ task.accountName }}</span>
                 <span><el-icon><List /></el-icon>项目{{ task.index }}</span>
                 <span><el-icon><Clock /></el-icon>{{ (task.times || []).join(', ') }}</span>
+                <span v-if="task.text" class="text-content">
+                  <el-icon><ChatLineSquare /></el-icon>
+                  <el-tooltip :content="task.text" placement="top" :max-width="300">
+                    <span>{{ task.text.length > 15 ? task.text.substring(0, 15) + '...' : task.text }}</span>
+                  </el-tooltip>
+                </span>
                 <span v-if="task.use_location"><el-icon><MapLocation /></el-icon>位置</span>
                 <span v-if="task.pic_path && task.pic_path.length"><el-icon><Picture /></el-icon>{{ task.pic_path.length }}张图</span>
                 <span v-if="task.skip_weekends"><el-icon><Calendar /></el-icon>周末跳过</span>
@@ -64,7 +70,7 @@
                   <el-input-number v-model="getEditForm(task).index" :min="1" style="width: 100%" />
                 </el-form-item>
                 <el-form-item label="执行时间" prop="times">
-                  <el-input v-model="editTimesInputs[getTaskKey(task)]" placeholder="08:00:00,18:00:00" />
+                  <el-input v-model="editTimesInputs[getTaskKey(task)]" placeholder="08:00:00 18:00:00（支持空格、逗号、竖线等分隔符）" />
                 </el-form-item>
                 <el-form-item label="签到文本" prop="text">
                   <el-input v-model="getEditForm(task).text" type="textarea" :rows="3" placeholder="请输入签到时需要提交的文本内容" />
@@ -114,7 +120,7 @@
 
 <script setup>
 import { reactive, ref, computed, watch } from 'vue'
-import { Edit, VideoPlay, Delete, Upload, User, List, Clock, MapLocation, Picture, Calendar } from '@element-plus/icons-vue'
+import { Edit, VideoPlay, Delete, Upload, User, List, Clock, MapLocation, Picture, Calendar, ChatLineSquare } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAppState } from '../composables/useAppState'
 import api from '../api'
@@ -254,7 +260,7 @@ function toggleInlineEdit(task) {
     
     watch(() => editTimesInputs[key], (val) => {
       if (val != null && editForms[key]) {
-        editForms[key].times = val.split(',').map(t => t.trim()).filter(Boolean)
+        editForms[key].times = val.split(/[\s,|;，；、]+/).map(t => t.trim()).filter(Boolean)
       }
     })
     
@@ -268,7 +274,7 @@ function toggleInlineEdit(task) {
 
 async function saveInlineEdit(task) {
   const key = getTaskKey(task)
-  editForms[key].times = editTimesInputs[key].split(',').map(t => t.trim()).filter(Boolean)
+  editForms[key].times = editTimesInputs[key].split(/[\s,|;，；、]+/).map(t => t.trim()).filter(Boolean)
   editForms[key].mode = (editForms[key].pic_path && editForms[key].pic_path.length) ? 'image' : 'normal'
   
   try {

@@ -122,7 +122,7 @@
               <el-input-number v-model="form.index" :min="1" style="width: 100%" />
             </el-form-item>
             <el-form-item label="执行时间" prop="times">
-              <el-input v-model="timesText" placeholder="08:00:00,18:00:00" />
+              <el-input v-model="timesText" placeholder="08:00:00 18:00:00（支持空格、逗号、竖线等分隔符）" />
             </el-form-item>
             <el-form-item label="签到文本" prop="text">
               <el-input v-model="form.text" type="textarea" :rows="3" placeholder="请输入签到时需要提交的文本内容" />
@@ -207,7 +207,7 @@ const form = reactive({
 
 const timesText = computed({
   get: () => (form.times || []).join(', '),
-  set: val => { form.times = val.split(',').map(s => s.trim()).filter(Boolean) }
+  set: val => { form.times = val.split(/[\s,|;，；、]+/).map(s => s.trim()).filter(Boolean) }
 })
 
 const rules = {
