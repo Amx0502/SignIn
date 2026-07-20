@@ -831,7 +831,7 @@ class AppState:
                                 should_refresh = True
                                 self.logger.info("[Token刷新] 用户[%s] 标记为待刷新，记录已更新", mobile)
                             else:
-                                self.logger.info("[Token刷新] 用户[%s] 今日已刷新，跳过", mobile)
+                                self.logger.debug("[Token刷新] 用户[%s] 今日已刷新，跳过", mobile)
                         if should_refresh:
                             self.logger.info("[Token刷新] 用户[%s] 开始执行刷新，任务时间[%s]，刷新时间[%s]", 
                                              mobile, target_time, refresh_time_str)
