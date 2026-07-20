@@ -782,8 +782,8 @@ class AppState:
         for refresh_time in refresh_times:
             hour, minute, second = map(int, refresh_time.split(":"))
             target = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
-            time_diff = abs((now - target).total_seconds())
-            if time_diff <= 300:
+            after_seconds = (now - target).total_seconds()
+            if 0 <= after_seconds <= 60:
                 should_refresh = False
                 with self.lock:
                     if self.token_refresh_records.get(refresh_time) != current_date:
@@ -803,20 +803,18 @@ class AppState:
                 for target_time in task.get("times", []):
                     hour, minute, second = map(int, target_time.split(":"))
                     target = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
-                    time_diff = abs((now - target).total_seconds())
                     
                     refresh_target = target - dt.timedelta(minutes=30)
-                    refresh_time_diff = abs((now - refresh_target).total_seconds())
                     refresh_time_str = refresh_target.strftime("%H:%M:%S")
                     
-                    self.logger.debug("[Token刷新] 用户[%s] 任务时间[%s] 刷新目标时间[%s] 当前时间[%s] 时间差[%s秒]", 
-                                      mobile, target_time, refresh_time_str, now.strftime("%H:%M:%S"), int(refresh_time_diff))
+                    self.logger.debug("[Token刷新] 用户[%s] 任务时间[%s] 刷新目标时间[%s] 当前时间[%s]", 
+                                      mobile, target_time, refresh_time_str, now.strftime("%H:%M:%S"))
                     
                     skip_refresh, diff_seconds = self._should_skip_task_refresh(refresh_time_str, refresh_times, now)
                     if skip_refresh:
                         self.logger.debug("[Token刷新] 用户[%s] 任务刷新时间[%s]与全局刷新时间差[%s秒]<=阈值[%s秒]，取消任务单独刷新", 
                                           mobile, refresh_time_str, int(diff_seconds) if diff_seconds else 'N/A', self._REFRESH_THRESHOLD_SECONDS)
-                    elif refresh_time_diff <= 300:
+                    elif 0 <= (now - refresh_target).total_seconds() <= 60:
                         refresh_record_key = f"{mobile}_{target_time}_refresh"
                         self.logger.debug("[Token刷新] 用户[%s] 在时间窗口内，检查是否已刷新", mobile)
                         should_refresh = False
@@ -835,10 +833,10 @@ class AppState:
                                              mobile, target_time, refresh_time_str)
                             self.executor.submit(self._refresh_single_token, mobile, account["password"])
                     else:
-                        self.logger.debug("[Token刷新] 用户[%s] 不在时间窗口内（差%s秒），跳过", 
-                                          mobile, int(refresh_time_diff))
+                        self.logger.debug("[Token刷新] 用户[%s] 不在时间窗口内，跳过", mobile)
                     
-                    if time_diff <= 300:
+                    after_seconds = (now - target).total_seconds()
+                    if 0 <= after_seconds <= 60:
                         record_key = f"{mobile}_{task.get('title')}_{target_time}"
                         should_run = False
                         with self.lock:
