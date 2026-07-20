@@ -2,6 +2,7 @@ import base64
 import datetime as dt
 import json
 import logging
+import random
 import threading
 import time
 from collections import deque
@@ -684,9 +685,12 @@ class AppState:
 
     def _execute_task(self, account: dict, task: dict) -> None:
         try:
-            ok, result = self.service.execute_task(account, task)
+            delay = random.uniform(0, 18)
+            time.sleep(delay)
             name = account.get("name") or account.get("mobile")
             task_title = task.get("title", "未命名任务")
+            self.logger.info("[%s] 任务《%s》随机延迟 %.2f 秒后执行", name, task_title, delay)
+            ok, result = self.service.execute_task(account, task)
             if ok:
                 real_title = result.get("real_title", "未知项目")
                 message = f"[{name}] 任务《{task_title}》签到成功，实际项目：{real_title}"
