@@ -441,14 +441,92 @@ class AppState:
             save_settings_to_disk(self.auto_enabled, self.refresh_times, self.webhook_url)
         self.run_records: dict[str, str] = {}
         self.token_refresh_records: dict[str, str] = {}
+        self.wechat_notify_cache: dict[str, list[tuple[str, dict, bool]]] = {}
+        self.wechat_notify_timers: dict[str, threading.Timer] = {}
         self.scheduler_thread = threading.Thread(target=self.scheduler_loop, daemon=True)
         self.scheduler_thread.start()
         self.logger.info("签到 Web 管理系统已启动")
 
     def shutdown(self) -> None:
         self.stop_event.set()
+        for timer in self.wechat_notify_timers.values():
+            timer.cancel()
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.logger.info("系统已停止")
+
+    def _send_wechat_summary(self, cache_key: str) -> None:
+        with self.lock:
+            if cache_key not in self.wechat_notify_cache:
+                return
+            records = self.wechat_notify_cache.pop(cache_key)
+            if cache_key in self.wechat_notify_timers:
+                del self.wechat_notify_timers[cache_key]
+        
+        if not records:
+            return
+        
+        success_count = sum(1 for _, _, success in records if success)
+        fail_count = len(records) - success_count
+        
+        content = f"## 📊 签到通知汇总\n\n"
+        content += f"**时间**: {cache_key}\n"
+        content += f"**成功**: {success_count} 个 | **失败**: {fail_count} 个\n\n"
+        
+        for name, result, success, time_str in records:
+            real_title = result.get("real_title", result.get("title", "未知项目"))
+            status = "✅" if success else "❌"
+            line = f"- {status} **{name}** [{time_str}]：{real_title}"
+            if result.get("text"):
+                line += f"（文本：{result['text']}）"
+            if result.get("image_urls"):
+                line += f"（{len(result['image_urls'])}张图）"
+            if result.get("location"):
+                line += f"（位置：{result['location'].get('address', '')}）"
+            if not success and result.get("error"):
+                line += f" → {result['error']}"
+            content += line + "\n"
+        
+        with self.lock:
+            webhook_url = self.webhook_url
+        
+        if webhook_url:
+            try:
+                import requests
+                response = requests.post(
+                    webhook_url,
+                    json={"msgtype": "markdown", "markdown": {"content": content}},
+                    headers={"Content-Type": "application/json"},
+                    timeout=10,
+                )
+                self.logger.info(f"企业微信汇总通知：发送成功，包含{len(records)}条记录")
+            except Exception as exc:
+                self.logger.error(f"企业微信汇总通知：发送失败，错误={str(exc)}")
+
+    def _cache_wechat_notification(self, account_name: str, result: dict, success: bool) -> None:
+        now = dt.datetime.now()
+        cache_key = now.strftime("%Y-%m-%d %H:%M")
+        time_str = now.strftime("%H:%M:%S")
+        
+        with self.lock:
+            if cache_key not in self.wechat_notify_cache:
+                self.wechat_notify_cache[cache_key] = []
+            
+            existing = False
+            for i, (name, res, succ, t) in enumerate(self.wechat_notify_cache[cache_key]):
+                if name == account_name and res.get("title") == result.get("title"):
+                    self.wechat_notify_cache[cache_key][i] = (name, result, success, time_str)
+                    existing = True
+                    break
+            
+            if not existing:
+                self.wechat_notify_cache[cache_key].append((account_name, result, success, time_str))
+            
+            if cache_key not in self.wechat_notify_timers:
+                seconds_until_next_minute = 60 - now.second
+                timer = threading.Timer(seconds_until_next_minute, self._send_wechat_summary, args=[cache_key])
+                timer.daemon = True
+                timer.start()
+                self.wechat_notify_timers[cache_key] = timer
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -703,9 +781,7 @@ class AppState:
                 self.logger.info(message)
                 try:
                     if task.get("notify_wechat", True):
-                        with self.lock:
-                            webhook_url = self.webhook_url
-                        self.service.send_wechat_notification(webhook_url, name, result, success=True)
+                        self._cache_wechat_notification(name, result, success=True)
                     else:
                         self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task_title)
                 except Exception:
@@ -715,9 +791,7 @@ class AppState:
                 self.logger.error(error_msg)
                 try:
                     if task.get("notify_wechat", True):
-                        with self.lock:
-                            webhook_url = self.webhook_url
-                        self.service.send_wechat_notification(webhook_url, name, result, success=False)
+                        self._cache_wechat_notification(name, result, success=False)
                     else:
                         self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task_title)
                 except Exception:
