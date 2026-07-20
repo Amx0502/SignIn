@@ -15,7 +15,7 @@
       <el-menu :default-active="$route.path" router class="sidebar-menu" :collapse="sidebarCollapsed" @select="closeSidebar">
         <el-sub-menu index="/checkin">
           <template #title>
-            <el-icon><Calendar /></el-icon>
+            <el-icon><img src="./img/xxqd.png" class="menu-custom-icon" alt="签到" /></el-icon>
             <span>小小签到</span>
           </template>
           <el-menu-item index="/overview"><el-icon><Odometer /></el-icon><span>系统概览</span></el-menu-item>
@@ -56,7 +56,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { Odometer, User, Document, Refresh, Calendar, Timer, List, Menu } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Refresh, Timer, List, Menu } from '@element-plus/icons-vue'
 import { useAppState } from './composables/useAppState'
 
 const { loading, loadAll } = useAppState()
@@ -116,6 +116,7 @@ onUnmounted(() => {
 .sidebar-menu :deep(.el-sub-menu__title:hover), .sidebar-menu :deep(.el-menu-item:hover) { background: rgba(96, 165, 250, 0.14); transform: translateX(3px); }
 .sidebar-menu :deep(.el-menu-item.is-active) { background: linear-gradient(90deg, rgba(37, 99, 235, 0.28), rgba(14, 165, 233, 0.12)); box-shadow: inset 3px 0 0 #60a5fa; color: #fff; font-weight: 700; }
 .sidebar-menu :deep(.el-sub-menu .el-menu) { background: rgba(255, 255, 255, 0.035); border-radius: 14px; padding: 4px; }
+.menu-custom-icon { width: 23px; height: 23px; object-fit: contain; display: block; }
 .sidebar-footer { position: absolute; left: 14px; right: 14px; bottom: 16px; display: grid; gap: 6px; }
 .sidebar-footer strong { color: #fff; }
 .main-shell { min-width: 0; }
