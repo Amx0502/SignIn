@@ -344,86 +344,6 @@ class CheckinService:
 
         return False, {"error": f"[{name}] 任务《{task_title}》签到失败：{response.get('msg', '未知错误')}"}
 
-    def send_wechat_notification(self, webhook_url: str, account_name: str, result: dict, success: bool = True) -> None:
-        if not webhook_url.strip():
-            self.logger.debug("企业微信通知：webhook_url 为空，跳过发送")
-            return
-
-        now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        if success:
-            detail_parts = []
-            detail_parts.append(f"**{result.get('real_title', '')}**")
-            
-            if result.get("location"):
-                detail_parts.append(f"📍 位置: {result['location'].get('address', '')}")
-            
-            if result.get("text"):
-                detail_parts.append(f"📝 文本: {result['text']}")
-            
-            if result.get("image_urls") and len(result["image_urls"]):
-                detail_parts.append(f"🖼️ 图片: {len(result['image_urls'])}张")
-            
-            detail_str = " | ".join(detail_parts)
-            
-            markdown_content = (
-                f"**📝 定时签到结果报告**\n\n"
-                f"> 执行时间：{now}\n"
-                f"> 触发项目目数：1个\n\n"
-                f"**执行详情：**\n"
-                f"- ✅ {account_name} -> 【{result.get('title', '')}】（实际项目：{detail_str}）\n\n"
-                f"日志已同步至服务器"
-            )
-        else:
-            error_msg = result.get("error", "未知错误")
-            markdown_content = (
-                f"**❌ 定时签到结果报告**\n\n"
-                f"> 执行时间：{now}\n"
-                f"> 触发项目目数：1个\n\n"
-                f"**执行详情：**\n"
-                f"- ❌ {account_name} -> 签到失败\n"
-                f"错误原因：{error_msg}\n\n"
-                f"日志已同步至服务器"
-            )
-        
-        self.logger.info("企业微信通知：开始发送通知，success=%s，account=%s，webhook=%s", 
-                         success, account_name, webhook_url[:30] + "..." if len(webhook_url) > 30 else webhook_url)
-        self.logger.debug("企业微信通知：markdown内容长度=%d", len(markdown_content))
-        
-        try:
-            response = requests.post(
-                webhook_url,
-                json={
-                    "msgtype": "markdown",
-                    "markdown": {
-                        "content": markdown_content
-                    }
-                },
-                headers={"Content-Type": "application/json"},
-                timeout=10,
-            )
-            self.logger.debug("企业微信通知：HTTP状态码=%d，响应内容=%s", response.status_code, response.text[:200])
-            
-            if response.status_code == 200:
-                resp_json = response.json()
-                if resp_json.get("errcode") == 0:
-                    self.logger.info("企业微信通知：发送成功，errcode=%d，errmsg=%s", 
-                                     resp_json.get("errcode"), resp_json.get("errmsg"))
-                else:
-                    self.logger.error("企业微信通知：发送失败，errcode=%d，errmsg=%s", 
-                                      resp_json.get("errcode"), resp_json.get("errmsg"))
-            else:
-                self.logger.error("企业微信通知：HTTP请求失败，状态码=%d", response.status_code)
-        except requests.exceptions.Timeout:
-            self.logger.error("企业微信通知：请求超时（10秒）")
-        except requests.exceptions.ConnectionError as exc:
-            self.logger.error("企业微信通知：网络连接失败，错误=%s", str(exc))
-        except requests.exceptions.RequestException as exc:
-            self.logger.error("企业微信通知：请求异常，错误=%s", str(exc))
-        except Exception as exc:
-            self.logger.error("企业微信通知：未知异常，错误=%s", str(exc))
-
-
 class AppState:
     def __init__(self) -> None:
         self.log_buffer: deque[str] = deque(maxlen=600)
@@ -724,7 +644,7 @@ class AppState:
             self.logger.info(message)
             try:
                 if task.get("notify_wechat", True):
-                    self.service.send_wechat_notification(webhook_url, name, result, success=True)
+                    self._cache_wechat_notification(name, result, success=True)
                 else:
                     self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task.get("title"))
             except Exception:
@@ -735,7 +655,7 @@ class AppState:
             self.logger.error(error_msg)
             try:
                 if task.get("notify_wechat", True):
-                    self.service.send_wechat_notification(webhook_url, name, result, success=False)
+                    self._cache_wechat_notification(name, result, success=False)
                 else:
                     self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task.get("title"))
             except Exception:

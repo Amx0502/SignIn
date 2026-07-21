@@ -1,4 +1,3 @@
-import os
 import shutil
 import uuid
 from contextlib import asynccontextmanager
@@ -11,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config
-from .models import AccountCreate, AccountUpdate, ApiResponse, Settings, TaskCreate, TaskUpdate
+from .models import AccountCreate, AccountUpdate, Settings, TaskCreate, TaskUpdate
 from .service import AppState
 
 app_state = AppState()

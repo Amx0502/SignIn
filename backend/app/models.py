@@ -60,7 +60,4 @@ class Settings(BaseModel):
     webhook_url: str = ""
 
 
-class ApiResponse(BaseModel):
-    ok: bool = True
-    data: Optional[dict] = None
-    error: Optional[str] = None
+
