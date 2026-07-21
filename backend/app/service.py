@@ -397,11 +397,11 @@ class AppState:
             status = "✅" if success else "❌"
             line = f"- {status} **{name}** [{time_str}]：{real_title}"
             if result.get("text"):
-                line += f"（文本：{result['text']}）"
+                line += f"（📝文本：{result['text']}）"
             if result.get("image_urls"):
-                line += f"（{len(result['image_urls'])}张图）"
+                line += f"（🖼️图片：{len(result['image_urls'])}张图）"
             if result.get("location"):
-                line += f"（位置：{result['location'].get('address', '')}）"
+                line += f"（📍位置：{result['location'].get('address', '')}）"
             if not success and result.get("error"):
                 line += f" → {result['error']}"
             content += line + "\n"
