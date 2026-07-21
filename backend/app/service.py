@@ -465,7 +465,7 @@ class AppState:
         if not records:
             return
         
-        success_count = sum(1 for _, _, success in records if success)
+        success_count = sum(1 for _, _, success, _ in records if success)
         fail_count = len(records) - success_count
         
         content = f"## 📊 签到通知汇总\n\n"
