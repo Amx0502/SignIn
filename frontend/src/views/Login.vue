@@ -3,7 +3,7 @@
     <div class="login-card">
       <div class="login-header">
         <div class="brand-logo">
-          <img src="./img/xxqd.png" alt="Logo" class="logo-img" />
+          <img src="../img/xxqd.png" alt="Logo" class="logo-img" />
         </div>
         <h1>超级签到</h1>
         <p>专业的自动化签到管理系统</p>
