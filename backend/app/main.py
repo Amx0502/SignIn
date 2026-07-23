@@ -4,16 +4,20 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 
 from . import config
-from .models import AccountCreate, AccountUpdate, Settings, TaskCreate, TaskUpdate
+from .auth import AuthService
+from .models import AccountCreate, AccountUpdate, LoginRequest, Settings, TaskCreate, TaskUpdate
 from .service import AppState
 
 app_state = AppState()
+auth_service = AuthService()
+security = HTTPBearer()
 
 
 @asynccontextmanager
@@ -58,22 +62,38 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 
 @app.get("/api/state")
-def get_state():
+def get_state(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     return success(app_state.snapshot())
 
 
 @app.get("/api/logs")
-def get_logs(limit: int = 200):
+def get_logs(limit: int = 200, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     return success(app_state.get_logs(limit))
 
 
 @app.post("/api/accounts")
-def add_account(payload: AccountCreate):
+def add_account(payload: AccountCreate, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     return success(app_state.add_account(payload.model_dump()))
 
 
 @app.put("/api/accounts/{account_index}")
-def update_account(account_index: int, payload: AccountUpdate):
+def update_account(account_index: int, payload: AccountUpdate, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         return success(app_state.update_account(account_index, payload.model_dump()))
     except IndexError:
@@ -81,7 +101,11 @@ def update_account(account_index: int, payload: AccountUpdate):
 
 
 @app.delete("/api/accounts/{account_index}")
-def delete_account(account_index: int):
+def delete_account(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         app_state.delete_account(account_index)
         return success(True)
@@ -90,7 +114,11 @@ def delete_account(account_index: int):
 
 
 @app.post("/api/accounts/{account_index}/login")
-def login_account(account_index: int):
+def login_account(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         return success(app_state.login_account(account_index))
     except IndexError:
@@ -98,7 +126,11 @@ def login_account(account_index: int):
 
 
 @app.post("/api/accounts/{account_index}/refresh-token")
-def refresh_token(account_index: int):
+def refresh_token(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         return success(app_state.refresh_single_token(account_index))
     except IndexError:
@@ -106,7 +138,11 @@ def refresh_token(account_index: int):
 
 
 @app.get("/api/accounts/{account_index}/projects")
-def fetch_projects(account_index: int):
+def fetch_projects(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         return success(app_state.fetch_projects(account_index))
     except IndexError:
@@ -114,7 +150,11 @@ def fetch_projects(account_index: int):
 
 
 @app.post("/api/accounts/{account_index}/tasks")
-def add_task(account_index: int, payload: TaskCreate):
+def add_task(account_index: int, payload: TaskCreate, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         return success(app_state.add_task(account_index, payload.model_dump()))
     except IndexError:
@@ -122,7 +162,11 @@ def add_task(account_index: int, payload: TaskCreate):
 
 
 @app.put("/api/accounts/{account_index}/tasks/{task_index}")
-def update_task(account_index: int, task_index: int, payload: TaskUpdate):
+def update_task(account_index: int, task_index: int, payload: TaskUpdate, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         return success(app_state.update_task(account_index, task_index, payload.model_dump()))
     except IndexError:
@@ -130,7 +174,11 @@ def update_task(account_index: int, task_index: int, payload: TaskUpdate):
 
 
 @app.delete("/api/accounts/{account_index}/tasks/{task_index}")
-def delete_task(account_index: int, task_index: int):
+def delete_task(account_index: int, task_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         app_state.delete_task(account_index, task_index)
         return success(True)
@@ -139,7 +187,11 @@ def delete_task(account_index: int, task_index: int):
 
 
 @app.post("/api/accounts/{account_index}/tasks/{task_index}/run")
-def run_task(account_index: int, task_index: int):
+def run_task(account_index: int, task_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         return success(app_state.run_task(account_index, task_index))
     except IndexError:
@@ -149,7 +201,11 @@ def run_task(account_index: int, task_index: int):
 
 
 @app.post("/api/accounts/{account_index}/run-all")
-def run_account_tasks(account_index: int):
+def run_account_tasks(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     try:
         return success(app_state.run_account_tasks(account_index))
     except IndexError:
@@ -157,18 +213,70 @@ def run_account_tasks(account_index: int):
 
 
 @app.post("/api/accounts/refresh-all")
-def refresh_all_tokens():
+def refresh_all_tokens(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     return success(app_state.refresh_all_tokens())
 
 
 @app.post("/api/run-all")
-def run_all_enabled_tasks():
+def run_all_enabled_tasks(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     return success(app_state.run_all_enabled_tasks())
 
 
 @app.post("/api/settings")
-def set_settings(payload: Settings):
+def set_settings(payload: Settings, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
     return success(app_state.set_settings(payload.model_dump()))
+
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail={"ok": False, "error": "登录已过期，请重新登录"})
+    return user
+
+
+@app.post("/api/auth/login")
+def login(request: Request, payload: LoginRequest):
+    ip_address = request.client.host if request.client else "unknown"
+    ok, result = auth_service.login(payload, ip_address)
+    if ok:
+        return success(result)
+    failure(result.get("error", "登录失败"), 401)
+
+
+@app.post("/api/auth/logout")
+def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    auth_service.logout(token)
+    return success(True)
+
+
+@app.post("/api/auth/verify")
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    user = auth_service.verify_token(token)
+    if not user:
+        failure("登录已过期，请重新登录", 401)
+    return success({
+        "username": user.username,
+        "email": user.email,
+        "last_login": user.last_login.isoformat() if user.last_login else None
+    })
+
+
+
 
 
 @app.post("/api/upload")

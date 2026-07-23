@@ -1,5 +1,6 @@
 <template>
-  <el-container class="app-wrapper">
+  <router-view v-if="isLoginPage" />
+  <el-container v-else class="app-wrapper">
     <el-aside :width="sidebarCollapsed ? '80px' : '280px'" class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="brand">
         <div class="brand-mark">签</div>
@@ -43,6 +44,17 @@
         <el-space wrap class="header-right">
           <el-tag effect="plain" type="success">实时轮询</el-tag>
           <el-button type="primary" :icon="Refresh" @click="loadAll" :loading="loading">刷新数据</el-button>
+          <el-dropdown @command="handleUserCommand">
+            <span class="user-info">
+              <el-icon><User /></el-icon>
+              <span>{{ currentUser?.username || '用户' }}</span>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </el-space>
       </el-header>
       <el-main>
@@ -55,14 +67,50 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { Odometer, User, Document, Refresh, Timer, List, Menu } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { useAppState } from './composables/useAppState'
+import { logoutApi } from './api'
+
+const router = useRouter()
+const route = useRoute()
 
 const { loading, loadAll } = useAppState()
 
 const sidebarCollapsed = ref(false)
 const isMobile = ref(false)
+const currentUser = ref(null)
+
+const isLoginPage = computed(() => route.path === '/login')
+
+function getUserInfo() {
+  const userStr = localStorage.getItem('user')
+  if (userStr) {
+    try {
+      currentUser.value = JSON.parse(userStr)
+    } catch {
+      currentUser.value = null
+    }
+  }
+}
+
+async function handleUserCommand(command) {
+  if (command === 'logout') {
+    try {
+      await logoutApi()
+    } catch {
+    } finally {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('expires_at')
+      localStorage.removeItem('user')
+      currentUser.value = null
+      ElMessage.success('已退出登录')
+      router.push('/login')
+    }
+  }
+}
 
 function checkMobile() {
   isMobile.value = window.innerWidth <= 768
@@ -85,6 +133,7 @@ function closeSidebar() {
 
 onMounted(() => {
   checkMobile()
+  getUserInfo()
   window.addEventListener('resize', checkMobile)
 })
 
@@ -125,6 +174,8 @@ onUnmounted(() => {
 .menu-btn { display: none; }
 .breadcrumb { margin: 0 0 4px; color: #64748b; font-size: 12px; }
 .top-header h2 { margin: 0; font-size: 22px; color: #0f172a; letter-spacing: -0.03em; }
+.user-info { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; cursor: pointer; color: #374151; }
+.user-info:hover { background: rgba(0, 0, 0, 0.05); }
 .sidebar-mask {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 15;
   animation: fadeIn 0.2s ease;

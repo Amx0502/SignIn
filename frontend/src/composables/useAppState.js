@@ -55,9 +55,17 @@ export function useAppState() {
     logsTimer = null
   }
 
+  function isLoggedIn() {
+    const token = localStorage.getItem('access_token')
+    const expiresAt = localStorage.getItem('expires_at')
+    return token && expiresAt && new Date(expiresAt) > new Date()
+  }
+
   onMounted(() => {
-    loadAll()
-    startPolling()
+    if (isLoggedIn()) {
+      loadAll()
+      startPolling()
+    }
   })
 
   onUnmounted(() => {

@@ -5,13 +5,33 @@ const instance = axios.create({
   headers: { 'Content-Type': 'application/json' }
 })
 
+instance.interceptors.request.use(config => {
+  const token = localStorage.getItem('access_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 instance.interceptors.response.use(
   res => res.data,
   err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('expires_at')
+      localStorage.removeItem('user')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
     const msg = err.response?.data?.error || err.message || '请求失败'
     return Promise.reject(new Error(msg))
   }
 )
+
+export const loginApi = data => instance.post('/auth/login', data)
+export const logoutApi = () => instance.post('/auth/logout')
+export const verifyTokenApi = () => instance.post('/auth/verify')
 
 export default {
   getState: () => instance.get('/state'),

@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
+from datetime import datetime
 
 
 class Task(BaseModel):
@@ -58,6 +59,32 @@ class Settings(BaseModel):
     auto_enabled: bool = True
     refresh_times: List[str] = Field(default_factory=list)
     webhook_url: str = ""
+
+
+class User(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    email: Optional[EmailStr] = None
+    password_hash: str
+    created_at: datetime = Field(default_factory=datetime.now)
+    last_login: Optional[datetime] = None
+    is_active: bool = True
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6)
+    remember_me: bool = False
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_at: datetime
+    user: dict
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str = ""
 
 
 
