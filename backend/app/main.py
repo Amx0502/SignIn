@@ -13,17 +13,23 @@ from fastapi.staticfiles import StaticFiles
 from . import config
 from .auth import AuthService
 from .models import AccountCreate, AccountUpdate, LoginRequest, Settings, TaskCreate, TaskUpdate
+from .repository import DuplicateMobileError
 from .service import AppState
 
-app_state = AppState()
+app_state = AppState(start_scheduler=False)
 auth_service = AuthService()
 security = HTTPBearer()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
-    app_state.shutdown()
+    app_state.initialize_database()
+    app_state.repository.import_legacy_json_if_empty(config.LEGACY_ACCOUNTS_FILE)
+    app_state.start_background_scheduler()
+    try:
+        yield
+    finally:
+        app_state.shutdown()
 
 
 app = FastAPI(title="签到管理系统", version="1.0.0", lifespan=lifespan)
@@ -59,6 +65,16 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 async def generic_exception_handler(request: Request, exc: Exception):
     app_state.logger.error("请求处理失败: %s", exc)
     return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
+
+
+@app.exception_handler(DuplicateMobileError)
+async def duplicate_mobile_exception_handler(
+    request: Request, exc: DuplicateMobileError
+):
+    return JSONResponse(
+        status_code=400,
+        content={"ok": False, "error": str(exc)},
+    )
 
 
 @app.get("/api/state")

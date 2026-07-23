@@ -342,10 +342,6 @@ class AppState:
         self.executor = ThreadPoolExecutor(max_workers=6)
         self.stop_event = threading.Event()
         self._owned_database: Database | None = None
-        if repository is None:
-            self._owned_database = Database(DatabaseSettings.from_env())
-            self._owned_database.initialize()
-            repository = AccountRepository(self._owned_database)
         self.repository = repository
         settings = load_settings_from_disk()
         self.auto_enabled = settings["auto_enabled"]
@@ -358,9 +354,20 @@ class AppState:
         self.wechat_notify_cache: dict[str, list[tuple[str, dict, bool]]] = {}
         self.wechat_notify_timers: dict[str, threading.Timer] = {}
         self.scheduler_thread = threading.Thread(target=self.scheduler_loop, daemon=True)
-        if start_scheduler:
+        if start_scheduler and self.repository is not None:
             self.scheduler_thread.start()
         self.logger.info("签到 Web 管理系统已启动")
+
+    def initialize_database(self) -> None:
+        if self.repository is not None:
+            return
+        self._owned_database = Database(DatabaseSettings.from_env())
+        self._owned_database.initialize()
+        self.repository = AccountRepository(self._owned_database)
+
+    def start_background_scheduler(self) -> None:
+        if not self.scheduler_thread.is_alive():
+            self.scheduler_thread.start()
 
     def shutdown(self) -> None:
         self.stop_event.set()
