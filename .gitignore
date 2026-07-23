@@ -14,5 +14,6 @@ frontend/dist/
 .idea/
 *.log
 .DS_Store
+.worktrees/
 backend/accounts.json
 backend/users.json
