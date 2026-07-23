@@ -18,3 +18,4 @@ frontend/dist/
 backend/accounts.json
 backend/users.json
 backend/sessions.json
+docs/
