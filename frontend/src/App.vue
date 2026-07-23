@@ -3,7 +3,7 @@
   <el-container v-else class="app-wrapper">
     <el-aside :width="sidebarCollapsed ? '80px' : '280px'" class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="brand">
-        <div class="brand-mark">签</div>
+        <img src="./img/logo.png" class="logo-img" alt="签到" />
         <div v-if="!sidebarCollapsed">
           <h1>签到管理系统</h1>
           <p>Professional Admin Console</p>
@@ -166,6 +166,7 @@ onUnmounted(() => {
 .sidebar-menu :deep(.el-menu-item.is-active) { background: linear-gradient(90deg, rgba(37, 99, 235, 0.28), rgba(14, 165, 233, 0.12)); box-shadow: inset 3px 0 0 #60a5fa; color: #fff; font-weight: 700; }
 .sidebar-menu :deep(.el-sub-menu .el-menu) { background: rgba(255, 255, 255, 0.035); border-radius: 14px; padding: 4px; }
 .menu-custom-icon { width: 23px; height: 23px; object-fit: contain; display: block; }
+.logo-img { width: 48px; height: 48px; object-fit: contain; display: block; }
 .sidebar-footer { position: absolute; left: 14px; right: 14px; bottom: 16px; display: grid; gap: 6px; }
 .sidebar-footer strong { color: #fff; }
 .main-shell { min-width: 0; }
