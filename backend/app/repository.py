@@ -256,3 +256,41 @@ class AccountRepository:
                     session.scalar(select(func.count(AccountProjectRow.id))) or 0
                 ),
             }
+
+    def import_legacy_json_if_empty(self, path: Path) -> int:
+        if not path.exists():
+            return 0
+        with path.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+        if not isinstance(data, list):
+            raise ValueError("accounts.json 必须是数组格式")
+
+        with self.database.session() as session:
+            existing = int(session.scalar(select(func.count(AccountRow.id))) or 0)
+            if existing:
+                return 0
+
+            for raw_account in data:
+                if not isinstance(raw_account, dict):
+                    raise ValueError("accounts.json 中的账户必须是对象")
+                account = _normalize_account(raw_account)
+                row = AccountRow(**account)
+                for position, raw_task in enumerate(raw_account.get("tasks", [])):
+                    if not isinstance(raw_task, dict):
+                        raise ValueError("accounts.json 中的任务必须是对象")
+                    task = _normalize_task(raw_task)
+                    task_row = TaskRow(position=position)
+                    self._apply_task(task_row, task)
+                    row.tasks.append(task_row)
+                projects = raw_account.get("projects", [])
+                if not isinstance(projects, list):
+                    raise ValueError("accounts.json 中的 projects 必须是数组")
+                for position, project in enumerate(projects):
+                    if not isinstance(project, dict):
+                        raise ValueError("accounts.json 中的项目必须是对象")
+                    row.projects.append(
+                        AccountProjectRow(position=position, payload=dict(project))
+                    )
+                session.add(row)
+            session.flush()
+            return len(data)

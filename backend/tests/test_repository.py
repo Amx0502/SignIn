@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.database import Database
@@ -106,4 +108,57 @@ def test_deleting_account_cascades_tasks_and_projects(seeded_account):
 
     repository.delete_account(0)
 
+    assert repository.child_counts() == {"tasks": 0, "projects": 0}
+
+
+def test_legacy_json_imports_once_and_keeps_source(repository, tmp_path):
+    path = tmp_path / "accounts.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "legacy",
+                    "mobile": "13600000000",
+                    "password": "secret",
+                    "token": "old-token",
+                    "tasks": [
+                        {"index": 1, "title": "one"},
+                        {"index": 2, "title": "two"},
+                    ],
+                    "projects": [{"id": 7, "name": "project"}],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert repository.import_legacy_json_if_empty(path) == 1
+    assert repository.import_legacy_json_if_empty(path) == 0
+    accounts = repository.list_accounts()
+    assert len(accounts) == 1
+    assert len(accounts[0]["tasks"]) == 2
+    assert accounts[0]["projects"] == [{"id": 7, "name": "project"}]
+    assert path.exists()
+
+
+def test_malformed_legacy_json_rolls_back_all_rows(repository, tmp_path):
+    path = tmp_path / "accounts.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "valid",
+                    "mobile": "13500000000",
+                    "password": "secret",
+                },
+                "not-an-account",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError):
+        repository.import_legacy_json_if_empty(path)
+
+    assert repository.list_accounts() == []
     assert repository.child_counts() == {"tasks": 0, "projects": 0}

@@ -1,7 +1,9 @@
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent.parent
-DATA_FILE = APP_DIR / "accounts.json"
+LEGACY_ACCOUNTS_FILE = APP_DIR / "accounts.json"
+# Temporary compatibility alias until AppState no longer imports DATA_FILE.
+DATA_FILE = LEGACY_ACCOUNTS_FILE
 SETTINGS_FILE = APP_DIR / "settings.json"
 LOG_DIR = APP_DIR / "logs"
 UPLOAD_DIR = APP_DIR / "uploads"
