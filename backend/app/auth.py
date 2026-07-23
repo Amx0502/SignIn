@@ -75,10 +75,7 @@ class AuthService:
         return self._repo().verify_session(access_token)
 
     def verify_token(self, access_token: str) -> dict | None:
-        user = self.verify_token_allow_password_change(access_token)
-        if user and user["must_change_password"]:
-            return None
-        return user
+        return self.verify_token_allow_password_change(access_token)
 
     def change_password(
         self,

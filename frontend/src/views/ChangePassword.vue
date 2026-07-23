@@ -4,7 +4,7 @@
       <template #header>
         <div>
           <h2>修改登录密码</h2>
-          <p v-if="currentUser?.must_change_password">首次登录或密码已重置，请先设置新密码。</p>
+          <p>修改当前登录账号的密码。</p>
         </div>
       </template>
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">

@@ -54,19 +54,7 @@ def test_user_management_api_enforces_roles_and_has_no_email(
             ).json()["data"]
             token = login["access_token"]
             assert "email" not in login["user"]
-
-            blocked = client.get("/api/users", headers=_headers(token))
-            assert blocked.status_code == 401
-
-            changed = client.post(
-                "/api/auth/change-password",
-                headers=_headers(token),
-                json={
-                    "current_password": "admin123",
-                    "new_password": "admin456",
-                },
-            )
-            assert changed.status_code == 200
+            assert "must_change_password" not in login["user"]
 
             users = client.get("/api/users", headers=_headers(token))
             assert users.status_code == 200
@@ -94,13 +82,10 @@ def test_user_management_api_enforces_roles_and_has_no_email(
                 },
             ).json()["data"]
             worker_token = worker_login["access_token"]
-            client.post(
-                "/api/auth/change-password",
-                headers=_headers(worker_token),
-                json={
-                    "current_password": "worker123",
-                    "new_password": "worker456",
-                },
+            assert "must_change_password" not in worker_login["user"]
+            assert (
+                client.get("/api/state", headers=_headers(worker_token)).status_code
+                == 200
             )
             assert (
                 client.get("/api/users", headers=_headers(worker_token)).status_code

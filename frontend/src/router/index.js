@@ -41,12 +41,10 @@ router.beforeEach((to, from, next) => {
   
   if (to.meta.requiresAuth && !isLoggedIn) {
     next({ path: '/login', query: { redirect: to.fullPath } })
-  } else if (isLoggedIn && user?.must_change_password && to.path !== '/change-password') {
-    next('/change-password')
   } else if (to.meta.requiresAdmin && user?.role !== 'admin') {
     next('/overview')
   } else if (to.path === '/login' && isLoggedIn) {
-    next(user?.must_change_password ? '/change-password' : '/overview')
+    next('/overview')
   } else {
     next()
   }

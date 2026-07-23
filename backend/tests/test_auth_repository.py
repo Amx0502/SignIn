@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 
 from app.auth_database import AuthDatabase, AuthDatabaseSettings
 from app.auth_models import UserRow, UserSessionRow
@@ -46,6 +46,26 @@ def test_auth_database_creates_only_auth_tables(auth_database):
     }
 
 
+def test_auth_database_removes_legacy_must_change_password_column(auth_database):
+    with auth_database.engine.begin() as connection:
+        if "must_change_password" not in {
+            column["name"] for column in inspect(connection).get_columns("users")
+        }:
+            connection.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN must_change_password "
+                    "BOOLEAN NOT NULL DEFAULT 1"
+                )
+            )
+
+    auth_database.dispose()
+    auth_database.initialize()
+
+    assert "must_change_password" not in {
+        column["name"] for column in inspect(auth_database.engine).get_columns("users")
+    }
+
+
 def test_pbkdf2_password_round_trip():
     encoded = hash_password("secret123")
     assert verify_password("secret123", encoded) == (True, False)
@@ -57,7 +77,7 @@ def test_empty_database_creates_default_admin(repository, tmp_path):
     users = repository.list_users()
     assert users[0]["username"] == "admin"
     assert users[0]["role"] == "admin"
-    assert users[0]["must_change_password"] is True
+    assert "must_change_password" not in users[0]
     assert "email" not in users[0]
     assert repository.initialize_users(tmp_path / "missing.json") == 0
 
@@ -89,7 +109,9 @@ def test_user_crud_and_last_admin_protection(repository, tmp_path):
     user = repository.create_user("worker", "secret123", "user", True)
     assert repository.update_user(user["id"], "worker2", "user", False)["is_active"] is False
     repository.reset_password(user["id"], "newsecret")
-    assert repository.find_by_username("worker2").must_change_password is True
+    assert verify_password(
+        "newsecret", repository.find_by_username("worker2").password_hash
+    )[0]
     repository.delete_user(user["id"], actor_user_id=admin.id)
     with pytest.raises(LastAdminError):
         repository.update_user(admin.id, "admin", "user", True)
@@ -107,7 +129,7 @@ def test_session_stores_only_hash_and_expires(repository, auth_database, tmp_pat
     assert repository.verify_session(token) is None
 
 
-def test_auth_service_login_logout_and_forced_change(repository, tmp_path):
+def test_auth_service_login_logout_without_forced_change(repository, tmp_path):
     repository.initialize_users(tmp_path / "missing.json")
     service = AuthService(repository)
     ok, result = service.login(
@@ -116,14 +138,9 @@ def test_auth_service_login_logout_and_forced_change(repository, tmp_path):
     )
     assert ok is True
     assert result["user"]["role"] == "admin"
-    assert result["user"]["must_change_password"] is True
+    assert "must_change_password" not in result["user"]
     assert "email" not in result["user"]
-    assert service.verify_token(result["access_token"]) is None
-    user = service.verify_token_allow_password_change(result["access_token"])
+    user = service.verify_token(result["access_token"])
     assert user["username"] == "admin"
-    service.change_password(
-        user["id"], "admin123", "newsecret123", result["access_token"]
-    )
-    assert service.verify_token(result["access_token"])["must_change_password"] is False
     service.logout(result["access_token"])
-    assert service.verify_token_allow_password_change(result["access_token"]) is None
+    assert service.verify_token(result["access_token"]) is None

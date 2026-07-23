@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
 
-from sqlalchemy import Engine, URL, create_engine, text
+from sqlalchemy import Engine, URL, create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .auth_models import AuthBase
@@ -78,6 +78,14 @@ class AuthDatabase:
             bind=self._engine, autoflush=False, expire_on_commit=False
         )
         AuthBase.metadata.create_all(self._engine)
+        with self._engine.begin() as connection:
+            columns = {
+                column["name"] for column in inspect(connection).get_columns("users")
+            }
+            if "must_change_password" in columns:
+                connection.execute(
+                    text("ALTER TABLE users DROP COLUMN must_change_password")
+                )
 
     @contextmanager
     def session(self) -> Iterator[Session]:

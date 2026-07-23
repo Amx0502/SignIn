@@ -14,6 +14,9 @@
         <span>{{ loading ? '正在同步数据' : '服务运行中' }}</span>
       </div>
       <el-menu :default-active="$route.path" router class="sidebar-menu" :collapse="sidebarCollapsed" @select="closeSidebar">
+        <el-menu-item v-if="currentUser?.role === 'admin'" index="/users">
+          <el-icon><User /></el-icon><span>用户管理</span>
+        </el-menu-item>
         <el-sub-menu index="/checkin">
           <template #title>
             <el-icon><img src="./img/xxqd.png" class="menu-custom-icon" alt="签到" /></el-icon>
@@ -25,9 +28,6 @@
           <el-menu-item index="/tasks"><el-icon><List /></el-icon><span>任务管理</span></el-menu-item>
           <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>运行日志</span></el-menu-item>
         </el-sub-menu>
-        <el-menu-item v-if="currentUser?.role === 'admin'" index="/users">
-          <el-icon><User /></el-icon><span>用户管理</span>
-        </el-menu-item>
       </el-menu>
       <div v-if="!sidebarCollapsed" class="sidebar-footer">
         <span>自动化调度</span>

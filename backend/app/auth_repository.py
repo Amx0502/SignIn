@@ -66,7 +66,6 @@ class AuthRepository:
             "username": row.username,
             "role": row.role,
             "is_active": row.is_active,
-            "must_change_password": row.must_change_password,
             "created_at": row.created_at.isoformat(),
             "updated_at": row.updated_at.isoformat(),
             "last_login": row.last_login.isoformat() if row.last_login else None,
@@ -89,7 +88,6 @@ class AuthRepository:
                         password_hash=str(item.get("password_hash", "")),
                         role="admin",
                         is_active=bool(item.get("is_active", True)),
-                        must_change_password=False,
                     ))
                     imported += 1
             if not imported:
@@ -98,7 +96,6 @@ class AuthRepository:
                     password_hash=hash_password("admin123"),
                     role="admin",
                     is_active=True,
-                    must_change_password=True,
                 ))
                 imported = 1
             session.flush()
@@ -132,7 +129,7 @@ class AuthRepository:
             with self.database.session() as session:
                 row = UserRow(
                     username=username.strip(), password_hash=hash_password(password),
-                    role=role, is_active=is_active, must_change_password=True,
+                    role=role, is_active=is_active,
                 )
                 session.add(row)
                 session.flush()
@@ -177,7 +174,6 @@ class AuthRepository:
             if row is None:
                 raise UserNotFoundError(user_id)
             row.password_hash = hash_password(new_password)
-            row.must_change_password = True
             statement = delete(UserSessionRow).where(UserSessionRow.user_id == user_id)
             if keep_token_hash:
                 statement = statement.where(UserSessionRow.token_hash != keep_token_hash)
@@ -220,7 +216,6 @@ class AuthRepository:
             if row is None or not verify_password(current_password, row.password_hash)[0]:
                 return False
             row.password_hash = hash_password(new_password)
-            row.must_change_password = False
             session.execute(
                 delete(UserSessionRow).where(
                     UserSessionRow.user_id == user_id,

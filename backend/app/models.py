@@ -68,7 +68,6 @@ class User(BaseModel):
     last_login: Optional[datetime] = None
     is_active: bool = True
     role: str = "user"
-    must_change_password: bool = False
 
 
 class LoginRequest(BaseModel):

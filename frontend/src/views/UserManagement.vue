@@ -22,12 +22,6 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="密码状态" width="120">
-          <template #default="{ row }">
-            <el-tag v-if="row.must_change_password" type="warning">等待改密</el-tag>
-            <span v-else>正常</span>
-          </template>
-        </el-table-column>
         <el-table-column prop="last_login" label="最后登录" min-width="180">
           <template #default="{ row }">{{ formatTime(row.last_login) }}</template>
         </el-table-column>
