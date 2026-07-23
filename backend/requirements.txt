@@ -4,3 +4,6 @@ requests>=2.31.0
 rsa>=4.9
 pydantic>=2.6.0
 python-multipart>=0.0.9
+SQLAlchemy>=2.0.30,<2.1
+PyMySQL>=1.1.0,<2
+pytest>=8.2.0,<9
