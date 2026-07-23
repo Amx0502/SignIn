@@ -14,7 +14,7 @@ import requests
 import rsa
 
 from .config import (
-    DATA_FILE,
+    APP_DIR,
     DEFAULT_REFRESH_TIMES,
     DEFAULT_WEBHOOK_URL,
     HEADERS,
@@ -22,12 +22,12 @@ from .config import (
     PUBLIC_KEY,
     SETTINGS_FILE,
 )
+from .database import Database, DatabaseSettings
+from .repository import AccountRepository
 
 
 def ensure_dirs() -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    if not DATA_FILE.exists():
-        DATA_FILE.write_text("[]", encoding="utf-8")
 
 
 def deep_copy(data):
@@ -97,21 +97,6 @@ def normalize_account(account: dict | None = None) -> dict:
         "token": str(account.get("token", "")).strip(),
         "tasks": [normalize_task(item) for item in account.get("tasks", [])],
     }
-
-
-def load_accounts_from_disk() -> list[dict]:
-    ensure_dirs()
-    with DATA_FILE.open("r", encoding="utf-8") as file:
-        data = json.load(file)
-    if not isinstance(data, list):
-        raise ValueError("accounts.json 必须是数组格式")
-    return [normalize_account(item) for item in data]
-
-
-def save_accounts_to_disk(accounts: list[dict]) -> None:
-    ensure_dirs()
-    with DATA_FILE.open("w", encoding="utf-8") as file:
-        json.dump(accounts, file, ensure_ascii=False, indent=2)
 
 
 def load_settings_from_disk() -> dict:
@@ -231,7 +216,7 @@ class CheckinService:
     def upload_image(self, image_path: str, token: str) -> str | None:
         path = Path(image_path)
         if not path.is_absolute():
-            path = DATA_FILE.parent / path
+            path = APP_DIR / path
         if not path.exists():
             return None
 
@@ -345,14 +330,23 @@ class CheckinService:
         return False, {"error": f"[{name}] 任务《{task_title}》签到失败：{response.get('msg', '未知错误')}"}
 
 class AppState:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        repository: AccountRepository | None = None,
+        start_scheduler: bool = True,
+    ) -> None:
         self.log_buffer: deque[str] = deque(maxlen=600)
         self.logger = setup_logger(self.log_buffer)
         self.service = CheckinService(self.logger)
         self.lock = threading.RLock()
         self.executor = ThreadPoolExecutor(max_workers=6)
         self.stop_event = threading.Event()
-        self.accounts = load_accounts_from_disk()
+        self._owned_database: Database | None = None
+        if repository is None:
+            self._owned_database = Database(DatabaseSettings.from_env())
+            self._owned_database.initialize()
+            repository = AccountRepository(self._owned_database)
+        self.repository = repository
         settings = load_settings_from_disk()
         self.auto_enabled = settings["auto_enabled"]
         self.refresh_times = settings["refresh_times"]
@@ -364,7 +358,8 @@ class AppState:
         self.wechat_notify_cache: dict[str, list[tuple[str, dict, bool]]] = {}
         self.wechat_notify_timers: dict[str, threading.Timer] = {}
         self.scheduler_thread = threading.Thread(target=self.scheduler_loop, daemon=True)
-        self.scheduler_thread.start()
+        if start_scheduler:
+            self.scheduler_thread.start()
         self.logger.info("签到 Web 管理系统已启动")
 
     def shutdown(self) -> None:
@@ -372,6 +367,8 @@ class AppState:
         for timer in self.wechat_notify_timers.values():
             timer.cancel()
         self.executor.shutdown(wait=False, cancel_futures=True)
+        if self._owned_database is not None:
+            self._owned_database.dispose()
         self.logger.info("系统已停止")
 
     def _send_wechat_summary(self, cache_key: str) -> None:
@@ -449,18 +446,18 @@ class AppState:
                 self.wechat_notify_timers[cache_key] = timer
 
     def snapshot(self) -> dict:
+        accounts = self.repository.list_accounts()
         with self.lock:
-            accounts = deep_copy(self.accounts)
             enabled_task_count = sum(
-                1 for account in self.accounts for task in account.get("tasks", []) if task.get("enable", True)
+                1 for account in accounts for task in account.get("tasks", []) if task.get("enable", True)
             )
             return {
                 "accounts": accounts,
                 "auto_enabled": self.auto_enabled,
                 "refresh_times": self.refresh_times.copy(),
                 "webhook_url": self.webhook_url,
-                "account_count": len(self.accounts),
-                "task_count": sum(len(account.get("tasks", [])) for account in self.accounts),
+                "account_count": len(accounts),
+                "task_count": sum(len(account.get("tasks", [])) for account in accounts),
                 "enabled_task_count": enabled_task_count,
                 "server_time": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
@@ -468,10 +465,6 @@ class AppState:
     def get_logs(self, limit: int = 200) -> list[str]:
         with self.lock:
             return list(self.log_buffer)[-limit:]
-
-    def save(self) -> None:
-        with self.lock:
-            save_accounts_to_disk(self.accounts)
 
     def set_settings(self, data: dict) -> dict:
         with self.lock:
@@ -493,9 +486,7 @@ class AppState:
         account = normalize_account(data)
         if not account["name"] or not account["mobile"] or not account["password"]:
             raise ValueError("账号名称、手机号、密码不能为空")
-        with self.lock:
-            self.accounts.append(account)
-            save_accounts_to_disk(self.accounts)
+        account = self.repository.add_account(account)
         self.logger.info("已新增账号：%s", account["name"])
         return account
 
@@ -503,29 +494,21 @@ class AppState:
         account = normalize_account(data)
         if not account["name"] or not account["mobile"] or not account["password"]:
             raise ValueError("账号名称、手机号、密码不能为空")
-        with self.lock:
-            account["tasks"] = self.accounts[account_index].get("tasks", [])
-            self.accounts[account_index] = account
-            save_accounts_to_disk(self.accounts)
+        account = self.repository.update_account(account_index, account)
         self.logger.info("已更新账号：%s", account["name"])
         return account
 
     def delete_account(self, account_index: int) -> None:
-        with self.lock:
-            account = self.accounts.pop(account_index)
-            save_accounts_to_disk(self.accounts)
+        account = self.repository.list_accounts()[account_index]
+        self.repository.delete_account(account_index)
         self.logger.info("已删除账号：%s", account["name"])
 
     def login_account(self, account_index: int) -> dict:
-        with self.lock:
-            account = deep_copy(self.accounts[account_index])
+        account = self.repository.list_accounts()[account_index]
         token = self.service.login(account["mobile"], account["password"])
         if not token:
             raise RuntimeError("登录失败，请检查账号信息")
-        with self.lock:
-            self.accounts[account_index]["token"] = token
-            save_accounts_to_disk(self.accounts)
-            updated = deep_copy(self.accounts[account_index])
+        updated = self.repository.update_token(account_index, token)
         self.logger.info("[%s] 登录成功并获取 Token", updated["name"])
         return updated
 
@@ -533,20 +516,16 @@ class AppState:
         return self.login_account(account_index)
 
     def refresh_all_tokens(self) -> dict:
-        with self.lock:
-            accounts = deep_copy(self.accounts)
+        accounts = self.repository.list_accounts()
         success = 0
         failed_names: list[str] = []
         for index, account in enumerate(accounts):
             token = self.service.login(account["mobile"], account["password"])
             if token:
-                accounts[index]["token"] = token
+                self.repository.update_token(index, token)
                 success += 1
             else:
                 failed_names.append(account["name"])
-        with self.lock:
-            self.accounts = accounts
-            save_accounts_to_disk(self.accounts)
         if failed_names:
             self.logger.warning("批量刷新 Token 完成，成功 %s 个，失败 %s 个：%s", success, len(failed_names), "、".join(failed_names))
         else:
@@ -559,21 +538,11 @@ class AppState:
             token = self.service.login(mobile, password)
             if token:
                 self.logger.debug("[Token刷新] 用户[%s] 登录成功，获取到Token", mobile)
-                with self.lock:
-                    account_found = False
-                    for account in self.accounts:
-                        if account["mobile"] == mobile:
-                            old_token = account.get("token", "")[:20] + "..." if account.get("token") else "None"
-                            account["token"] = token
-                            account_found = True
-                            self.logger.debug("[Token刷新] 用户[%s] Token已更新，旧Token=%s，新Token=%s", 
-                                              mobile, old_token, token[:20] + "...")
-                            break
-                    if account_found:
-                        save_accounts_to_disk(self.accounts)
-                        self.logger.debug("[Token刷新] 用户[%s] 账号数据已保存到磁盘", mobile)
-                    else:
-                        self.logger.warning("[Token刷新] 用户[%s] 在账号列表中未找到", mobile)
+                account_found = self.repository.update_token_by_mobile(mobile, token)
+                if account_found:
+                    self.logger.debug("[Token刷新] 用户[%s] Token 已更新到数据库", mobile)
+                else:
+                    self.logger.warning("[Token刷新] 用户[%s] 在账号列表中未找到", mobile)
                 self.logger.info("[Token刷新] 用户[%s] Token 刷新成功", mobile)
             else:
                 self.logger.error("[Token刷新] 用户[%s] 登录失败，未获取到Token", mobile)
@@ -581,54 +550,46 @@ class AppState:
             self.logger.error("[Token刷新] 用户[%s] 刷新过程异常：%s", mobile, str(exc))
 
     def fetch_projects(self, account_index: int) -> list[dict]:
-        with self.lock:
-            account = deep_copy(self.accounts[account_index])
+        account = self.repository.list_accounts()[account_index]
         if not account.get("token"):
             raise ValueError("当前账号没有 Token，请先登录")
         projects = self.service.fetch_checkin_list(account["token"])
         self.logger.info("[%s] 已获取签到项目列表，共 %s 个", account["name"], len(projects))
-        with self.lock:
-            self.accounts[account_index]["projects"] = projects
-            save_accounts_to_disk(self.accounts)
+        self.repository.replace_projects(account_index, projects)
         return projects
 
     def add_task(self, account_index: int, data: dict) -> dict:
-        with self.lock:
-            account = self.accounts[account_index]
-            projects = account.get("projects", [])
-            tasks = account.get("tasks", [])
-            if len(projects) > 0 and len(tasks) >= len(projects):
-                raise ValueError(f"任务数量已达上限，当前账号最多可添加 {len(projects)} 个任务")
+        account = self.repository.list_accounts()[account_index]
+        projects = account.get("projects", [])
+        tasks = account.get("tasks", [])
+        if len(projects) > 0 and len(tasks) >= len(projects):
+            raise ValueError(f"任务数量已达上限，当前账号最多可添加 {len(projects)} 个任务")
         task = normalize_task(data)
-        with self.lock:
-            self.accounts[account_index].setdefault("tasks", []).append(task)
-            save_accounts_to_disk(self.accounts)
-        self.logger.info("[%s] 已新增任务：%s", self.accounts[account_index]["name"], task["title"])
+        task = self.repository.add_task(account_index, task)
+        self.logger.info("[%s] 已新增任务：%s", account["name"], task["title"])
         return task
 
     def update_task(self, account_index: int, task_index: int, data: dict) -> dict:
         task = normalize_task(data)
-        with self.lock:
-            self.accounts[account_index]["tasks"][task_index] = task
-            save_accounts_to_disk(self.accounts)
-            account_name = self.accounts[account_index]["name"]
+        account_name = self.repository.list_accounts()[account_index]["name"]
+        task = self.repository.update_task(account_index, task_index, task)
         self.logger.info("[%s] 已更新任务：%s", account_name, task["title"])
         return task
 
     def delete_task(self, account_index: int, task_index: int) -> None:
-        with self.lock:
-            task = self.accounts[account_index]["tasks"].pop(task_index)
-            account_name = self.accounts[account_index]["name"]
-            save_accounts_to_disk(self.accounts)
+        account = self.repository.list_accounts()[account_index]
+        task = account["tasks"][task_index]
+        account_name = account["name"]
+        self.repository.delete_task(account_index, task_index)
         self.logger.info("[%s] 已删除任务：%s", account_name, task["title"])
 
     def enqueue_task(self, account: dict, task: dict) -> None:
         self.executor.submit(self._execute_task, normalize_account(account), normalize_task(task))
 
     def run_task(self, account_index: int, task_index: int) -> dict:
+        account = self.repository.list_accounts()[account_index]
+        task = account["tasks"][task_index]
         with self.lock:
-            account = deep_copy(self.accounts[account_index])
-            task = deep_copy(self.accounts[account_index]["tasks"][task_index])
             webhook_url = self.webhook_url
         ok, result = self.service.execute_task(account, task)
         name = account.get("name") or account.get("mobile")
@@ -663,8 +624,7 @@ class AppState:
             raise RuntimeError(error_msg)
 
     def run_account_tasks(self, account_index: int) -> dict:
-        with self.lock:
-            account = deep_copy(self.accounts[account_index])
+        account = self.repository.list_accounts()[account_index]
         tasks = [task for task in account.get("tasks", []) if task.get("enable", True)]
         for task in tasks:
             self.enqueue_task(account, task)
@@ -672,8 +632,7 @@ class AppState:
 
     def run_all_enabled_tasks(self) -> dict:
         queued_count = 0
-        with self.lock:
-            accounts = deep_copy(self.accounts)
+        accounts = self.repository.list_accounts()
         for account in accounts:
             for task in account.get("tasks", []):
                 if task.get("enable", True):
@@ -773,7 +732,7 @@ class AppState:
         with self.lock:
             auto_enabled = self.auto_enabled
             refresh_times = self.refresh_times.copy()
-            accounts = deep_copy(self.accounts)
+        accounts = self.repository.list_accounts()
         if not auto_enabled:
             return
 
