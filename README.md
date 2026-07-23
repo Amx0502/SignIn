@@ -50,6 +50,24 @@ $env:DB_PASSWORD="<数据库密码>"
 
 数据库已有账户时不会重复导入。导入失败会整体回滚并终止启动。
 
+## 登录用户数据库
+
+后台登录用户和会话使用独立的 MySQL 数据库 `User`：
+
+```powershell
+$env:AUTH_DB_HOST="127.0.0.1"
+$env:AUTH_DB_PORT="3306"
+$env:AUTH_DB_NAME="User"
+$env:AUTH_DB_USER="root"
+$env:AUTH_DB_PASSWORD="<数据库密码>"
+```
+
+应用会自动创建 `users` 和 `user_sessions` 表。`users` 表为空时会一次性导入
+`backend/users.json`；旧会话不会迁移，升级后需要重新登录。若没有旧用户，则创建
+初始管理员 `admin / admin123`，首次登录必须修改密码。
+
+只有管理员可以使用一级菜单“用户管理”。系统禁止删除、禁用或降级最后一个启用中的管理员。
+
 ## 后端运行
 
 ```powershell
@@ -63,6 +81,11 @@ $env:DB_PORT="3306"
 $env:DB_NAME="xxqd"
 $env:DB_USER="root"
 $env:DB_PASSWORD="<数据库密码>"
+$env:AUTH_DB_HOST="127.0.0.1"
+$env:AUTH_DB_PORT="3306"
+$env:AUTH_DB_NAME="User"
+$env:AUTH_DB_USER="root"
+$env:AUTH_DB_PASSWORD="<数据库密码>"
 
 python run.py
 ```
