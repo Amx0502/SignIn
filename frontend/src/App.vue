@@ -25,6 +25,9 @@
           <el-menu-item index="/tasks"><el-icon><List /></el-icon><span>任务管理</span></el-menu-item>
           <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>运行日志</span></el-menu-item>
         </el-sub-menu>
+        <el-menu-item v-if="currentUser?.role === 'admin'" index="/users">
+          <el-icon><User /></el-icon><span>用户管理</span>
+        </el-menu-item>
       </el-menu>
       <div v-if="!sidebarCollapsed" class="sidebar-footer">
         <span>自动化调度</span>

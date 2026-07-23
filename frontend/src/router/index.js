@@ -5,9 +5,13 @@ import Logs from '../views/Logs.vue'
 import AutoCheckIn from '../views/AutoCheckIn.vue'
 import TaskManagement from '../views/TaskManagement.vue'
 import Login from '../views/Login.vue'
+import UserManagement from '../views/UserManagement.vue'
+import ChangePassword from '../views/ChangePassword.vue'
 
 const routes = [
   { path: '/login', name: 'Login', component: Login, meta: { title: '登录' } },
+  { path: '/change-password', name: 'ChangePassword', component: ChangePassword, meta: { title: '修改密码', requiresAuth: true } },
+  { path: '/users', name: 'UserManagement', component: UserManagement, meta: { title: '用户管理', requiresAuth: true, requiresAdmin: true } },
   { path: '/', redirect: '/overview' },
   { path: '/overview', name: 'Overview', component: Overview, meta: { title: '系统概览', requiresAuth: true } },
   { path: '/accounts', name: 'Accounts', component: Accounts, meta: { title: '账号管理', requiresAuth: true } },
@@ -26,13 +30,23 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('access_token')
   const expiresAt = localStorage.getItem('expires_at')
+  let user = null
+  try {
+    user = JSON.parse(localStorage.getItem('user') || 'null')
+  } catch {
+    user = null
+  }
   
   const isLoggedIn = token && expiresAt && new Date(expiresAt) > new Date()
   
   if (to.meta.requiresAuth && !isLoggedIn) {
     next({ path: '/login', query: { redirect: to.fullPath } })
+  } else if (isLoggedIn && user?.must_change_password && to.path !== '/change-password') {
+    next('/change-password')
+  } else if (to.meta.requiresAdmin && user?.role !== 'admin') {
+    next('/overview')
   } else if (to.path === '/login' && isLoggedIn) {
-    next({ path: '/' })
+    next(user?.must_change_password ? '/change-password' : '/overview')
   } else {
     next()
   }
