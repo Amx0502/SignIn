@@ -2,6 +2,8 @@ from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent.parent
 LEGACY_ACCOUNTS_FILE = APP_DIR / "accounts.json"
+LEGACY_USERS_FILE = APP_DIR / "users.json"
+LEGACY_SESSIONS_FILE = APP_DIR / "sessions.json"
 SETTINGS_FILE = APP_DIR / "settings.json"
 LOG_DIR = APP_DIR / "logs"
 UPLOAD_DIR = APP_DIR / "uploads"

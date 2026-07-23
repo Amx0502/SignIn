@@ -12,24 +12,52 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .auth import AuthService
-from .models import AccountCreate, AccountUpdate, LoginRequest, Settings, TaskCreate, TaskUpdate
+from .auth_database import AuthDatabase, AuthDatabaseSettings
+from .auth_repository import (
+    AuthRepository,
+    DuplicateUsernameError,
+    LastAdminError,
+    UserNotFoundError,
+)
+from .models import (
+    AccountCreate,
+    AccountUpdate,
+    LoginRequest,
+    PasswordChange,
+    PasswordReset,
+    Settings,
+    TaskCreate,
+    TaskUpdate,
+    UserCreate,
+    UserUpdate,
+)
 from .repository import DuplicateMobileError
 from .service import AppState
 
 app_state = AppState(start_scheduler=False)
 auth_service = AuthService()
+auth_database: AuthDatabase | None = None
 security = HTTPBearer()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global auth_database
     app_state.initialize_database()
     app_state.repository.import_legacy_json_if_empty(config.LEGACY_ACCOUNTS_FILE)
+    if auth_service.repository is None:
+        auth_database = AuthDatabase(AuthDatabaseSettings.from_env())
+        auth_database.initialize()
+        auth_repository = AuthRepository(auth_database)
+        auth_repository.initialize_users(config.LEGACY_USERS_FILE)
+        auth_service.set_repository(auth_repository)
     app_state.start_background_scheduler()
     try:
         yield
     finally:
         app_state.shutdown()
+        if auth_database is not None:
+            auth_database.dispose()
 
 
 app = FastAPI(title="签到管理系统", version="1.0.0", lifespan=lifespan)
@@ -263,6 +291,25 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return user
 
 
+async def get_user_allow_password_change(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = auth_service.verify_token_allow_password_change(credentials.credentials)
+    if not user:
+        raise HTTPException(
+            status_code=401, detail={"ok": False, "error": "登录已过期，请重新登录"}
+        )
+    return user
+
+
+async def require_admin(user=Depends(get_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(
+            status_code=403, detail={"ok": False, "error": "需要管理员权限"}
+        )
+    return user
+
+
 @app.post("/api/auth/login")
 def login(request: Request, payload: LoginRequest):
     ip_address = request.client.host if request.client else "unknown"
@@ -282,14 +329,88 @@ def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
 @app.post("/api/auth/verify")
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    user = auth_service.verify_token(token)
+    user = auth_service.verify_token_allow_password_change(token)
     if not user:
         failure("登录已过期，请重新登录", 401)
-    return success({
-        "username": user.username,
-        "email": user.email,
-        "last_login": user.last_login.isoformat() if user.last_login else None
-    })
+    return success(user)
+
+
+@app.post("/api/auth/change-password")
+def change_password(
+    payload: PasswordChange,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    user=Depends(get_user_allow_password_change),
+):
+    if not auth_service.change_password(
+        user["id"],
+        payload.current_password,
+        payload.new_password,
+        credentials.credentials,
+    ):
+        failure("当前密码错误")
+    updated = auth_service.verify_token_allow_password_change(credentials.credentials)
+    return success(updated)
+
+
+@app.get("/api/users")
+def list_users(admin=Depends(require_admin)):
+    return success(auth_service.repository.list_users())
+
+
+@app.post("/api/users")
+def create_user(payload: UserCreate, admin=Depends(require_admin)):
+    try:
+        return success(
+            auth_service.repository.create_user(
+                payload.username, payload.password, payload.role, payload.is_active
+            )
+        )
+    except DuplicateUsernameError as exc:
+        failure(str(exc))
+
+
+@app.put("/api/users/{user_id}")
+def update_user(user_id: int, payload: UserUpdate, admin=Depends(require_admin)):
+    try:
+        return success(
+            auth_service.repository.update_user(
+                user_id, payload.username, payload.role, payload.is_active
+            )
+        )
+    except (DuplicateUsernameError, LastAdminError) as exc:
+        failure(str(exc))
+    except UserNotFoundError:
+        failure("用户不存在", 404)
+
+
+@app.post("/api/users/{user_id}/reset-password")
+def reset_user_password(
+    user_id: int,
+    payload: PasswordReset,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    admin=Depends(require_admin),
+):
+    try:
+        keep_hash = (
+            auth_service.repository.token_hash(credentials.credentials)
+            if user_id == admin["id"]
+            else None
+        )
+        auth_service.repository.reset_password(user_id, payload.new_password, keep_hash)
+        return success(True)
+    except UserNotFoundError:
+        failure("用户不存在", 404)
+
+
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id: int, admin=Depends(require_admin)):
+    try:
+        auth_service.repository.delete_user(user_id, admin["id"])
+        return success(True)
+    except (LastAdminError, ValueError) as exc:
+        failure(str(exc))
+    except UserNotFoundError:
+        failure("用户不存在", 404)
 
 
 

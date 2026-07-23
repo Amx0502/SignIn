@@ -63,11 +63,12 @@ class Settings(BaseModel):
 
 class User(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
-    email: Optional[EmailStr] = None
     password_hash: str
     created_at: datetime = Field(default_factory=datetime.now)
     last_login: Optional[datetime] = None
     is_active: bool = True
+    role: str = "user"
+    must_change_password: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -85,6 +86,28 @@ class LoginResponse(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh_token: str = ""
+
+
+class UserCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6, max_length=128)
+    role: str = Field(default="user", pattern="^(admin|user)$")
+    is_active: bool = True
+
+
+class UserUpdate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    role: str = Field(..., pattern="^(admin|user)$")
+    is_active: bool
+
+
+class PasswordReset(BaseModel):
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(..., min_length=6, max_length=128)
+    new_password: str = Field(..., min_length=6, max_length=128)
 
 
 
