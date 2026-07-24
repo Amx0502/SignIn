@@ -15,20 +15,21 @@
                   :disabled="selectedAccounts.length === 0 || batchDeleting"
                   :loading="batchDeleting"
                   @click="deleteSelectedAccounts"
-                >批量删除</el-button>
+                >批量删除({{ selectedAccounts.length }})</el-button>
                 <el-button type="warning" :icon="Refresh" size="small" @click="refreshAllTokens">全局刷新Token</el-button>
               </el-space>
             </div>
           </template>
           <el-table
             :data="state.accounts"
+            row-key="mobile"
             highlight-current-row
             @current-change="onSelectAccount"
             @selection-change="onSelectionChange"
             style="width: 100%"
             max-height="560"
           >
-            <el-table-column type="selection" width="48" />
+            <el-table-column type="selection" width="48" reserve-selection />
             <el-table-column prop="name" label="名称" min-width="120" />
             <el-table-column prop="mobile" label="手机号" min-width="120" />
             <el-table-column label="任务数" width="90">

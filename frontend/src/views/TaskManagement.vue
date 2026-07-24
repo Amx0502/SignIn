@@ -13,7 +13,7 @@
               :disabled="selectedTaskKeys.size === 0 || batchDeleting"
               :loading="batchDeleting"
               @click="deleteSelectedTasks"
-            >批量删除</el-button>
+            >批量删除({{ selectedTaskKeys.size }})</el-button>
           </el-space>
         </div>
       </template>

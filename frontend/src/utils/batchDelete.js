@@ -1,6 +1,12 @@
 export function getAccountDeleteIndexes(accounts, selectedAccounts) {
-  return selectedAccounts
-    .map(account => accounts.indexOf(account))
+  const selectedMobiles = new Set(
+    selectedAccounts.map(account => account.mobile),
+  )
+
+  return accounts
+    .map((account, index) => (
+      selectedMobiles.has(account.mobile) ? index : -1
+    ))
     .filter(index => index >= 0)
     .sort((a, b) => b - a)
 }

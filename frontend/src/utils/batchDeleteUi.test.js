@@ -8,8 +8,10 @@ test('account management exposes guarded batch deletion controls', async () => {
     'utf8',
   )
 
+  assert.match(source, /row-key="mobile"/)
   assert.match(source, /type="selection"/)
-  assert.match(source, /批量删除/)
+  assert.match(source, /reserve-selection/)
+  assert.match(source, /批量删除\(\{\{ selectedAccounts\.length \}\}\)/)
   assert.match(source, /selectedAccounts/)
   assert.match(source, /batchDeleting/)
   assert.match(source, /getAccountDeleteIndexes/)
@@ -23,7 +25,7 @@ test('task management exposes guarded batch deletion controls', async () => {
   )
 
   assert.match(source, /<el-checkbox/)
-  assert.match(source, /批量删除/)
+  assert.match(source, /批量删除\(\{\{ selectedTaskKeys\.size \}\}\)/)
   assert.match(source, /selectedTaskKeys/)
   assert.match(source, /batchDeleting/)
   assert.match(source, /getTaskDeleteTargets/)

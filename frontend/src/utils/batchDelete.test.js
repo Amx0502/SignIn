@@ -6,10 +6,19 @@ import {
 } from './batchDelete.js'
 
 test('sorts selected account indexes from highest to lowest', () => {
-  const accounts = [{ id: 0 }, { id: 1 }, { id: 2 }, { id: 3 }]
+  const previousAccounts = [
+    { mobile: '13000000000' },
+    { mobile: '13100000000' },
+    { mobile: '13200000000' },
+    { mobile: '13300000000' },
+  ]
+  const refreshedAccounts = previousAccounts.map(account => ({ ...account }))
 
   assert.deepEqual(
-    getAccountDeleteIndexes(accounts, [accounts[1], accounts[3]]),
+    getAccountDeleteIndexes(
+      refreshedAccounts,
+      [previousAccounts[1], previousAccounts[3]],
+    ),
     [3, 1],
   )
 })
