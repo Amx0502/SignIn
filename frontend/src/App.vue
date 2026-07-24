@@ -78,7 +78,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Odometer, User, Document, Refresh, Timer, List, Menu, Clock } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Refresh, Timer, List, Menu } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAppState } from './composables/useAppState'
 import { formatCurrentTime } from './utils/currentTime'
@@ -227,14 +227,6 @@ onUnmounted(() => {
   box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.14);
   animation: headerTimePulse 2s ease-in-out infinite;
 }
-.header-current-time__icon {
-  width: 25px;
-  height: 25px;
-  flex: none;
-  color: #2563eb;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
-}
 .header-current-time__content {
   display: grid;
   gap: 1px;
@@ -266,7 +258,6 @@ onUnmounted(() => {
   .breadcrumb { font-size: 11px; }
   .header-right { margin-top: 8px; }
   .header-current-time { min-height: 38px; padding: 5px 10px 5px 8px; gap: 7px; border-radius: 12px; }
-  .header-current-time__icon { width: 22px; height: 22px; }
   .header-current-time__date { font-size: 9px; }
   .header-current-time__clock { font-size: 13px; }
   .sidebar { 

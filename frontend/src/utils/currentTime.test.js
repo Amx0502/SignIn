@@ -12,8 +12,9 @@ test('formats the current time as YYYY-MM-DD HH:mm:ss', () => {
 test('renders the themed current-time structure in the application header', async () => {
   const appSource = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
 
-  assert.match(appSource, /<Clock\s*\/>/)
   assert.match(appSource, /header-current-time__indicator/)
   assert.match(appSource, /header-current-time__date/)
   assert.match(appSource, /header-current-time__clock/)
+  assert.doesNotMatch(appSource, /header-current-time__icon/)
+  assert.doesNotMatch(appSource, /,\s*Clock\s*}/)
 })
