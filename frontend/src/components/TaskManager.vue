@@ -135,7 +135,6 @@
             </el-form-item>
             <el-form-item label="签到图片">
               <el-upload
-                ref="uploadRef"
                 :file-list="fileList"
                 :http-request="customUpload"
                 :on-remove="onImageRemove"
@@ -186,7 +185,6 @@ const { state, refreshState, refreshLogs, selectedAccountIndex } = useAppState()
 const selectedActualIndex = ref(-1)
 const projects = ref([])
 const formRef = ref(null)
-const uploadRef = ref(null)
 const fileList = ref([])
 const previewVisible = ref(false)
 const previewUrl = ref('')

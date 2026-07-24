@@ -31,7 +31,6 @@ instance.interceptors.response.use(
 
 export const loginApi = data => instance.post('/auth/login', data)
 export const logoutApi = () => instance.post('/auth/logout')
-export const verifyTokenApi = () => instance.post('/auth/verify')
 export const changePasswordApi = data => instance.post('/auth/change-password', data)
 export const getUsersApi = () => instance.get('/users')
 export const createUserApi = data => instance.post('/users', data)

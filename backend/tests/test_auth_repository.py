@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import inspect, select, text
 
 from app.auth_database import AuthDatabase, AuthDatabaseSettings
-from app.auth_models import UserRow, UserSessionRow
+from app.auth_models import UserSessionRow
 from app.auth_repository import (
     AuthRepository,
     LastAdminError,
@@ -144,3 +144,9 @@ def test_auth_service_login_logout_without_forced_change(repository, tmp_path):
     assert user["username"] == "admin"
     service.logout(result["access_token"])
     assert service.verify_token(result["access_token"]) is None
+
+
+def test_auth_service_has_single_token_verification_entrypoint(repository):
+    service = AuthService(repository)
+
+    assert not hasattr(service, "verify_token_allow_password_change")

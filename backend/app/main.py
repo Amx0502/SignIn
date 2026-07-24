@@ -105,39 +105,48 @@ async def duplicate_mobile_exception_handler(
     )
 
 
-@app.get("/api/state")
-def get_state(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = auth_service.verify_token(credentials.credentials)
     if not user:
-        failure("登录已过期，请重新登录", 401)
+        raise HTTPException(
+            status_code=401,
+            detail={"ok": False, "error": "登录已过期，请重新登录"},
+        )
+    return user
+
+
+async def require_admin(user=Depends(get_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail={"ok": False, "error": "需要管理员权限"},
+        )
+    return user
+
+
+@app.get("/api/state")
+def get_state(_user=Depends(get_current_user)):
     return success(app_state.snapshot())
 
 
 @app.get("/api/logs")
-def get_logs(limit: int = 200, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def get_logs(limit: int = 200, _user=Depends(get_current_user)):
     return success(app_state.get_logs(limit))
 
 
 @app.post("/api/accounts")
-def add_account(payload: AccountCreate, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def add_account(payload: AccountCreate, _user=Depends(get_current_user)):
     return success(app_state.add_account(payload.model_dump()))
 
 
 @app.put("/api/accounts/{account_index}")
-def update_account(account_index: int, payload: AccountUpdate, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def update_account(
+    account_index: int,
+    payload: AccountUpdate,
+    _user=Depends(get_current_user),
+):
     try:
         return success(app_state.update_account(account_index, payload.model_dump()))
     except IndexError:
@@ -145,11 +154,7 @@ def update_account(account_index: int, payload: AccountUpdate, credentials: HTTP
 
 
 @app.delete("/api/accounts/{account_index}")
-def delete_account(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def delete_account(account_index: int, _user=Depends(get_current_user)):
     try:
         app_state.delete_account(account_index)
         return success(True)
@@ -158,11 +163,7 @@ def delete_account(account_index: int, credentials: HTTPAuthorizationCredentials
 
 
 @app.post("/api/accounts/{account_index}/login")
-def login_account(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def login_account(account_index: int, _user=Depends(get_current_user)):
     try:
         return success(app_state.login_account(account_index))
     except IndexError:
@@ -170,11 +171,7 @@ def login_account(account_index: int, credentials: HTTPAuthorizationCredentials 
 
 
 @app.post("/api/accounts/{account_index}/refresh-token")
-def refresh_token(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def refresh_token(account_index: int, _user=Depends(get_current_user)):
     try:
         return success(app_state.refresh_single_token(account_index))
     except IndexError:
@@ -182,11 +179,7 @@ def refresh_token(account_index: int, credentials: HTTPAuthorizationCredentials 
 
 
 @app.get("/api/accounts/{account_index}/projects")
-def fetch_projects(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def fetch_projects(account_index: int, _user=Depends(get_current_user)):
     try:
         return success(app_state.fetch_projects(account_index))
     except IndexError:
@@ -194,11 +187,11 @@ def fetch_projects(account_index: int, credentials: HTTPAuthorizationCredentials
 
 
 @app.post("/api/accounts/{account_index}/tasks")
-def add_task(account_index: int, payload: TaskCreate, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def add_task(
+    account_index: int,
+    payload: TaskCreate,
+    _user=Depends(get_current_user),
+):
     try:
         return success(app_state.add_task(account_index, payload.model_dump()))
     except IndexError:
@@ -206,11 +199,12 @@ def add_task(account_index: int, payload: TaskCreate, credentials: HTTPAuthoriza
 
 
 @app.put("/api/accounts/{account_index}/tasks/{task_index}")
-def update_task(account_index: int, task_index: int, payload: TaskUpdate, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def update_task(
+    account_index: int,
+    task_index: int,
+    payload: TaskUpdate,
+    _user=Depends(get_current_user),
+):
     try:
         return success(app_state.update_task(account_index, task_index, payload.model_dump()))
     except IndexError:
@@ -218,11 +212,11 @@ def update_task(account_index: int, task_index: int, payload: TaskUpdate, creden
 
 
 @app.delete("/api/accounts/{account_index}/tasks/{task_index}")
-def delete_task(account_index: int, task_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def delete_task(
+    account_index: int,
+    task_index: int,
+    _user=Depends(get_current_user),
+):
     try:
         app_state.delete_task(account_index, task_index)
         return success(True)
@@ -231,11 +225,11 @@ def delete_task(account_index: int, task_index: int, credentials: HTTPAuthorizat
 
 
 @app.post("/api/accounts/{account_index}/tasks/{task_index}/run")
-def run_task(account_index: int, task_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def run_task(
+    account_index: int,
+    task_index: int,
+    _user=Depends(get_current_user),
+):
     try:
         return success(app_state.run_task(account_index, task_index))
     except IndexError:
@@ -245,11 +239,7 @@ def run_task(account_index: int, task_index: int, credentials: HTTPAuthorization
 
 
 @app.post("/api/accounts/{account_index}/run-all")
-def run_account_tasks(account_index: int, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def run_account_tasks(account_index: int, _user=Depends(get_current_user)):
     try:
         return success(app_state.run_account_tasks(account_index))
     except IndexError:
@@ -257,57 +247,18 @@ def run_account_tasks(account_index: int, credentials: HTTPAuthorizationCredenti
 
 
 @app.post("/api/accounts/refresh-all")
-def refresh_all_tokens(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def refresh_all_tokens(_user=Depends(get_current_user)):
     return success(app_state.refresh_all_tokens())
 
 
 @app.post("/api/run-all")
-def run_all_enabled_tasks(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def run_all_enabled_tasks(_user=Depends(get_current_user)):
     return success(app_state.run_all_enabled_tasks())
 
 
 @app.post("/api/settings")
-def set_settings(payload: Settings, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        failure("登录已过期，请重新登录", 401)
+def set_settings(payload: Settings, _user=Depends(get_current_user)):
     return success(app_state.set_settings(payload.model_dump()))
-
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    user = auth_service.verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail={"ok": False, "error": "登录已过期，请重新登录"})
-    return user
-
-
-async def get_user_allow_password_change(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-):
-    user = auth_service.verify_token_allow_password_change(credentials.credentials)
-    if not user:
-        raise HTTPException(
-            status_code=401, detail={"ok": False, "error": "登录已过期，请重新登录"}
-        )
-    return user
-
-
-async def require_admin(user=Depends(get_current_user)):
-    if user["role"] != "admin":
-        raise HTTPException(
-            status_code=403, detail={"ok": False, "error": "需要管理员权限"}
-        )
-    return user
 
 
 @app.post("/api/auth/login")
@@ -329,7 +280,7 @@ def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
 @app.post("/api/auth/verify")
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    user = auth_service.verify_token_allow_password_change(token)
+    user = auth_service.verify_token(token)
     if not user:
         failure("登录已过期，请重新登录", 401)
     return success(user)
@@ -339,7 +290,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 def change_password(
     payload: PasswordChange,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    user=Depends(get_user_allow_password_change),
+    user=Depends(get_current_user),
 ):
     if not auth_service.change_password(
         user["id"],
@@ -348,7 +299,7 @@ def change_password(
         credentials.credentials,
     ):
         failure("当前密码错误")
-    updated = auth_service.verify_token_allow_password_change(credentials.credentials)
+    updated = auth_service.verify_token(credentials.credentials)
     return success(updated)
 
 

@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any
-
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 

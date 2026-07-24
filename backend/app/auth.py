@@ -71,11 +71,8 @@ class AuthService:
         self._repo().logout(access_token)
         return True
 
-    def verify_token_allow_password_change(self, access_token: str) -> dict | None:
-        return self._repo().verify_session(access_token)
-
     def verify_token(self, access_token: str) -> dict | None:
-        return self.verify_token_allow_password_change(access_token)
+        return self._repo().verify_session(access_token)
 
     def change_password(
         self,

@@ -26,7 +26,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { changePasswordApi } from '../api'
@@ -35,9 +35,6 @@ const router = useRouter()
 const formRef = ref()
 const loading = ref(false)
 const form = reactive({ current_password: '', new_password: '', confirm_password: '' })
-const currentUser = computed(() => {
-  try { return JSON.parse(localStorage.getItem('user') || 'null') } catch { return null }
-})
 const rules = {
   current_password: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
   new_password: [

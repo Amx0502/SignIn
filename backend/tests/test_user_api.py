@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from fastapi.testclient import TestClient
 
 from app.auth import AuthService
@@ -44,6 +42,9 @@ def test_user_management_api_enforces_roles_and_has_no_email(
 
     try:
         with TestClient(main.app) as client:
+            unauthenticated = client.get("/api/state")
+            assert unauthenticated.status_code == 401
+
             login = client.post(
                 "/api/auth/login",
                 json={

@@ -83,7 +83,6 @@
                 </el-form-item>
                 <el-form-item label="签到图片">
                   <el-upload
-                    :ref="`uploadRef-${task.accountIndex}-${task.taskIndex}`"
                     :file-list="getEditFileList(task)"
                     :http-request="(options) => customUpload(task, options)"
                     :on-remove="(file) => onImageRemove(task, file)"
@@ -204,22 +203,6 @@ function getEditFileList(task) {
     }))
   }
   return editFileLists[key]
-}
-
-function getEditTimesInput(task) {
-  const key = getTaskKey(task)
-  if (editTimesInputs[key] === undefined) {
-    editTimesInputs[key] = (task.times || []).join(', ')
-  }
-  return editTimesInputs[key]
-}
-
-function getEditLocationMode(task) {
-  const key = getTaskKey(task)
-  if (editLocationModes[key] === undefined) {
-    editLocationModes[key] = task.use_location ? 'auto' : 'none'
-  }
-  return editLocationModes[key]
 }
 
 function toggleInlineEdit(task) {

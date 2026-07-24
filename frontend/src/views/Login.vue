@@ -57,11 +57,8 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { loginApi } from '../api'
-
-const router = useRouter()
 
 const loginForm = ref(null)
 
