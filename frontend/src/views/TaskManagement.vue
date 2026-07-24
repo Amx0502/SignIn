@@ -114,6 +114,7 @@
     <el-dialog v-model="previewVisible" title="图片预览" width="fit-content" align-center>
       <img :src="previewUrl" style="max-width: 100%; max-height: 70vh; border-radius: 8px;" />
     </el-dialog>
+    <CheckinResultDialog v-model="checkinResultVisible" :result="checkinResult" />
   </div>
 </template>
 
@@ -121,12 +122,16 @@
 import { reactive, ref, computed, watch } from 'vue'
 import { Edit, VideoPlay, Delete, Upload, User, List, Clock, MapLocation, Picture, Calendar, ChatLineSquare } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import CheckinResultDialog from '../components/CheckinResultDialog.vue'
 import { useAppState } from '../composables/useAppState'
+import { createCheckinResult } from '../utils/checkinResult'
 import api from '../api'
 
 const { state: appState, refreshState, refreshLogs } = useAppState()
 const previewVisible = ref(false)
 const previewUrl = ref('')
+const checkinResultVisible = ref(false)
+const checkinResult = ref(null)
 const editingKey = ref(null)
 const editForms = reactive({})
 const editFileLists = reactive({})
@@ -321,58 +326,8 @@ function onPreview(file) {
 async function runTask(row) {
   try {
     const res = await api.runTask(row.accountIndex, row.taskIndex)
-    const data = res.data || {}
-    
-    let imageHtml = ''
-    if (data.image_urls && data.image_urls.length) {
-      imageHtml = `
-        <div style="padding: 0 24px 20px;">
-          <p style="font-size: 14px; color: #6b7280; font-weight: 500; margin-bottom: 12px;">📷 图片 (${data.image_urls.length}张)</p>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 200px; overflow: hidden;">
-            ${data.image_urls.map(url => `<img src="${url}" style="width: calc(50% - 4px); height: auto; max-width: 140px; max-height: 100px; object-fit: contain; border-radius: 8px; background: #fff; box-sizing: border-box;" />`).join('')}
-          </div>
-        </div>
-      `
-    }
-    
-    let message = `
-      <div style="background: linear-gradient(135deg, #f0fdf4, #ecfdf5); border-radius: 16px; overflow: hidden;">
-        <div style="display: flex; align-items: center; gap: 12px; padding: 20px 24px; background: linear-gradient(135deg, #10b981, #059669);">
-          <div style="width: 36px; height: 36px; background: rgba(255, 255, 255, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; font-weight: 700;">✓</div>
-          <div style="font-size: 20px; font-weight: 700; color: #fff;">签到成功！</div>
-        </div>
-        <div style="padding: 20px 24px;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #d1fae5;">
-            <span style="font-size: 14px; color: #6b7280; font-weight: 500;">📝 任务标题</span>
-            <span style="font-size: 14px; color: #1f2937; font-weight: 600; text-align: right; max-width: 60%; word-break: break-all;">${data.title || '-'}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #d1fae5;">
-            <span style="font-size: 14px; color: #6b7280; font-weight: 500;">🏢 实际项目</span>
-            <span style="font-size: 14px; color: #1f2937; font-weight: 600; text-align: right; max-width: 60%; word-break: break-all;">${data.real_title || '-'}</span>
-          </div>
-          ${data.text ? `
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #d1fae5;">
-              <span style="font-size: 14px; color: #6b7280; font-weight: 500;">💬 文本内容</span>
-              <span style="font-size: 14px; color: #1f2937; font-weight: 600; text-align: right; max-width: 60%; word-break: break-all;">${data.text}</span>
-            </div>
-          ` : ''}
-          ${data.location ? `
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 0;">
-              <span style="font-size: 14px; color: #6b7280; font-weight: 500;">📍 位置</span>
-              <span style="font-size: 14px; color: #1f2937; font-weight: 600; text-align: right; max-width: 60%; word-break: break-all;">${data.location.address || '-'}</span>
-            </div>
-          ` : ''}
-        </div>
-        ${imageHtml}
-      </div>
-    `
-    
-    ElMessageBox.alert(message, '签到结果', { 
-      dangerouslyUseHTMLString: true,
-      customClass: 'result-dialog',
-      confirmButtonText: '关闭',
-      confirmButtonClass: 'result-confirm-btn'
-    })
+    checkinResult.value = createCheckinResult(res.data || {})
+    checkinResultVisible.value = true
     await refreshLogs()
   } catch (err) {
     ElMessage.error(err.message)
@@ -498,140 +453,6 @@ async function deleteTask(row) {
   margin-top: 8px;
 }
 
-.result-dialog :deep(.el-message-box) {
-  width: 480px;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-  border: none;
-}
-
-.result-dialog :deep(.el-message-box__header) {
-  border-bottom: none;
-  padding: 24px 24px 0;
-}
-
-.result-dialog :deep(.el-message-box__title) {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1f2937;
-}
-
-.result-dialog :deep(.el-message-box__content) {
-  padding: 16px 24px;
-  overflow: auto;
-  max-height: 60vh;
-}
-
-.result-dialog :deep(.el-message-box__btns) {
-  border-top: none;
-  padding: 0 24px 24px;
-  justify-content: center;
-}
-
-.result-dialog :deep(.result-confirm-btn) {
-  width: 100%;
-  height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #10b981, #059669);
-  border: none;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.result-card {
-  background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.result-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 24px;
-  background: linear-gradient(135deg, #10b981, #059669);
-}
-
-.result-icon {
-  width: 36px;
-  height: 36px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  color: #fff;
-  font-weight: 700;
-}
-
-.result-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #fff;
-}
-
-.result-body {
-  padding: 20px 24px;
-}
-
-.result-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 12px 0;
-  border-bottom: 1px solid #d1fae5;
-}
-
-.result-item:last-child {
-  border-bottom: none;
-}
-
-.item-label {
-  font-size: 14px;
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.item-value {
-  font-size: 14px;
-  color: #1f2937;
-  font-weight: 600;
-  text-align: right;
-  max-width: 60%;
-  word-break: break-all;
-}
-
-.result-images {
-  padding: 0 24px 20px;
-}
-
-.result-label {
-  font-size: 14px;
-  color: #6b7280;
-  font-weight: 500;
-  margin-bottom: 12px;
-}
-
-.image-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  max-height: 200px;
-  overflow: hidden;
-}
-
-.result-img {
-  width: calc(50% - 4px);
-  height: auto;
-  max-width: 140px;
-  max-height: 100px;
-  object-fit: contain;
-  border-radius: 8px;
-  background: #fff;
-  box-sizing: border-box;
-}
-
 @media (max-width: 768px) {
   .task-card {
     flex-direction: column;
@@ -669,10 +490,6 @@ async function deleteTask(row) {
     margin-left: 80px !important;
   }
   
-  .result-dialog :deep(.el-message-box) {
-    width: 90vw;
-    max-width: 360px;
-  }
 }
 
 @media (max-width: 480px) {
