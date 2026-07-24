@@ -37,12 +37,17 @@ test('removing an image immediately synchronizes the task thumbnail list', async
   assert.match(removeHandler, /syncFileList\(\)/)
 })
 
-test('selecting a nested route closes the teleported submenu popper', async () => {
+test('selecting a nested route only rebuilds the menu on mobile', async () => {
   const source = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
+  const closeHandler = source.match(
+    /function closeSidebar\(\) \{[\s\S]*?\n\}/,
+  )?.[0] || ''
 
   assert.match(source, /ref="sidebarMenuRef"/)
   assert.match(source, /:key="sidebarMenuRenderKey"/)
   assert.match(source, /:persistent="false"/)
-  assert.match(source, /sidebarMenuRef\.value\?\.close\('\/checkin'\)/)
-  assert.match(source, /sidebarMenuRenderKey\.value \+= 1/)
+  assert.match(
+    closeHandler,
+    /if \(isMobile\.value\) \{\s*sidebarMenuRef\.value\?\.close\('\/checkin'\)\s*sidebarMenuRenderKey\.value \+= 1\s*sidebarCollapsed\.value = true/,
+  )
 })

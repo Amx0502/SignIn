@@ -158,9 +158,9 @@ function toggleSidebar() {
 }
 
 function closeSidebar() {
-  sidebarMenuRef.value?.close('/checkin')
-  sidebarMenuRenderKey.value += 1
   if (isMobile.value) {
+    sidebarMenuRef.value?.close('/checkin')
+    sidebarMenuRenderKey.value += 1
     sidebarCollapsed.value = true
   }
 }
