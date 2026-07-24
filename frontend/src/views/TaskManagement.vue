@@ -4,7 +4,17 @@
       <template #header>
         <div class="card-header">
           <span>任务管理</span>
-          <el-tag type="info" size="small">{{ allTasks.length }} 个任务</el-tag>
+          <el-space>
+            <el-tag type="info" size="small">{{ allTasks.length }} 个任务</el-tag>
+            <el-button
+              type="danger"
+              size="small"
+              :icon="Delete"
+              :disabled="selectedTaskKeys.size === 0 || batchDeleting"
+              :loading="batchDeleting"
+              @click="deleteSelectedTasks"
+            >批量删除</el-button>
+          </el-space>
         </div>
       </template>
       
@@ -21,6 +31,11 @@
           <div class="task-card">
             <div class="task-main">
               <div class="task-title-row">
+                <el-checkbox
+                  :model-value="selectedTaskKeys.has(getTaskKey(task))"
+                  :aria-label="`选择任务 ${task.title}`"
+                  @change="checked => toggleTaskSelection(task, checked)"
+                />
                 <el-tag :type="task.enable ? 'success' : 'info'" size="small">{{ task.enable ? '启用' : '禁用' }}</el-tag>
                 <span class="task-title">{{ task.title }}</span>
                 <el-tag :type="task.mode === 'image' ? 'warning' : 'primary'" size="small">
@@ -118,6 +133,7 @@ import CheckinResultDialog from '../components/CheckinResultDialog.vue'
 import TaskImageUpload from '../components/TaskImageUpload.vue'
 import { useAppState } from '../composables/useAppState'
 import { createCheckinResult } from '../utils/checkinResult'
+import { getTaskDeleteTargets } from '../utils/batchDelete'
 import api from '../api'
 
 const { state: appState, refreshState, refreshLogs } = useAppState()
@@ -128,6 +144,8 @@ const editForms = reactive({})
 const editFileLists = reactive({})
 const editTimesInputs = reactive({})
 const editLocationModes = reactive({})
+const selectedTaskKeys = ref(new Set())
+const batchDeleting = ref(false)
 
 const allTasks = computed(() => {
   const tasks = []
@@ -161,6 +179,31 @@ const rules = {
 
 function getTaskKey(task) {
   return `${task.accountIndex}-${task.taskIndex}`
+}
+
+function toggleTaskSelection(task, checked) {
+  const nextKeys = new Set(selectedTaskKeys.value)
+  const key = getTaskKey(task)
+  if (checked) {
+    nextKeys.add(key)
+  } else {
+    nextKeys.delete(key)
+  }
+  selectedTaskKeys.value = nextKeys
+}
+
+function resetTaskEditingState() {
+  editingKey.value = null
+  for (const cache of [
+    editForms,
+    editFileLists,
+    editTimesInputs,
+    editLocationModes,
+  ]) {
+    for (const key of Object.keys(cache)) {
+      delete cache[key]
+    }
+  }
 }
 
 function isEditing(task) {
@@ -329,6 +372,43 @@ async function deleteTask(row) {
     ElMessage.success('任务已删除')
   } catch (err) {
     if (err !== 'cancel') ElMessage.error(err.message)
+  }
+}
+
+async function deleteSelectedTasks() {
+  const count = selectedTaskKeys.value.size
+  if (!count || batchDeleting.value) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${count} 个任务吗？`,
+      '批量删除任务',
+      { type: 'warning' },
+    )
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(err.message || '操作失败')
+    return
+  }
+
+  const targets = getTaskDeleteTargets(selectedTaskKeys.value)
+  batchDeleting.value = true
+  try {
+    for (const target of targets) {
+      await api.deleteTask(target.accountIndex, target.taskIndex)
+    }
+    resetTaskEditingState()
+    selectedTaskKeys.value = new Set()
+    await refreshState()
+    await refreshLogs()
+    ElMessage.success(`已删除 ${targets.length} 个任务`)
+  } catch (err) {
+    resetTaskEditingState()
+    selectedTaskKeys.value = new Set()
+    await Promise.allSettled([refreshState(), refreshLogs()])
+    ElMessage.error(err.message || '批量删除任务失败')
+  } finally {
+    batchDeleting.value = false
   }
 }
 </script>

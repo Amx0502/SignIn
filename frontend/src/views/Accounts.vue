@@ -8,6 +8,14 @@
               <span>账号列表</span>
               <el-space>
                 <el-button type="primary" :icon="Plus" size="small" @click="createNew">新增账号</el-button>
+                <el-button
+                  type="danger"
+                  :icon="Delete"
+                  size="small"
+                  :disabled="selectedAccounts.length === 0 || batchDeleting"
+                  :loading="batchDeleting"
+                  @click="deleteSelectedAccounts"
+                >批量删除</el-button>
                 <el-button type="warning" :icon="Refresh" size="small" @click="refreshAllTokens">全局刷新Token</el-button>
               </el-space>
             </div>
@@ -16,9 +24,11 @@
             :data="state.accounts"
             highlight-current-row
             @current-change="onSelectAccount"
+            @selection-change="onSelectionChange"
             style="width: 100%"
             max-height="560"
           >
+            <el-table-column type="selection" width="48" />
             <el-table-column prop="name" label="名称" min-width="120" />
             <el-table-column prop="mobile" label="手机号" min-width="120" />
             <el-table-column label="任务数" width="90">
@@ -76,12 +86,15 @@ import { reactive, ref } from 'vue'
 import { Plus, Key, Refresh, VideoPlay, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAppState } from '../composables/useAppState'
+import { getAccountDeleteIndexes } from '../utils/batchDelete'
 import api from '../api'
 
 const { state, refreshState, refreshLogs } = useAppState()
 
 const formRef = ref(null)
 const selectedIndex = ref(-1)
+const selectedAccounts = ref([])
+const batchDeleting = ref(false)
 const form = reactive({
   name: '',
   mobile: '',
@@ -111,6 +124,10 @@ function onSelectAccount(row) {
   form.mobile = row.mobile
   form.password = row.password
   form.token = row.token || ''
+}
+
+function onSelectionChange(rows) {
+  selectedAccounts.value = rows
 }
 
 async function saveAccount() {
@@ -183,6 +200,46 @@ async function deleteAccount() {
     ElMessage.success('账号已删除')
   } catch (err) {
     if (err !== 'cancel') ElMessage.error(err.message)
+  }
+}
+
+async function deleteSelectedAccounts() {
+  const count = selectedAccounts.value.length
+  if (!count || batchDeleting.value) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${count} 个账号吗？`,
+      '批量删除账号',
+      { type: 'warning' },
+    )
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return
+    ElMessage.error(err.message || '操作失败')
+    return
+  }
+
+  batchDeleting.value = true
+  try {
+    const indexes = getAccountDeleteIndexes(
+      state.value.accounts,
+      selectedAccounts.value,
+    )
+    for (const index of indexes) {
+      await api.deleteAccount(index)
+    }
+    createNew()
+    selectedAccounts.value = []
+    await refreshState()
+    await refreshLogs()
+    ElMessage.success(`已删除 ${indexes.length} 个账号`)
+  } catch (err) {
+    createNew()
+    selectedAccounts.value = []
+    await Promise.allSettled([refreshState(), refreshLogs()])
+    ElMessage.error(err.message || '批量删除账号失败')
+  } finally {
+    batchDeleting.value = false
   }
 }
 
