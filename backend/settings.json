@@ -3,5 +3,5 @@
   "refresh_times": [
     "07:30:00"
   ],
-  "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=5d75d93b-b8cc-4835-ae68-858f68a93d6f"
+  "webhook_url": ""
 }
