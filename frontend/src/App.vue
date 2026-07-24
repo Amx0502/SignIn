@@ -146,11 +146,7 @@ async function handleUserCommand(command) {
 
 function checkMobile() {
   isMobile.value = window.innerWidth <= 768
-  if (isMobile.value) {
-    sidebarCollapsed.value = true
-  } else {
-    sidebarCollapsed.value = false
-  }
+  sidebarCollapsed.value = window.innerWidth <= 1024
 }
 
 function toggleSidebar() {
@@ -158,7 +154,7 @@ function toggleSidebar() {
 }
 
 function closeSidebar() {
-  if (isMobile.value) {
+  if (isMobile.value || sidebarCollapsed.value) {
     sidebarMenuRef.value?.close('/checkin')
     sidebarMenuRenderKey.value += 1
     sidebarCollapsed.value = true

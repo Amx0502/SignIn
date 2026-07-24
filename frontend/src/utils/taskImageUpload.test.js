@@ -37,8 +37,11 @@ test('removing an image immediately synchronizes the task thumbnail list', async
   assert.match(removeHandler, /syncFileList\(\)/)
 })
 
-test('selecting a nested route only rebuilds the menu on mobile', async () => {
+test('tablet uses the icon sidebar and closes nested menu poppers', async () => {
   const source = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
+  const mobileHandler = source.match(
+    /function checkMobile\(\) \{[\s\S]*?\n\}/,
+  )?.[0] || ''
   const closeHandler = source.match(
     /function closeSidebar\(\) \{[\s\S]*?\n\}/,
   )?.[0] || ''
@@ -46,8 +49,13 @@ test('selecting a nested route only rebuilds the menu on mobile', async () => {
   assert.match(source, /ref="sidebarMenuRef"/)
   assert.match(source, /:key="sidebarMenuRenderKey"/)
   assert.match(source, /:persistent="false"/)
+  assert.match(mobileHandler, /isMobile\.value = window\.innerWidth <= 768/)
+  assert.match(
+    mobileHandler,
+    /sidebarCollapsed\.value = window\.innerWidth <= 1024/,
+  )
   assert.match(
     closeHandler,
-    /if \(isMobile\.value\) \{\s*sidebarMenuRef\.value\?\.close\('\/checkin'\)\s*sidebarMenuRenderKey\.value \+= 1\s*sidebarCollapsed\.value = true/,
+    /if \(isMobile\.value \|\| sidebarCollapsed\.value\) \{\s*sidebarMenuRef\.value\?\.close\('\/checkin'\)\s*sidebarMenuRenderKey\.value \+= 1\s*sidebarCollapsed\.value = true/,
   )
 })
