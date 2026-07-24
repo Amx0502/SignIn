@@ -15,7 +15,21 @@
   --shadow-hover: 0 24px 60px rgba(37, 99, 235, 0.14);
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.el-scrollbar__bar {
+  display: none !important;
+}
 
 html { scroll-behavior: smooth; }
 
