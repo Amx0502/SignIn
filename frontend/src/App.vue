@@ -15,7 +15,7 @@
       </div>
       <el-menu :default-active="$route.path" router class="sidebar-menu" :collapse="sidebarCollapsed" @select="closeSidebar">
         <el-menu-item v-if="currentUser?.role === 'admin'" index="/users">
-          <el-icon><User /></el-icon><span>用户管理</span>
+          <el-icon><Menu /></el-icon><span>用户管理</span>
         </el-menu-item>
         <el-sub-menu index="/checkin">
           <template #title>
@@ -47,7 +47,6 @@
         <el-space wrap class="header-right">
           <span class="header-current-time" aria-label="当前时间" role="timer">
             <span class="header-current-time__indicator"></span>
-            <el-icon class="header-current-time__icon"><Clock /></el-icon>
             <span class="header-current-time__content">
               <span class="header-current-time__date">{{ currentTime.slice(0, 10) }}</span>
               <span class="header-current-time__clock">{{ currentTime.slice(11) }}</span>
