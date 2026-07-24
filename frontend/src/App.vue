@@ -24,7 +24,7 @@
         @select="closeSidebar"
       >
         <el-menu-item v-if="currentUser?.role === 'admin'" index="/users">
-          <el-icon><Menu /></el-icon><span>用户管理</span>
+          <el-icon><UserFilled /></el-icon><span>用户管理</span>
         </el-menu-item>
         <el-sub-menu index="/checkin">
           <template #title>
@@ -56,8 +56,8 @@
             {{ sidebarCollapsed ? '展开菜单' : '收起菜单' }}
           </el-button>
           <div>
-            <p class="breadcrumb">后台控制台 / {{ $route.meta.title || '签到管理系统' }}</p>
-            <h2>{{ $route.meta.title || '签到管理系统' }}</h2>
+            <p class="breadcrumb">{{ breadcrumb.parentTitle }} / {{ breadcrumb.title }}</p>
+            <h2>{{ breadcrumb.title }}</h2>
           </div>
         </div>
         <el-space wrap class="header-right">
@@ -94,10 +94,11 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Odometer, User, Document, Refresh, Timer, List, Menu } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Refresh, Timer, List, Menu, UserFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAppState } from './composables/useAppState'
 import { formatCurrentTime } from './utils/currentTime'
+import { getBreadcrumb } from './utils/breadcrumb'
 import { logoutApi } from './api'
 
 const router = useRouter()
@@ -111,6 +112,7 @@ const sidebarMenuRenderKey = ref(0)
 const isMobile = ref(false)
 const currentUser = ref(null)
 const currentTime = ref(formatCurrentTime())
+const breadcrumb = computed(() => getBreadcrumb(route.meta))
 let currentTimeTimer = null
 
 const isLoginPage = computed(() => route.path === '/login')

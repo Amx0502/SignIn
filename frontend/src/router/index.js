@@ -13,13 +13,13 @@ const routes = [
   { path: '/change-password', name: 'ChangePassword', component: ChangePassword, meta: { title: '修改密码', requiresAuth: true } },
   { path: '/users', name: 'UserManagement', component: UserManagement, meta: { title: '用户管理', requiresAuth: true, requiresAdmin: true } },
   { path: '/', redirect: '/overview' },
-  { path: '/overview', name: 'Overview', component: Overview, meta: { title: '系统概览', requiresAuth: true } },
-  { path: '/accounts', name: 'Accounts', component: Accounts, meta: { title: '账号管理', requiresAuth: true } },
-  { path: '/checkin/auto', name: 'AutoCheckIn', component: AutoCheckIn, meta: { title: '自动签到', requiresAuth: true } },
-  { path: '/tasks', name: 'TaskManagement', component: TaskManagement, meta: { title: '任务管理', requiresAuth: true } },
+  { path: '/overview', name: 'Overview', component: Overview, meta: { title: '系统概览', parentTitle: '小小签到', requiresAuth: true } },
+  { path: '/accounts', name: 'Accounts', component: Accounts, meta: { title: '账号管理', parentTitle: '小小签到', requiresAuth: true } },
+  { path: '/checkin/auto', name: 'AutoCheckIn', component: AutoCheckIn, meta: { title: '自动签到', parentTitle: '小小签到', requiresAuth: true } },
+  { path: '/tasks', name: 'TaskManagement', component: TaskManagement, meta: { title: '任务管理', parentTitle: '小小签到', requiresAuth: true } },
   { path: '/checkin/normal', redirect: '/checkin/auto' },
   { path: '/checkin/image', redirect: '/checkin/auto' },
-  { path: '/logs', name: 'Logs', component: Logs, meta: { title: '运行日志', requiresAuth: true } }
+  { path: '/logs', name: 'Logs', component: Logs, meta: { title: '运行日志', parentTitle: '小小签到', requiresAuth: true } }
 ]
 
 const router = createRouter({
