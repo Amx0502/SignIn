@@ -37,7 +37,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed } from 'vue'
 import { Refresh, Bottom } from '@element-plus/icons-vue'
 import { useAppState } from '../composables/useAppState'
 
@@ -78,9 +78,6 @@ function scrollToBottom() {
   }
 }
 
-watch(logs, () => {
-  nextTick(scrollToBottom)
-}, { deep: true })
 </script>
 
 <style scoped>
