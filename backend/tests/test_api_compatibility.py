@@ -4,7 +4,9 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from app.auth_database import AuthDatabaseSettings
 from app.database import Database
+from app.database import DatabaseSettings
 from app.repository import AccountRepository
 from app.service import AppState
 
@@ -16,17 +18,24 @@ def test_importing_main_does_not_require_database_connection(monkeypatch):
     module = importlib.import_module("app.main")
 
     assert module.app.title
+    assert not hasattr(DatabaseSettings, "from_env")
+    assert not hasattr(AuthDatabaseSettings, "from_env")
 
 
 def test_account_and_task_api_contract_is_preserved(
     mysql_settings, monkeypatch, tmp_path
 ):
-    monkeypatch.setenv("DB_PASSWORD", mysql_settings.password)
     module = importlib.import_module("app.main")
     database = Database(mysql_settings)
     database.initialize()
     state = AppState(repository=AccountRepository(database), start_scheduler=False)
     monkeypatch.setattr(module, "app_state", state)
+    monkeypatch.setattr(
+        module,
+        "load_database_config",
+        lambda: SimpleNamespace(business=mysql_settings, auth=mysql_settings),
+    )
+    monkeypatch.setattr(module.auth_service, "repository", SimpleNamespace())
     monkeypatch.setattr(
         module.config, "LEGACY_ACCOUNTS_FILE", tmp_path / "missing-accounts.json"
     )

@@ -26,15 +26,14 @@ frontend/
 
 ## MySQL 配置
 
-默认连接地址、数据库和用户分别为 `127.0.0.1:3306`、`xxqd` 和 `root`。数据库密码必须通过环境变量提供，不能写入源码：
+业务数据库和认证数据库连接参数统一保存在本地
+`backend/database_config.json`。首次使用时复制示例文件并填写密码：
 
 ```powershell
-$env:DB_HOST="127.0.0.1"
-$env:DB_PORT="3306"
-$env:DB_NAME="xxqd"
-$env:DB_USER="root"
-$env:DB_PASSWORD="<数据库密码>"
+Copy-Item backend/database_config.example.json backend/database_config.json
 ```
+
+实际配置文件已被 Git 忽略，不会上传到仓库。
 
 启动用户需要拥有创建数据库和数据表的权限。`xxqd` 不存在时，应用会自动创建数据库及以下表：
 
@@ -54,13 +53,7 @@ $env:DB_PASSWORD="<数据库密码>"
 
 后台登录用户和会话使用独立的 MySQL 数据库 `User`：
 
-```powershell
-$env:AUTH_DB_HOST="127.0.0.1"
-$env:AUTH_DB_PORT="3306"
-$env:AUTH_DB_NAME="User"
-$env:AUTH_DB_USER="root"
-$env:AUTH_DB_PASSWORD="<数据库密码>"
-```
+认证数据库使用同一配置文件中的 `auth` 配置段。
 
 应用会自动创建 `users` 和 `user_sessions` 表。`users` 表为空时会一次性导入
 `backend/users.json`；旧会话不会迁移，升级后需要重新登录。若没有旧用户，则创建
@@ -76,16 +69,8 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 
-$env:DB_HOST="127.0.0.1"
-$env:DB_PORT="3306"
-$env:DB_NAME="xxqd"
-$env:DB_USER="root"
-$env:DB_PASSWORD="<数据库密码>"
-$env:AUTH_DB_HOST="127.0.0.1"
-$env:AUTH_DB_PORT="3306"
-$env:AUTH_DB_NAME="User"
-$env:AUTH_DB_USER="root"
-$env:AUTH_DB_PASSWORD="<数据库密码>"
+Copy-Item database_config.example.json database_config.json
+# 编辑 database_config.json，填写业务库和认证库连接参数
 
 python run.py
 ```
@@ -98,7 +83,6 @@ python run.py
 
 ```powershell
 cd backend
-$env:DB_PASSWORD="<数据库密码>"
 python -m pytest tests -v
 ```
 

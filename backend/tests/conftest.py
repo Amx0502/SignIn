@@ -1,21 +1,22 @@
-import os
 import uuid
 
 import pytest
 from sqlalchemy import create_engine, text
 
 from app.database import DatabaseSettings
+from app.database_config import load_database_config
 
 
 @pytest.fixture
 def mysql_settings():
+    local_settings = load_database_config().business
     database_name = f"xxqd_test_{uuid.uuid4().hex}"
     settings = DatabaseSettings(
-        host=os.getenv("DB_HOST", "127.0.0.1"),
-        port=int(os.getenv("DB_PORT", "3306")),
+        host=local_settings.host,
+        port=local_settings.port,
         name=database_name,
-        user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASSWORD", "123456"),
+        user=local_settings.user,
+        password=local_settings.password,
     )
     yield settings
 

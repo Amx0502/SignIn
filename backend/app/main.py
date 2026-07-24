@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .auth import AuthService
-from .auth_database import AuthDatabase, AuthDatabaseSettings
+from .auth_database import AuthDatabase
 from .auth_repository import (
     AuthRepository,
     DuplicateUsernameError,
@@ -31,6 +31,7 @@ from .models import (
     UserCreate,
     UserUpdate,
 )
+from .database_config import load_database_config
 from .repository import DuplicateMobileError
 from .service import AppState
 
@@ -43,10 +44,11 @@ security = HTTPBearer()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global auth_database
-    app_state.initialize_database()
+    database_config = load_database_config()
+    app_state.initialize_database(database_config.business)
     app_state.repository.import_legacy_json_if_empty(config.LEGACY_ACCOUNTS_FILE)
     if auth_service.repository is None:
-        auth_database = AuthDatabase(AuthDatabaseSettings.from_env())
+        auth_database = AuthDatabase(database_config.auth)
         auth_database.initialize()
         auth_repository = AuthRepository(auth_database)
         auth_repository.initialize_users(config.LEGACY_USERS_FILE)

@@ -1,60 +1,16 @@
-import os
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass
 from typing import Iterator
 
-from sqlalchemy import Engine, URL, create_engine, text
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from .database_config import ConnectionSettings
 from .db_models import Base
 
 
 _DATABASE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
-
-
-@dataclass(frozen=True)
-class DatabaseSettings:
-    host: str
-    port: int
-    name: str
-    user: str
-    password: str
-
-    @classmethod
-    def from_env(cls) -> "DatabaseSettings":
-        try:
-            password = os.environ["DB_PASSWORD"]
-        except KeyError as exc:
-            raise RuntimeError("缺少数据库密码环境变量 DB_PASSWORD") from exc
-        return cls(
-            host=os.getenv("DB_HOST", "127.0.0.1"),
-            port=int(os.getenv("DB_PORT", "3306")),
-            name=os.getenv("DB_NAME", "xxqd"),
-            user=os.getenv("DB_USER", "root"),
-            password=password,
-        )
-
-    def url(self, database: str | None = None) -> URL:
-        return URL.create(
-            "mysql+pymysql",
-            username=self.user,
-            password=self.password,
-            host=self.host,
-            port=self.port,
-            database=database if database is not None else self.name,
-            query={"charset": "utf8mb4"},
-        )
-
-    def server_url(self) -> URL:
-        return URL.create(
-            "mysql+pymysql",
-            username=self.user,
-            password=self.password,
-            host=self.host,
-            port=self.port,
-            query={"charset": "utf8mb4"},
-        )
+DatabaseSettings = ConnectionSettings
 
 
 class Database:

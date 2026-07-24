@@ -358,10 +358,10 @@ class AppState:
             self.scheduler_thread.start()
         self.logger.info("签到 Web 管理系统已启动")
 
-    def initialize_database(self) -> None:
+    def initialize_database(self, settings: DatabaseSettings) -> None:
         if self.repository is not None:
             return
-        self._owned_database = Database(DatabaseSettings.from_env())
+        self._owned_database = Database(settings)
         self._owned_database.initialize()
         self.repository = AccountRepository(self._owned_database)
 

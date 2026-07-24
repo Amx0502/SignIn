@@ -1,52 +1,16 @@
-import os
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass
 from typing import Iterator
 
-from sqlalchemy import Engine, URL, create_engine, inspect, text
+from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .auth_models import AuthBase
+from .database_config import ConnectionSettings
 
 
 _NAME_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
-
-
-@dataclass(frozen=True)
-class AuthDatabaseSettings:
-    host: str
-    port: int
-    name: str
-    user: str
-    password: str
-
-    @classmethod
-    def from_env(cls) -> "AuthDatabaseSettings":
-        try:
-            password = os.environ["AUTH_DB_PASSWORD"]
-        except KeyError as exc:
-            raise RuntimeError("缺少认证数据库密码环境变量 AUTH_DB_PASSWORD") from exc
-        return cls(
-            host=os.getenv("AUTH_DB_HOST", "127.0.0.1"),
-            port=int(os.getenv("AUTH_DB_PORT", "3306")),
-            name=os.getenv("AUTH_DB_NAME", "User"),
-            user=os.getenv("AUTH_DB_USER", "root"),
-            password=password,
-        )
-
-    def url(self) -> URL:
-        return URL.create(
-            "mysql+pymysql", username=self.user, password=self.password,
-            host=self.host, port=self.port, database=self.name,
-            query={"charset": "utf8mb4"},
-        )
-
-    def server_url(self) -> URL:
-        return URL.create(
-            "mysql+pymysql", username=self.user, password=self.password,
-            host=self.host, port=self.port, query={"charset": "utf8mb4"},
-        )
+AuthDatabaseSettings = ConnectionSettings
 
 
 class AuthDatabase:
