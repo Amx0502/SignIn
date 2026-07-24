@@ -7,13 +7,12 @@
     </section>
 
     <el-row :gutter="18">
-      <el-col v-for="item in metrics" :key="item.label" :xs="24" :sm="12" :md="6">
+      <el-col v-for="item in metrics" :key="item.label" :xs="24" :sm="12" :md="8">
         <el-card>
           <div class="metric-card">
             <div class="metric-top">
               <div>
-                <div class="metric-value" :style="item.small ? 'font-size: 19px; letter-spacing: -0.02em;' : ''">{{
-                  item.value }}</div>
+                <div class="metric-value">{{ item.value }}</div>
                 <div class="metric-label">{{ item.label }}</div>
               </div>
               <div class="metric-icon"><el-icon>
@@ -57,7 +56,7 @@
 
 <script setup>
 import { reactive, watch, computed } from 'vue'
-import { Refresh, VideoPlay, User, Tickets, CircleCheck, Clock } from '@element-plus/icons-vue'
+import { Refresh, VideoPlay, User, Tickets, CircleCheck } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAppState } from '../composables/useAppState'
 import api from '../api'
@@ -67,8 +66,7 @@ const settingsForm = reactive({ refresh_times: '', webhook_url: '' })
 const metrics = computed(() => [
   { label: '账号总数', value: state.value.account_count, icon: User, trend: '账号资产集中管理' },
   { label: '任务总数', value: state.value.task_count, icon: Tickets, trend: '覆盖普通与图片签到' },
-  { label: '启用任务', value: state.value.enabled_task_count, icon: CircleCheck, trend: '已启用的定时任务' },
-  { label: '当前时间', value: state.value.server_time, icon: Clock, trend: '服务端时间同步', small: true }
+  { label: '启用任务', value: state.value.enabled_task_count, icon: CircleCheck, trend: '已启用的定时任务' }
 ])
 watch(() => state.value.refresh_times, (val) => { settingsForm.refresh_times = (val || []).join(', ') }, { immediate: true })
 watch(() => state.value.webhook_url, (val) => { settingsForm.webhook_url = val || '' }, { immediate: true })

@@ -45,7 +45,14 @@
           </div>
         </div>
         <el-space wrap class="header-right">
-          <el-tag effect="plain" type="success">实时轮询</el-tag>
+          <span class="header-current-time" aria-label="当前时间" role="timer">
+            <span class="header-current-time__indicator"></span>
+            <el-icon class="header-current-time__icon"><Clock /></el-icon>
+            <span class="header-current-time__content">
+              <span class="header-current-time__date">{{ currentTime.slice(0, 10) }}</span>
+              <span class="header-current-time__clock">{{ currentTime.slice(11) }}</span>
+            </span>
+          </span>
           <el-button type="primary" :icon="Refresh" @click="loadAll" :loading="loading">刷新数据</el-button>
           <el-dropdown @command="handleUserCommand">
             <span class="user-info">
@@ -72,9 +79,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Odometer, User, Document, Refresh, Timer, List, Menu } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Refresh, Timer, List, Menu, Clock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAppState } from './composables/useAppState'
+import { formatCurrentTime } from './utils/currentTime'
 import { logoutApi } from './api'
 
 const router = useRouter()
@@ -85,6 +93,8 @@ const { loading, loadAll } = useAppState()
 const sidebarCollapsed = ref(false)
 const isMobile = ref(false)
 const currentUser = ref(null)
+const currentTime = ref(formatCurrentTime())
+let currentTimeTimer = null
 
 const isLoginPage = computed(() => route.path === '/login')
 
@@ -137,10 +147,14 @@ function closeSidebar() {
 onMounted(() => {
   checkMobile()
   getUserInfo()
+  currentTimeTimer = window.setInterval(() => {
+    currentTime.value = formatCurrentTime()
+  }, 1000)
   window.addEventListener('resize', checkMobile)
 })
 
 onUnmounted(() => {
+  window.clearInterval(currentTimeTimer)
   window.removeEventListener('resize', checkMobile)
 })
 </script>
@@ -178,6 +192,58 @@ onUnmounted(() => {
 .menu-btn { display: none; }
 .breadcrumb { margin: 0 0 4px; color: #64748b; font-size: 12px; }
 .top-header h2 { margin: 0; font-size: 22px; color: #0f172a; letter-spacing: -0.03em; }
+.header-current-time {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 6px 14px 6px 11px;
+  overflow: hidden;
+  color: #1e3a8a;
+  white-space: nowrap;
+  border: 1px solid rgba(96, 165, 250, 0.42);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(219, 234, 254, 0.72)),
+    radial-gradient(circle at 100% 0%, rgba(14, 165, 233, 0.2), transparent 58%);
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.header-current-time::after {
+  content: "";
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  right: -15px;
+  top: -18px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.2);
+}
+.header-current-time__indicator {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.14);
+  animation: headerTimePulse 2s ease-in-out infinite;
+}
+.header-current-time__icon {
+  width: 25px;
+  height: 25px;
+  flex: none;
+  color: #2563eb;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+.header-current-time__content {
+  display: grid;
+  gap: 1px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.header-current-time__date { color: #64748b; font-size: 10px; font-weight: 650; letter-spacing: 0.06em; }
+.header-current-time__clock { color: #1e3a8a; font-size: 15px; font-weight: 800; letter-spacing: 0.04em; }
 .user-info { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; cursor: pointer; color: #374151; }
 .user-info:hover { background: rgba(0, 0, 0, 0.05); }
 .sidebar-mask {
@@ -185,6 +251,7 @@ onUnmounted(() => {
   animation: fadeIn 0.2s ease;
 }
 @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); } }
+@keyframes headerTimePulse { 50% { opacity: 0.58; box-shadow: 0 0 0 7px rgba(56, 189, 248, 0); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 @media (max-width: 900px) {
@@ -199,6 +266,10 @@ onUnmounted(() => {
   .top-header h2 { font-size: 18px; }
   .breadcrumb { font-size: 11px; }
   .header-right { margin-top: 8px; }
+  .header-current-time { min-height: 38px; padding: 5px 10px 5px 8px; gap: 7px; border-radius: 12px; }
+  .header-current-time__icon { width: 22px; height: 22px; }
+  .header-current-time__date { font-size: 9px; }
+  .header-current-time__clock { font-size: 13px; }
   .sidebar { 
     position: fixed; left: 0; top: 0; z-index: 100; height: 100vh; 
     transition: transform 0.3s ease, width 0.3s ease;
@@ -211,5 +282,6 @@ onUnmounted(() => {
 @media (max-width: 480px) {
   .top-header { padding: 8px 10px; }
   .top-header h2 { font-size: 16px; }
+  .header-current-time__indicator { display: none; }
 }
 </style>
