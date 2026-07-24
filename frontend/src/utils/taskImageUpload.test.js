@@ -1,0 +1,48 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+
+
+test('task image upload renders themed thumbnail cards without the default file list', async () => {
+  const source = await readFile(
+    new URL('../components/TaskImageUpload.vue', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(source, /task-image-upload__card/)
+  assert.match(source, /task-image-upload__filename/)
+  assert.match(source, /task-image-upload__preview/)
+  assert.match(source, /预览/)
+  assert.match(source, /删除/)
+  assert.doesNotMatch(source, /:file-list=/)
+})
+
+
+test('sidebar menu button is always visible and describes its state', async () => {
+  const source = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
+
+  assert.match(source, /sidebarCollapsed \? '展开菜单' : '收起菜单'/)
+  assert.doesNotMatch(source, /\.menu-btn\s*\{\s*display:\s*none/)
+})
+
+test('removing an image immediately synchronizes the task thumbnail list', async () => {
+  const source = await readFile(
+    new URL('../components/TaskManager.vue', import.meta.url),
+    'utf8',
+  )
+  const removeHandler = source.match(
+    /function onImageRemove\(file, fileList\) \{[\s\S]*?\n\}/,
+  )?.[0] || ''
+
+  assert.match(removeHandler, /syncFileList\(\)/)
+})
+
+test('selecting a nested route closes the teleported submenu popper', async () => {
+  const source = await readFile(new URL('../App.vue', import.meta.url), 'utf8')
+
+  assert.match(source, /ref="sidebarMenuRef"/)
+  assert.match(source, /:key="sidebarMenuRenderKey"/)
+  assert.match(source, /:persistent="false"/)
+  assert.match(source, /sidebarMenuRef\.value\?\.close\('\/checkin'\)/)
+  assert.match(source, /sidebarMenuRenderKey\.value \+= 1/)
+})

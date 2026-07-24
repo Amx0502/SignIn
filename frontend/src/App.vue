@@ -13,7 +13,16 @@
         <span class="pulse-dot"></span>
         <span>{{ loading ? '正在同步数据' : '服务运行中' }}</span>
       </div>
-      <el-menu :default-active="$route.path" router class="sidebar-menu" :collapse="sidebarCollapsed" @select="closeSidebar">
+      <el-menu
+        :key="sidebarMenuRenderKey"
+        ref="sidebarMenuRef"
+        :default-active="$route.path"
+        router
+        class="sidebar-menu"
+        :collapse="sidebarCollapsed"
+        :persistent="false"
+        @select="closeSidebar"
+      >
         <el-menu-item v-if="currentUser?.role === 'admin'" index="/users">
           <el-icon><Menu /></el-icon><span>用户管理</span>
         </el-menu-item>
@@ -38,7 +47,14 @@
     <el-container class="main-shell">
       <el-header class="top-header">
         <div class="header-left">
-          <el-button class="menu-btn" link :icon="Menu" @click="toggleSidebar" style="margin-right: 12px;">菜单</el-button>
+          <el-button
+            class="menu-btn"
+            :icon="Menu"
+            :aria-label="sidebarCollapsed ? '展开菜单' : '收起菜单'"
+            @click="toggleSidebar"
+          >
+            {{ sidebarCollapsed ? '展开菜单' : '收起菜单' }}
+          </el-button>
           <div>
             <p class="breadcrumb">后台控制台 / {{ $route.meta.title || '签到管理系统' }}</p>
             <h2>{{ $route.meta.title || '签到管理系统' }}</h2>
@@ -90,6 +106,8 @@ const route = useRoute()
 const { loading, loadAll } = useAppState()
 
 const sidebarCollapsed = ref(false)
+const sidebarMenuRef = ref(null)
+const sidebarMenuRenderKey = ref(0)
 const isMobile = ref(false)
 const currentUser = ref(null)
 const currentTime = ref(formatCurrentTime())
@@ -138,6 +156,8 @@ function toggleSidebar() {
 }
 
 function closeSidebar() {
+  sidebarMenuRef.value?.close('/checkin')
+  sidebarMenuRenderKey.value += 1
   if (isMobile.value) {
     sidebarCollapsed.value = true
   }
@@ -188,7 +208,7 @@ onUnmounted(() => {
 .main-shell { min-width: 0; }
 .top-header { min-height: 76px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 28px; background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(226, 232, 240, 0.8); position: sticky; top: 0; z-index: 10; }
 .header-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-.menu-btn { display: none; }
+.menu-btn { flex: none; margin-right: 4px; color: #2563eb; border-color: #bfdbfe; background: #eff6ff; }
 .breadcrumb { margin: 0 0 4px; color: #64748b; font-size: 12px; }
 .top-header h2 { margin: 0; font-size: 22px; color: #0f172a; letter-spacing: -0.03em; }
 .header-current-time {
@@ -248,7 +268,6 @@ onUnmounted(() => {
 @media (max-width: 900px) {
   .top-header { padding: 12px 16px; height: auto; flex-wrap: wrap; }
   .header-left { flex-wrap: wrap; }
-  .menu-btn { display: block; }
 }
 
 @media (max-width: 768px) {

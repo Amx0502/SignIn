@@ -134,17 +134,12 @@
               </el-radio-group>
             </el-form-item>
             <el-form-item label="签到图片">
-              <el-upload
+              <TaskImageUpload
                 :file-list="fileList"
                 :http-request="customUpload"
                 :on-remove="onImageRemove"
-                :on-preview="onPreview"
-                accept="image/*"
                 :limit="3"
-                multiple
-              >
-                <el-button type="primary" :icon="Upload">点击上传图片</el-button>
-              </el-upload>
+              />
               <div class="upload-tip">最多可上传 3 张图片，留空表示不使用图片签到</div>
             </el-form-item>
             <el-form-item>
@@ -167,18 +162,16 @@
       </el-col>
     </el-row>
 
-    <el-dialog v-model="previewVisible" title="图片预览" width="fit-content" align-center>
-      <img :src="previewUrl" style="max-width: 100%; max-height: 70vh; border-radius: 8px;" />
-    </el-dialog>
     <CheckinResultDialog v-model="checkinResultVisible" :result="checkinResult" />
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, computed, onMounted, watch } from 'vue'
-import { Search, VideoPlay, Delete, Upload } from '@element-plus/icons-vue'
+import { Search, VideoPlay, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CheckinResultDialog from './CheckinResultDialog.vue'
+import TaskImageUpload from './TaskImageUpload.vue'
 import { useAppState } from '../composables/useAppState'
 import { createCheckinResult } from '../utils/checkinResult'
 import api from '../api'
@@ -189,8 +182,6 @@ const selectedActualIndex = ref(-1)
 const projects = ref([])
 const formRef = ref(null)
 const fileList = ref([])
-const previewVisible = ref(false)
-const previewUrl = ref('')
 const checkinResultVisible = ref(false)
 const checkinResult = ref(null)
 const locationMode = ref('none')
@@ -339,18 +330,7 @@ function onImageRemove(file, fileList) {
     const rName = String(removedPath).replace(/\\/g, '/').split('/').pop()
     return pName !== rName
   })
-}
-
-function onPreview(file) {
-  let url = ''
-  if (file.url) {
-    url = file.url
-  } else if (file.path) {
-    const name = String(file.path).replace(/\\/g, '/').split('/').pop()
-    url = `/uploads/${name}`
-  }
-  previewUrl.value = url
-  previewVisible.value = true
+  syncFileList()
 }
 
 async function fetchProjects() {

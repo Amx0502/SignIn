@@ -82,17 +82,12 @@
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item label="签到图片">
-                  <el-upload
+                  <TaskImageUpload
                     :file-list="getEditFileList(task)"
                     :http-request="(options) => customUpload(task, options)"
                     :on-remove="(file) => onImageRemove(task, file)"
-                    :on-preview="(file) => onPreview(file)"
-                    accept="image/*"
                     :limit="3"
-                    multiple
-                  >
-                    <el-button type="primary" :icon="Upload">点击上传图片</el-button>
-                  </el-upload>
+                  />
                   <div class="upload-tip">最多可上传 3 张图片，留空表示不使用图片签到</div>
                 </el-form-item>
                 <el-form-item>
@@ -111,25 +106,21 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="previewVisible" title="图片预览" width="fit-content" align-center>
-      <img :src="previewUrl" style="max-width: 100%; max-height: 70vh; border-radius: 8px;" />
-    </el-dialog>
     <CheckinResultDialog v-model="checkinResultVisible" :result="checkinResult" />
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, computed, watch } from 'vue'
-import { Edit, VideoPlay, Delete, Upload, User, List, Clock, MapLocation, Picture, Calendar, ChatLineSquare } from '@element-plus/icons-vue'
+import { Edit, VideoPlay, Delete, User, List, Clock, MapLocation, Picture, Calendar, ChatLineSquare } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CheckinResultDialog from '../components/CheckinResultDialog.vue'
+import TaskImageUpload from '../components/TaskImageUpload.vue'
 import { useAppState } from '../composables/useAppState'
 import { createCheckinResult } from '../utils/checkinResult'
 import api from '../api'
 
 const { state: appState, refreshState, refreshLogs } = useAppState()
-const previewVisible = ref(false)
-const previewUrl = ref('')
 const checkinResultVisible = ref(false)
 const checkinResult = ref(null)
 const editingKey = ref(null)
@@ -316,11 +307,6 @@ function onImageRemove(task, file) {
     path,
     status: 'success'
   }))
-}
-
-function onPreview(file) {
-  previewUrl.value = file.url || ''
-  previewVisible.value = true
 }
 
 async function runTask(row) {
