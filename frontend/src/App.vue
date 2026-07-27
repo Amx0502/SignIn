@@ -37,6 +37,9 @@
           <el-menu-item index="/tasks"><el-icon><List /></el-icon><span>任务管理</span></el-menu-item>
           <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>运行日志</span></el-menu-item>
         </el-sub-menu>
+        <el-menu-item index="/class-cube">
+          <el-icon><Grid /></el-icon><span>班级魔方</span>
+        </el-menu-item>
       </el-menu>
       <div v-if="!sidebarCollapsed" class="sidebar-footer">
         <span>自动化调度</span>
@@ -94,7 +97,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Odometer, User, Document, Refresh, Timer, List, Menu, UserFilled } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Refresh, Timer, List, Menu, UserFilled, Grid } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAppState } from './composables/useAppState'
 import { formatCurrentTime } from './utils/currentTime'

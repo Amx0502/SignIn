@@ -5,6 +5,7 @@ import Logs from '../views/Logs.vue'
 import AutoCheckIn from '../views/AutoCheckIn.vue'
 import TaskManagement from '../views/TaskManagement.vue'
 import Login from '../views/Login.vue'
+import ClassCube from '../views/ClassCube.vue'
 import UserManagement from '../views/UserManagement.vue'
 import ChangePassword from '../views/ChangePassword.vue'
 
@@ -19,7 +20,8 @@ const routes = [
   { path: '/tasks', name: 'TaskManagement', component: TaskManagement, meta: { title: '任务管理', parentTitle: '小小签到', requiresAuth: true } },
   { path: '/checkin/normal', redirect: '/checkin/auto' },
   { path: '/checkin/image', redirect: '/checkin/auto' },
-  { path: '/logs', name: 'Logs', component: Logs, meta: { title: '运行日志', parentTitle: '小小签到', requiresAuth: true } }
+  { path: '/logs', name: 'Logs', component: Logs, meta: { title: '运行日志', parentTitle: '小小签到', requiresAuth: true } },
+  { path: '/class-cube', name: 'ClassCube', component: ClassCube, meta: { title: '班级魔方', parentTitle: '班级魔方', requiresAuth: true } }
 ]
 
 const router = createRouter({
