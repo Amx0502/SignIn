@@ -1,5 +1,6 @@
 import base64
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -85,6 +86,8 @@ class FakeSession:
         response = self.responses.pop(0)
         if isinstance(response, BaseException):
             raise response
+        if callable(response):
+            response = response()
         if not response.url:
             response.url = url
         return response
@@ -154,6 +157,30 @@ class ClassCubeQrSessionTest(unittest.TestCase):
         )
         self.assertEqual(created.expires_at, 220.0)
 
+    def test_qr_ttl_starts_after_image_download_succeeds(self):
+        clock = MutableClock(100.0)
+
+        def delayed_image():
+            clock.value = 180.0
+            return qr_image()
+
+        session = FakeSession(
+            [
+                qr_page(),
+                delayed_image,
+                FakeResponse(json_data={"status": "pending"}),
+            ]
+        )
+        client = self.make_client(session, clock)
+
+        created = client.create_qr_session(7)
+
+        self.assertEqual(created.expires_at, 300.0)
+        clock.value = 299.0
+        result = client.poll_qr_session(created.token, 7)
+        self.assertEqual(result.status, "pending")
+        self.assertFalse(session.closed)
+
     def test_poll_pending_json_keeps_session_open(self):
         session = FakeSession(
             [
@@ -178,7 +205,9 @@ class ClassCubeQrSessionTest(unittest.TestCase):
                 qr_image(),
                 FakeResponse(
                     status_code=302,
-                    headers={"Location": "/student"},
+                    headers={
+                        "Location": "/weixin/uidlogin/student",
+                    },
                     cookies={
                         "remember_student_abc": "cookie-token",
                         "unrelated": "ignored",
@@ -198,18 +227,109 @@ class ClassCubeQrSessionTest(unittest.TestCase):
         )
         self.assertEqual(
             result.redirect_url,
-            "https://bjmf.k8n.cn/student",
+            "https://bjmf.k8n.cn/weixin/uidlogin/student",
         )
+        self.assertFalse(result.retryable)
         self.assertTrue(session.closed)
         with self.assertRaises(QrSessionNotFound):
             client.poll_qr_session(created.token, 7)
 
-    def test_poll_timeout_is_reported_without_retry_or_cleanup(self):
+    def test_poll_timeout_is_retryable_error_without_cleanup(self):
         session = FakeSession(
             [
                 qr_page(),
                 qr_image(),
                 requests.Timeout("slow remote"),
+                FakeResponse(
+                    status_code=302,
+                    headers={
+                        "Location": "/weixin/uidlogin/student",
+                    },
+                    cookies={"remember_student_abc": "cookie-token"},
+                ),
+            ]
+        )
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+
+        first_result = client.poll_qr_session(created.token, 7)
+
+        self.assertEqual(first_result.status, "error")
+        self.assertTrue(first_result.retryable)
+        self.assertFalse(session.closed)
+        self.assertEqual(len(session.calls), 3)
+        second_result = client.poll_qr_session(created.token, 7)
+        self.assertEqual(second_result.status, "success")
+
+    def test_poll_http_error_is_retryable_and_keeps_session(self):
+        session = FakeSession(
+            [
+                qr_page(),
+                qr_image(),
+                FakeResponse(status_code=503),
+                FakeResponse(
+                    status_code=302,
+                    headers={
+                        "Location": "/weixin/uidlogin/student",
+                    },
+                    cookies={"remember_student_abc": "cookie-token"},
+                ),
+            ]
+        )
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+
+        first_result = client.poll_qr_session(created.token, 7)
+
+        self.assertEqual(first_result.status, "error")
+        self.assertTrue(first_result.retryable)
+        self.assertFalse(session.closed)
+        second_result = client.poll_qr_session(created.token, 7)
+        self.assertEqual(second_result.status, "success")
+
+    def test_poll_permanent_http_error_is_terminal(self):
+        session = FakeSession(
+            [
+                qr_page(),
+                qr_image(),
+                FakeResponse(status_code=400),
+            ]
+        )
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+
+        result = client.poll_qr_session(created.token, 7)
+
+        self.assertEqual(result.status, "error")
+        self.assertFalse(result.retryable)
+        self.assertTrue(session.closed)
+        with self.assertRaises(QrSessionNotFound):
+            client.poll_qr_session(created.token, 7)
+
+    def test_poll_terminal_json_error_is_not_retryable_and_cleans_up(self):
+        session = FakeSession(
+            [
+                qr_page(),
+                qr_image(),
+                FakeResponse(json_data={"status": "failed"}),
+            ]
+        )
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+
+        result = client.poll_qr_session(created.token, 7)
+
+        self.assertEqual(result.status, "error")
+        self.assertFalse(result.retryable)
+        self.assertTrue(session.closed)
+        with self.assertRaises(QrSessionNotFound):
+            client.poll_qr_session(created.token, 7)
+
+    def test_poll_ordinary_redirect_is_terminal_error_even_with_cookie(self):
+        session = FakeSession(
+            [
+                qr_page(),
+                qr_image(),
                 FakeResponse(
                     status_code=302,
                     headers={"Location": "/student"},
@@ -220,13 +340,109 @@ class ClassCubeQrSessionTest(unittest.TestCase):
         client = self.make_client(session)
         created = client.create_qr_session(7)
 
-        first_result = client.poll_qr_session(created.token, 7)
+        result = client.poll_qr_session(created.token, 7)
 
-        self.assertEqual(first_result.status, "timeout")
-        self.assertFalse(session.closed)
+        self.assertEqual(result.status, "error")
+        self.assertFalse(result.retryable)
+        self.assertTrue(session.closed)
+
+    def test_poll_expected_redirect_without_cookie_is_terminal_error(self):
+        session = FakeSession(
+            [
+                qr_page(),
+                qr_image(),
+                FakeResponse(
+                    status_code=302,
+                    headers={
+                        "Location": "/weixin/uidlogin/student",
+                    },
+                ),
+            ]
+        )
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+
+        result = client.poll_qr_session(created.token, 7)
+
+        self.assertEqual(result.status, "error")
+        self.assertEqual(result.cookie, "")
+        self.assertFalse(result.retryable)
+        self.assertTrue(session.closed)
+
+    def test_poll_explicit_success_requires_and_returns_cookie(self):
+        session = FakeSession(
+            [
+                qr_page(),
+                qr_image(),
+                FakeResponse(
+                    json_data={"status": "success"},
+                    cookies={"remember_student_abc": "cookie-token"},
+                ),
+            ]
+        )
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+
+        result = client.poll_qr_session(created.token, 7)
+
+        self.assertEqual(result.status, "success")
+        self.assertEqual(
+            result.cookie,
+            "remember_student_abc=cookie-token",
+        )
+        self.assertFalse(result.retryable)
+        self.assertTrue(session.closed)
+
+    def test_concurrent_poll_returns_pending_while_first_is_in_flight(self):
+        request_started = threading.Event()
+        release_request = threading.Event()
+
+        def blocking_pending_response():
+            request_started.set()
+            if not release_request.wait(2):
+                raise AssertionError("test did not release remote request")
+            return FakeResponse(json_data={"status": "pending"})
+
+        session = FakeSession(
+            [
+                qr_page(),
+                qr_image(),
+                blocking_pending_response,
+                FakeResponse(json_data={"status": "pending"}),
+            ]
+        )
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+        results = {}
+        errors = []
+
+        def poll(name):
+            try:
+                results[name] = client.poll_qr_session(
+                    created.token,
+                    7,
+                )
+            except BaseException as exc:
+                errors.append(exc)
+
+        first = threading.Thread(target=poll, args=("first",))
+        second = threading.Thread(target=poll, args=("second",))
+        first.start()
+        self.assertTrue(request_started.wait(1))
+        second.start()
+        second.join(0.2)
+        second_finished_without_remote = not second.is_alive()
+        release_request.set()
+        first.join(2)
+        second.join(2)
+
+        self.assertTrue(second_finished_without_remote)
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(results["first"].status, "pending")
+        self.assertEqual(results["second"].status, "pending")
         self.assertEqual(len(session.calls), 3)
-        second_result = client.poll_qr_session(created.token, 7)
-        self.assertEqual(second_result.status, "success")
 
     def test_create_cleans_up_expired_sessions(self):
         clock = MutableClock(100.0)
@@ -307,6 +523,19 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
         self.assertEqual(
             kwargs["headers"]["Cookie"],
             "remember_student_abc=cookie-token",
+        )
+        self.assertEqual(
+            [
+                (cookie.name, cookie.value, cookie.domain)
+                for cookie in session.cookies
+            ],
+            [
+                (
+                    "remember_student_abc",
+                    "cookie-token",
+                    ".k8n.cn",
+                )
+            ],
         )
         self.assertIn(
             "MicroMessenger",
@@ -439,6 +668,13 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
                 kwargs["headers"]["User-Agent"],
             )
             self.assertEqual(kwargs["timeout"], (5, 10))
+        self.assertEqual(
+            [
+                (cookie.name, cookie.value, cookie.domain)
+                for cookie in session.cookies
+            ],
+            [("cookie", "value", ".k8n.cn")],
+        )
 
     def test_submit_form_posts_merged_fields_and_parses_result(self):
         result_url = "https://bjmf.k8n.cn/student/punchs/result"
@@ -497,6 +733,19 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             kwargs["headers"]["User-Agent"],
         )
         self.assertEqual(kwargs["timeout"], (5, 10))
+        self.assertEqual(
+            [
+                (cookie.name, cookie.value, cookie.domain)
+                for cookie in session.cookies
+            ],
+            [
+                (
+                    "remember_student_abc",
+                    "cookie-token",
+                    ".k8n.cn",
+                )
+            ],
+        )
 
     def test_submit_post_does_not_retry_after_timeout(self):
         session = FakeSession(

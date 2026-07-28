@@ -1,10 +1,11 @@
 import base64
 import secrets
 from dataclasses import dataclass
+from http.cookies import SimpleCookie
 from pathlib import Path
 from threading import RLock
 from typing import Callable
-from urllib.parse import quote, urljoin
+from urllib.parse import quote, urljoin, urlparse
 
 import requests
 
@@ -57,6 +58,7 @@ class QrSessionResult:
     status: str
     cookie: str = ""
     redirect_url: str = ""
+    retryable: bool = False
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,7 @@ class _QrSession:
     owner_user_id: int
     created_at: float
     session: requests.Session
+    in_flight: bool = False
 
 
 class ClassCubeClient:
@@ -84,9 +87,9 @@ class ClassCubeClient:
         self._qr_lock = RLock()
 
     def create_qr_session(self, owner_user_id: int) -> QrSessionView:
-        now = self._clock()
+        cleanup_time = self._clock()
         with self._qr_lock:
-            self._cleanup_expired(now)
+            self._cleanup_expired(cleanup_time)
         session = self._session_factory()
         try:
             login_response = session.get(
@@ -121,9 +124,10 @@ class ClassCubeClient:
 
         token = secrets.token_urlsafe(32)
         with self._qr_lock:
+            created_at = self._clock()
             self._qr_sessions[token] = _QrSession(
                 owner_user_id=owner_user_id,
-                created_at=now,
+                created_at=created_at,
                 session=session,
             )
         return QrSessionView(
@@ -131,11 +135,11 @@ class ClassCubeClient:
             qr_image_base64=base64.b64encode(
                 image_response.content
             ).decode("ascii"),
-            expires_at=now + QR_TTL_SECONDS,
+            expires_at=created_at + QR_TTL_SECONDS,
         )
 
     def fetch_courses(self, cookie: str) -> list[ParsedCourse]:
-        session = self._session_factory()
+        session = self._short_lived_session(cookie)
         try:
             response = self._get_with_retries(
                 session,
@@ -152,7 +156,7 @@ class ClassCubeClient:
         cookie: str,
         remote_course_id: str,
     ) -> list[RemoteItemBundle]:
-        session = self._session_factory()
+        session = self._short_lived_session(cookie)
         course_id = str(remote_course_id)
         list_url = CHECKIN_LIST_URL.format(
             course_id=quote(course_id, safe=""),
@@ -201,7 +205,7 @@ class ClassCubeClient:
         fields: dict[str, str],
         photo_path=None,
     ) -> ParsedResult:
-        session = self._session_factory()
+        session = self._short_lived_session(cookie)
         payload = dict(form.hidden_fields)
         payload.update(fields)
         photo_file = None
@@ -264,52 +268,108 @@ class ClassCubeClient:
                 or qr_session.owner_user_id != owner_user_id
             ):
                 raise QrSessionNotFound(token)
+            if qr_session.in_flight:
+                return QrSessionResult(status="pending")
             if now - qr_session.created_at >= QR_TTL_SECONDS:
                 self._remove_qr_session(token)
                 return QrSessionResult(status="expired")
+            qr_session.in_flight = True
 
-            try:
-                response = qr_session.session.get(
-                    QR_LOGIN_URL,
-                    headers=self._request_headers(),
-                    timeout=REQUEST_TIMEOUT,
-                    allow_redirects=False,
-                )
-            except requests.Timeout:
-                return QrSessionResult(status="timeout")
-            except requests.RequestException:
-                return QrSessionResult(status="error")
+        try:
+            response = qr_session.session.get(
+                QR_LOGIN_URL,
+                headers=self._request_headers(),
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=False,
+            )
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            status_code = getattr(exc.response, "status_code", 0)
+            retryable = (
+                status_code in {408, 425, 429}
+                or 500 <= status_code < 600
+            )
+            return self._complete_qr_poll(
+                token,
+                qr_session,
+                QrSessionResult(
+                    status="error",
+                    retryable=retryable,
+                ),
+                terminal=not retryable,
+            )
+        except requests.RequestException:
+            return self._complete_qr_poll(
+                token,
+                qr_session,
+                QrSessionResult(status="error", retryable=True),
+                terminal=False,
+            )
+        except BaseException:
+            self._release_qr_poll(token, qr_session)
+            raise
 
-            if 300 <= response.status_code < 400:
-                redirect_url = urljoin(
-                    QR_LOGIN_URL,
-                    response.headers.get("Location", ""),
-                )
-                cookie = self._remember_student_cookie(
-                    qr_session.session,
-                    response,
-                )
-                self._remove_qr_session(token)
-                return QrSessionResult(
+        if 300 <= response.status_code < 400:
+            redirect_url = urljoin(
+                QR_LOGIN_URL,
+                response.headers.get("Location", ""),
+            )
+            cookie = self._remember_student_cookie(
+                qr_session.session,
+                response,
+            )
+            if self._is_uidlogin_redirect(redirect_url) and cookie:
+                result = QrSessionResult(
                     status="success",
                     cookie=cookie,
                     redirect_url=redirect_url,
                 )
-
-            try:
-                response.raise_for_status()
-            except requests.RequestException:
-                return QrSessionResult(status="error")
-
-            status = self._poll_status(response)
-            if status in {"success", "expired", "error"}:
-                cookie = self._remember_student_cookie(
-                    qr_session.session,
-                    response,
+            else:
+                result = QrSessionResult(
+                    status="error",
+                    redirect_url=redirect_url,
                 )
-                self._remove_qr_session(token)
-                return QrSessionResult(status=status, cookie=cookie)
-            return QrSessionResult(status=status)
+            return self._complete_qr_poll(
+                token,
+                qr_session,
+                result,
+                terminal=True,
+            )
+
+        status = self._poll_status(response)
+        if status == "pending":
+            return self._complete_qr_poll(
+                token,
+                qr_session,
+                QrSessionResult(status="pending"),
+                terminal=False,
+            )
+
+        cookie = self._remember_student_cookie(
+            qr_session.session,
+            response,
+        )
+        if status == "success" and not cookie:
+            status = "error"
+        return self._complete_qr_poll(
+            token,
+            qr_session,
+            QrSessionResult(status=status, cookie=cookie),
+            terminal=True,
+        )
+
+    def _short_lived_session(self, cookie: str):
+        session = self._session_factory()
+        parsed_cookie = SimpleCookie()
+        parsed_cookie.load(cookie)
+        for morsel in parsed_cookie.values():
+            session.cookies.set(
+                morsel.key,
+                morsel.value,
+                domain=".k8n.cn",
+                path="/",
+            )
+        return session
 
     def _get_with_retries(
         self,
@@ -385,7 +445,10 @@ class ClassCubeClient:
             getattr(response, "cookies", ()),
         ):
             for cookie in jar:
-                if cookie.name.startswith("remember_student_"):
+                if (
+                    cookie.name.startswith("remember_student_")
+                    and cookie.value
+                ):
                     cookies[cookie.name] = cookie.value
         return "; ".join(
             f"{name}={value}" for name, value in sorted(cookies.items())
@@ -400,6 +463,7 @@ class ClassCubeClient:
             token
             for token, qr_session in self._qr_sessions.items()
             if token != exclude_token
+            and not qr_session.in_flight
             and now - qr_session.created_at >= QR_TTL_SECONDS
         ]
         for token in expired_tokens:
@@ -409,3 +473,43 @@ class ClassCubeClient:
         qr_session = self._qr_sessions.pop(token, None)
         if qr_session is not None:
             qr_session.session.close()
+
+    def _complete_qr_poll(
+        self,
+        token: str,
+        qr_session: _QrSession,
+        result: QrSessionResult,
+        *,
+        terminal: bool,
+    ) -> QrSessionResult:
+        session_to_close = None
+        with self._qr_lock:
+            current = self._qr_sessions.get(token)
+            if current is qr_session:
+                current.in_flight = False
+                if terminal:
+                    self._qr_sessions.pop(token)
+                    session_to_close = current.session
+        if session_to_close is not None:
+            session_to_close.close()
+        return result
+
+    def _release_qr_poll(
+        self,
+        token: str,
+        qr_session: _QrSession,
+    ) -> None:
+        with self._qr_lock:
+            current = self._qr_sessions.get(token)
+            if current is qr_session:
+                current.in_flight = False
+
+    @staticmethod
+    def _is_uidlogin_redirect(redirect_url: str) -> bool:
+        parsed = urlparse(redirect_url)
+        return (
+            parsed.scheme == "https"
+            and parsed.hostname == "bjmf.k8n.cn"
+            and parsed.path.rstrip("/")
+            == "/weixin/uidlogin/student"
+        )
