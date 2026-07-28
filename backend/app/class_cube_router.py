@@ -1,10 +1,18 @@
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import JSONResponse
 
 from .class_cube_models import (
     ClassCubeAccountUpdate,
+    ManualCheckinRequest,
     QrSessionCreate,
 )
 from .class_cube_repository import ClassCubeNotFound
@@ -198,6 +206,39 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
             _service(request).list_items,
             course_id,
             actor,
+        )
+
+    @router.post("/items/{item_id}/checkin")
+    def manual_checkin(
+        item_id: int,
+        payload: ManualCheckinRequest,
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request,
+            _service(request).manual_checkin,
+            item_id,
+            payload.model_dump(),
+            actor,
+        )
+
+    @router.post("/photos")
+    def upload_photo(
+        request: Request,
+        file: UploadFile = File(...),
+        account_id: int | None = Query(
+            default=None,
+            gt=0,
+        ),
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request,
+            _service(request).save_photo,
+            file,
+            actor,
+            account_id=account_id,
         )
 
     return router

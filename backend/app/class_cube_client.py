@@ -59,6 +59,10 @@ class ClassCubeCookieExpired(ClassCubeRequestError):
     pass
 
 
+class ClassCubeSubmissionUnknown(ClassCubeRequestError):
+    pass
+
+
 @dataclass(frozen=True)
 class QrSessionView:
     token: str
@@ -235,9 +239,19 @@ class ClassCubeClient:
         fields: dict[str, str],
         photo_path=None,
     ) -> ParsedResult:
+        if not form.submit_capable:
+            raise ClassCubeRequestError(
+                "check-in form has no verified submission contract"
+            )
         self._validate_authenticated_url(form.action)
         session = self._short_lived_session(cookie)
         payload = dict(form.hidden_fields)
+        if (
+            form.photo_resource_field
+            and not payload.get(form.photo_resource_field)
+            and not fields.get(form.photo_resource_field)
+        ):
+            payload.pop(form.photo_resource_field, None)
         payload.update(fields)
         photo_file = None
         try:
@@ -281,6 +295,65 @@ class ClassCubeClient:
             raise ClassCubeRequestError(
                 "check-in form submission failed"
             ) from exc
+        finally:
+            if photo_file is not None:
+                photo_file.close()
+            session.close()
+
+    def upload_photo(
+        self,
+        cookie: str,
+        form: ParsedForm,
+        photo_path,
+    ) -> str:
+        if (
+            not form.submit_capable
+            or form.upload_method != "post"
+            or not form.upload_action
+            or not form.upload_file_field
+            or not form.upload_response_key
+            or not form.photo_resource_field
+        ):
+            raise ClassCubeRequestError(
+                "photo upload contract is incomplete"
+            )
+        self._validate_authenticated_url(form.upload_action)
+
+        session = self._short_lived_session(cookie)
+        photo_file = None
+        try:
+            photo = Path(photo_path)
+            photo_file = photo.open("rb")
+            response = self._request_authenticated(
+                session,
+                "post",
+                form.upload_action,
+                post_kwargs={
+                    "files": {
+                        form.upload_file_field: (
+                            photo.name,
+                            photo_file,
+                        )
+                    },
+                    "headers": self._request_headers(),
+                    "timeout": REQUEST_TIMEOUT,
+                },
+            )
+            try:
+                payload = response.json()
+            except (TypeError, ValueError) as exc:
+                raise ClassCubeRequestError(
+                    "photo upload response is not valid JSON"
+                ) from exc
+            resource = self._nested_json_value(
+                payload,
+                form.upload_response_key,
+            )
+            if not isinstance(resource, str) or not resource.strip():
+                raise ClassCubeRequestError(
+                    "photo upload response has no resource value"
+                )
+            return resource.strip()
         finally:
             if photo_file is not None:
                 photo_file.close()
@@ -549,10 +622,27 @@ class ClassCubeClient:
             )
             response.raise_for_status()
             return response
+        except requests.Timeout as exc:
+            raise ClassCubeSubmissionUnknown(
+                "remote POST timed out; submission result is unknown"
+            ) from exc
         except requests.RequestException as exc:
             raise ClassCubeRequestError(
                 "check-in form submission failed"
             ) from exc
+
+    @staticmethod
+    def _nested_json_value(payload, dotted_key: str):
+        value = payload
+        for part in dotted_key.split("."):
+            if (
+                not part
+                or not isinstance(value, dict)
+                or part not in value
+            ):
+                return None
+            value = value[part]
+        return value
 
     @staticmethod
     def _rewind_uploads(files) -> None:

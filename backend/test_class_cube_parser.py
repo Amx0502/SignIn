@@ -284,6 +284,7 @@ class ClassCubeParserTest(unittest.TestCase):
                 },
                 password_field="passcode",
                 file_field="proof",
+                submit_capable=True,
             ),
         )
 
@@ -316,6 +317,7 @@ class ClassCubeParserTest(unittest.TestCase):
                 mode="password",
                 hidden_fields={"_token": "item-token"},
                 password_field="passcode",
+                submit_capable=True,
             ),
         )
 

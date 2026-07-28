@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, replace
 from html import unescape
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
 
@@ -31,6 +31,17 @@ class ParsedForm:
     hidden_fields: dict[str, str]
     password_field: str = ""
     file_field: str = ""
+    item_id_field: str = ""
+    latitude_field: str = ""
+    longitude_field: str = ""
+    accuracy_field: str = ""
+    gps_address_field: str = ""
+    photo_resource_field: str = ""
+    submit_capable: bool = False
+    upload_action: str = ""
+    upload_method: str = ""
+    upload_file_field: str = ""
+    upload_response_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -230,18 +241,81 @@ def parse_checkin_form(
         if input_tag.get("name")
         and _attribute_text(input_tag.get("type")).lower() == "hidden"
     }
-    password_field = _first_field_name(inputs, "password")
-    file_field = _first_field_name(inputs, "file")
-    field_names = {
-        _attribute_text(input_tag.get("name")).lower()
-        for input_tag in inputs
-    }
-    has_gps_field = bool(
-        field_names
-        & {"lat", "lng", "acc", "latitude", "longitude", "accuracy"}
+    item_id_field = _first_named_field(
+        inputs,
+        {"id", "punch_id", "punchcard_id"},
     )
+    latitude_field = _first_named_field(
+        inputs,
+        {"lat", "latitude"},
+    )
+    longitude_field = _first_named_field(
+        inputs,
+        {"lng", "lon", "longitude"},
+    )
+    accuracy_field = _first_named_field(
+        inputs,
+        {"acc", "accuracy"},
+    )
+    gps_address_field = _first_named_field(
+        inputs,
+        {"gps_addr", "address", "addr"},
+    )
+    password_field = _first_named_field(
+        inputs,
+        {"password", "pwd", "code", "passcode"},
+    ) or _first_field_name(inputs, "password")
+    file_field = _first_field_name(inputs, "file")
+    photo_resource_field = _first_named_field(
+        inputs,
+        {"res", "resource", "resource_id", "photo_resource"},
+    )
+    has_gps_field = bool(latitude_field or longitude_field or accuracy_field)
+    upload_action = ""
+    upload_method = ""
+    upload_file_field = ""
+    upload_response_key = ""
+    if isinstance(form, Tag):
+        declared_upload_action = _attribute_text(
+            form.get("data-upload-action")
+        ).strip()
+        declared_upload_file = _attribute_text(
+            form.get("data-upload-file-field")
+        ).strip()
+        declared_response_key = _attribute_text(
+            form.get("data-upload-response-key")
+        ).strip()
+        if (
+            declared_upload_action
+            and declared_upload_file
+            and declared_response_key
+        ):
+            upload_action = urljoin(
+                response_url,
+                declared_upload_action,
+            )
+            upload_method = (
+                _attribute_text(
+                    form.get("data-upload-method")
+                ).strip()
+                or "post"
+            ).lower()
+            upload_file_field = declared_upload_file
+            upload_response_key = declared_response_key
 
-    if file_field and has_gps_field:
+    if (
+        has_gps_field
+        and (
+            file_field
+            or photo_resource_field
+            or (
+                photo_resource_field
+                and upload_action
+                and upload_file_field
+                and upload_response_key
+            )
+        )
+    ):
         mode = "gps_photo"
     elif password_field:
         mode = "password"
@@ -254,12 +328,32 @@ def parse_checkin_form(
 
     action = response_url
     method = "get"
+    submit_capable = isinstance(form, Tag)
     if isinstance(form, Tag):
         action = urljoin(
             response_url,
             _attribute_text(form.get("action")) or response_url,
         )
         method = _attribute_text(form.get("method")) or "get"
+    else:
+        synthetic = _synthetic_contract(
+            soup,
+            response_url,
+            item,
+        )
+        if synthetic is not None:
+            action, mode = synthetic
+            method = "post"
+            submit_capable = True
+            item_id_field = "id"
+            if mode == "gps":
+                latitude_field = "lat"
+                longitude_field = "lng"
+                accuracy_field = "acc"
+                gps_address_field = "gps_addr"
+
+    if not submit_capable:
+        method = "get"
 
     return ParsedForm(
         action=action,
@@ -268,6 +362,74 @@ def parse_checkin_form(
         hidden_fields=hidden_fields,
         password_field=password_field,
         file_field=file_field,
+        item_id_field=item_id_field,
+        latitude_field=latitude_field,
+        longitude_field=longitude_field,
+        accuracy_field=accuracy_field,
+        gps_address_field=gps_address_field,
+        photo_resource_field=photo_resource_field,
+        submit_capable=submit_capable,
+        upload_action=upload_action,
+        upload_method=upload_method,
+        upload_file_field=upload_file_field,
+        upload_response_key=upload_response_key,
+    )
+
+
+def _synthetic_contract(
+    soup: BeautifulSoup,
+    response_url: str,
+    item: ParsedItem,
+) -> tuple[str, str] | None:
+    if _has_exact_gps_marker(soup, item):
+        return (
+            _canonical_submit_url(
+                response_url,
+                "punch_gps",
+                item,
+            ),
+            "gps",
+        )
+    if _has_exact_punchcard_marker(soup, item):
+        return (
+            _canonical_submit_url(
+                response_url,
+                item.remote_module,
+                item,
+            ),
+            "qr",
+        )
+
+    route = _checkin_route(response_url, str(item.course_id))
+    if (
+        route is None
+        or route[0] != item.remote_module
+        or route[1] != str(item.remote_item_id)
+        or item.mode_hint not in {"qr", "gps"}
+    ):
+        return None
+    return response_url, item.mode_hint
+
+
+def _canonical_submit_url(
+    response_url: str,
+    module: str,
+    item: ParsedItem,
+) -> str:
+    normalized_module = module.lower()
+    if not re.fullmatch(
+        r"(?:punch\w+|daka)",
+        normalized_module,
+        re.ASCII,
+    ):
+        normalized_module = "punchs"
+    return urljoin(
+        response_url,
+        (
+            f"/student/{normalized_module}/course/"
+            f"{quote(str(item.course_id), safe='')}/"
+            f"{quote(str(item.remote_item_id), safe='')}"
+        ),
     )
 
 
@@ -465,6 +627,41 @@ def _first_field_name(inputs: list[Tag], field_type: str) -> str:
         if _attribute_text(input_tag.get("type")).lower() == field_type:
             return _attribute_text(input_tag.get("name"))
     return ""
+
+
+def _first_named_field(
+    inputs: list[Tag],
+    aliases: set[str],
+) -> str:
+    for input_tag in inputs:
+        name = _attribute_text(input_tag.get("name")).strip()
+        if name.lower() in aliases:
+            return name
+    return ""
+
+
+def _has_exact_gps_marker(
+    soup: BeautifulSoup,
+    item: ParsedItem,
+) -> bool:
+    if item.remote_module.lower() != "punch_gps":
+        return False
+    expected_id = str(item.remote_item_id)
+    return any(
+        _gps_item_id(tag) == expected_id
+        for tag in soup.find_all(True)
+    )
+
+
+def _has_exact_punchcard_marker(
+    soup: BeautifulSoup,
+    item: ParsedItem,
+) -> bool:
+    expected_id = str(item.remote_item_id)
+    return any(
+        _punchcard_item_id(tag) == expected_id
+        for tag in soup.find_all(True)
+    )
 
 
 def _has_qr_marker(soup: BeautifulSoup, html: str) -> bool:

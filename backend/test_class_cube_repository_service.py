@@ -410,6 +410,12 @@ class ClassCubeRepositoryTest(unittest.TestCase):
                         method="post",
                         mode="gps",
                         hidden_fields={"_token": "new-secret"},
+                        item_id_field="id",
+                        latitude_field="lat",
+                        longitude_field="lng",
+                        accuracy_field="acc",
+                        gps_address_field="gps_addr",
+                        submit_capable=True,
                     ),
                 )
             ],
@@ -419,6 +425,13 @@ class ClassCubeRepositoryTest(unittest.TestCase):
 
         self.assertEqual(items[0]["id"], 21)
         self.assertEqual(items[0]["title"], "签到 A（更新）")
+        self.assertEqual(
+            items[0]["form_schema"]["latitude_field"],
+            "lat",
+        )
+        self.assertTrue(
+            items[0]["form_schema"]["submit_capable"]
+        )
         with self.database.session() as session:
             run = session.get(ClassCubeTaskRunRow, 41)
             self.assertEqual(run.checkin_item_id, 21)
@@ -479,6 +492,26 @@ class ClassCubeRepositoryTest(unittest.TestCase):
                 )
                 self.assertEqual(remaining, expected, model.__name__)
             self.assertIsNotNone(session.get(ClassCubeAccountRow, 2))
+
+    def test_mark_account_expired_uses_scoped_account_lookup(self):
+        updated = self.repository.mark_account_expired(
+            1,
+            actor_user_id=1,
+            is_admin=False,
+        )
+
+        self.assertEqual(updated["status"], "expired")
+        with self.database.session() as session:
+            self.assertEqual(
+                session.get(ClassCubeAccountRow, 1).status,
+                "expired",
+            )
+        with self.assertRaises(ClassCubeNotFound):
+            self.repository.mark_account_expired(
+                2,
+                actor_user_id=1,
+                is_admin=False,
+            )
 
 
 class RecordingRepository:
@@ -1189,6 +1222,14 @@ class RouterFakeService:
             "sync_items": [{"id": 21, "title": "签到"}],
             "list_items": [{"id": 21, "title": "签到"}],
         }
+        results["manual_checkin"] = {
+            "status": "success",
+            "message": "签到成功",
+        }
+        results["save_photo"] = {
+            "path": "class-cube/7/proof.png",
+            "url": "/uploads/class-cube/7/proof.png",
+        }
         return results[name]
 
     def create_qr_session(self, actor, account_id=None):
@@ -1231,6 +1272,22 @@ class RouterFakeService:
     def list_items(self, course_id, actor):
         return self._result("list_items", course_id, actor)
 
+    def manual_checkin(self, item_id, payload, actor):
+        return self._result(
+            "manual_checkin",
+            item_id,
+            payload,
+            actor,
+        )
+
+    def save_photo(self, file, actor, account_id=None):
+        return self._result(
+            "save_photo",
+            file.filename,
+            actor,
+            account_id,
+        )
+
 
 class ClassCubeRouterTest(unittest.TestCase):
     def setUp(self):
@@ -1259,6 +1316,8 @@ class ClassCubeRouterTest(unittest.TestCase):
             "/api/class-cube/accounts/{account_id}/courses",
             "/api/class-cube/courses/{course_id}/items/sync",
             "/api/class-cube/courses/{course_id}/items",
+            "/api/class-cube/items/{item_id}/checkin",
+            "/api/class-cube/photos",
         }
         routes = {
             route.path: route
@@ -1300,6 +1359,24 @@ class ClassCubeRouterTest(unittest.TestCase):
                 {},
             ),
             ("get", "/api/class-cube/courses/11/items", {}),
+            (
+                "post",
+                "/api/class-cube/items/21/checkin",
+                {"json": {}},
+            ),
+            (
+                "post",
+                "/api/class-cube/photos?account_id=1",
+                {
+                    "files": {
+                        "file": (
+                            "proof.png",
+                            b"\x89PNG\r\n\x1a\n",
+                            "image/png",
+                        )
+                    }
+                },
+            ),
         )
         for method, path, kwargs in requests:
             with self.subTest(method=method, path=path):

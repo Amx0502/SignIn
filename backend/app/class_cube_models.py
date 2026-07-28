@@ -14,6 +14,23 @@ class ClassCubeAccountUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
 
 
+class ManualCheckinRequest(BaseModel):
+    latitude: float | None = Field(
+        default=None,
+        allow_inf_nan=False,
+    )
+    longitude: float | None = Field(
+        default=None,
+        allow_inf_nan=False,
+    )
+    accuracy: float | None = Field(
+        default=None,
+        allow_inf_nan=False,
+    )
+    password: str = Field(default="", max_length=128)
+    photo_path: str = Field(default="", max_length=512)
+
+
 def _iso(value: Any) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()

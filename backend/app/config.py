@@ -7,6 +7,7 @@ LEGACY_SESSIONS_FILE = APP_DIR / "sessions.json"
 SETTINGS_FILE = APP_DIR / "settings.json"
 LOG_DIR = APP_DIR / "logs"
 UPLOAD_DIR = APP_DIR / "uploads"
+CLASS_CUBE_UPLOAD_DIR = UPLOAD_DIR / "class-cube"
 
 DEFAULT_REFRESH_TIMES = ["07:30:00", "11:30:00", "14:00:00", "17:00:00", "18:30:00"]
 DEFAULT_WEBHOOK_URL = ""

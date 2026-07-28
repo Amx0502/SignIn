@@ -251,6 +251,29 @@ class ClassCubeRepository:
             session.flush()
             return self._account_record(row)
 
+    def mark_account_expired(
+        self,
+        account_id: int,
+        actor_user_id: int,
+        is_admin: bool,
+    ) -> dict[str, Any]:
+        with self.database.session() as session:
+            row = session.scalar(
+                self._scoped_account_query(
+                    account_id,
+                    actor_user_id,
+                    is_admin,
+                )
+            )
+            if row is None:
+                raise ClassCubeNotFound(
+                    "班级魔方账号不存在"
+                )
+            row.status = "expired"
+            row.updated_at = datetime.now()
+            session.flush()
+            return self._account_record(row)
+
     def delete_account(
         self,
         account_id: int,
@@ -453,6 +476,39 @@ class ClassCubeRepository:
                         bundle.form.password_field
                     ),
                     "file_field": bundle.form.file_field,
+                    "item_id_field": (
+                        bundle.form.item_id_field
+                    ),
+                    "latitude_field": (
+                        bundle.form.latitude_field
+                    ),
+                    "longitude_field": (
+                        bundle.form.longitude_field
+                    ),
+                    "accuracy_field": (
+                        bundle.form.accuracy_field
+                    ),
+                    "gps_address_field": (
+                        bundle.form.gps_address_field
+                    ),
+                    "photo_resource_field": (
+                        bundle.form.photo_resource_field
+                    ),
+                    "submit_capable": (
+                        bundle.form.submit_capable
+                    ),
+                    "upload_action": (
+                        bundle.form.upload_action
+                    ),
+                    "upload_method": (
+                        bundle.form.upload_method
+                    ),
+                    "upload_file_field": (
+                        bundle.form.upload_file_field
+                    ),
+                    "upload_response_key": (
+                        bundle.form.upload_response_key
+                    ),
                 }
                 mode = (
                     bundle.form.mode

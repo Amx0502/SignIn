@@ -955,6 +955,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
                         method="post",
                         mode="qr",
                         hidden_fields={"_token": "embedded-token"},
+                        submit_capable=True,
                     ),
                 ),
                 RemoteItemBundle(
@@ -972,6 +973,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
                         mode="password",
                         hidden_fields={"_token": "detail-token"},
                         password_field="passcode",
+                        submit_capable=True,
                     ),
                 ),
             ],
@@ -1061,6 +1063,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             mode="password",
             hidden_fields={"_token": "token", "course_id": "1"},
             password_field="passcode",
+            submit_capable=True,
         )
 
         result = client.submit_form(
@@ -1127,6 +1130,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             method="post",
             mode="password",
             hidden_fields={"_token": "token"},
+            submit_capable=True,
         )
 
         with self.assertRaises(ClassCubeRequestError):
@@ -1192,6 +1196,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
                     method="post",
                     mode="password",
                     hidden_fields={"_token": "token"},
+                    submit_capable=True,
                 )
 
                 with self.assertRaises(ClassCubeRequestError):
@@ -1317,6 +1322,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             method="post",
             mode="password",
             hidden_fields={"_token": "token"},
+            submit_capable=True,
         )
 
         with self.assertRaises(ClassCubeRequestError):
@@ -1352,6 +1358,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             method="post",
             mode="password",
             hidden_fields={"_token": "token"},
+            submit_capable=True,
         )
 
         result = client.submit_form(
@@ -1399,6 +1406,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             method="post",
             mode="password",
             hidden_fields={"_token": "token"},
+            submit_capable=True,
         )
 
         result = client.submit_form(
@@ -1439,6 +1447,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             method="get",
             mode="qr",
             hidden_fields={"_token": "token"},
+            submit_capable=True,
         )
 
         result = client.submit_form(
@@ -1476,6 +1485,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             mode="gps_photo",
             hidden_fields={"_token": "token"},
             file_field="proof",
+            submit_capable=True,
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             photo_path = Path(temp_dir) / "proof.jpg"
