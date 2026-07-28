@@ -191,3 +191,71 @@ test('persists run filters for background refreshes', async () => {
     { owner_user_id: 2, status: 'failed', limit: 50, offset: 100 },
   ])
 })
+
+test('keeps only the latest account course response and clears stale children immediately', async () => {
+  const pending = new Map()
+  const api = createComposableApi({
+    listCourses: accountId => new Promise(resolve => pending.set(accountId, resolve)),
+  })
+  const state = useClassCube(api)
+  state.courses.value = [{ id: 99, account_id: 99 }]
+  state.items.value = [{ id: 88, course_id: 99 }]
+  state.selectedCourseId.value = 99
+  state.selectedItemId.value = 88
+
+  const first = state.selectAccount(1)
+  assert.deepEqual(state.courses.value, [])
+  assert.deepEqual(state.items.value, [])
+  assert.equal(state.selectedCourseId.value, null)
+  assert.equal(state.selectedItemId.value, null)
+  assert.equal(state.coursesLoading.value, true)
+
+  const second = state.selectAccount(2)
+  pending.get(2)({ ok: true, data: [{ id: 22, account_id: 2 }] })
+  await second
+  pending.get(1)({ ok: true, data: [{ id: 11, account_id: 1 }] })
+  await first
+
+  assert.deepEqual(state.courses.value, [{ id: 22, account_id: 2 }])
+  assert.equal(state.selectedCourseId.value, 22)
+  assert.equal(state.coursesLoading.value, false)
+})
+
+test('keeps only the latest course item response and clears stale items immediately', async () => {
+  const pending = new Map()
+  const api = createComposableApi({
+    listItems: courseId => new Promise(resolve => pending.set(courseId, resolve)),
+  })
+  const state = useClassCube(api)
+  state.items.value = [{ id: 88, course_id: 8 }]
+  state.selectedItemId.value = 88
+
+  const first = state.selectCourse(1)
+  assert.deepEqual(state.items.value, [])
+  assert.equal(state.selectedItemId.value, null)
+  assert.equal(state.itemsLoading.value, true)
+
+  const second = state.selectCourse(2)
+  pending.get(2)({ ok: true, data: [{ id: 202, course_id: 2 }] })
+  await second
+  pending.get(1)({ ok: true, data: [{ id: 101, course_id: 1 }] })
+  await first
+
+  assert.deepEqual(state.items.value, [{ id: 202, course_id: 2 }])
+  assert.equal(state.selectedItemId.value, 202)
+  assert.equal(state.itemsLoading.value, false)
+})
+
+test('exposes an error QR session when session creation fails', async () => {
+  const api = createComposableApi({
+    createQrSession: async () => {
+      throw new Error('二维码服务不可用')
+    },
+  })
+  const state = useClassCube(api)
+
+  await assert.rejects(state.startQrLogin(), /二维码服务不可用/)
+  assert.equal(state.qrSession.value.status, 'error')
+  assert.equal(state.qrSession.value.retryable, true)
+  assert.equal(state.qrRemainingSeconds.value, 0)
+})

@@ -66,7 +66,7 @@
             </el-select>
           </el-form-item>
           <el-form-item label="指定课程">
-            <el-select v-model="draft.course_id" placeholder="请选择课程">
+            <el-select v-model="draft.course_id" placeholder="请选择课程" :disabled="!draft.account_id || coursesLoading" :loading="coursesLoading">
               <el-option v-for="course in courses" :key="course.id" :value="course.id" :label="course.name" />
             </el-select>
           </el-form-item>
@@ -103,6 +103,7 @@ const props = defineProps({
   courses: { type: Array, default: () => [] },
   selectedTaskIds: { type: Set, default: () => new Set() },
   isAdmin: { type: Boolean, default: false },
+  coursesLoading: { type: Boolean, default: false },
   saveTaskAction: { type: Function, required: true },
   removeTasksAction: { type: Function, required: true },
   runTaskAction: { type: Function, required: true },

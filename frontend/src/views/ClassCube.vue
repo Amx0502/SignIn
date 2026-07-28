@@ -35,6 +35,8 @@
           :selected-item-id="selectedItemId"
           :selected-course="selectedCourse"
           :selected-item="selectedItem"
+          :courses-loading="coursesLoading"
+          :items-loading="itemsLoading"
           :upload-photo-action="uploadPhoto"
           :manual-checkin-action="manualCheckin"
           @qr-login="openQrLogin"
@@ -55,6 +57,7 @@
           :courses="courses"
           :selected-task-ids="selectedTaskIds"
           :is-admin="isAdmin"
+          :courses-loading="coursesLoading"
           :save-task-action="saveTask"
           :remove-tasks-action="removeTasks"
           :run-task-action="runTask"
@@ -102,6 +105,7 @@ const {
   accounts, courses, items, tasks, runs,
   selectedAccountId, selectedCourseId, selectedItemId, selectedTaskIds,
   selectedCourse, selectedItem, qrSession, qrRemainingSeconds, error,
+  coursesLoading, itemsLoading,
   loadInitial, loadAccounts, loadTasks, loadRuns, selectAccount, selectCourse,
   syncCourses, syncItems, saveTask, removeTasks, refreshBackground,
   startBackgroundPolling, startQrLogin, uploadPhoto, manualCheckin,

@@ -73,12 +73,18 @@ export function useClassCube(api = classCubeApi) {
   const qrSession = ref(null)
   const qrRemainingSeconds = ref(0)
   const loading = ref(false)
+  const coursesLoading = ref(false)
+  const itemsLoading = ref(false)
   const error = ref('')
 
   let backgroundTimer = null
   let qrPollTimer = null
   let qrCountdownTimer = null
   let qrGeneration = 0
+  let courseRequestGeneration = 0
+  let itemRequestGeneration = 0
+  let accountSelectionGeneration = 0
+  let courseSelectionGeneration = 0
   let disposed = false
 
   const selectedAccount = computed(() =>
@@ -108,35 +114,51 @@ export function useClassCube(api = classCubeApi) {
   }
 
   async function loadCourses(accountId = selectedAccountId.value) {
+    const generation = ++courseRequestGeneration
     if (!accountId) {
       courses.value = []
       selectedCourseId.value = null
       items.value = []
       selectedItemId.value = null
+      coursesLoading.value = false
       return []
     }
-    const fresh = responseData(await api.listCourses(accountId), [])
-    courses.value = Array.isArray(fresh) ? fresh : []
-    const stable = reconcileSelection(courses.value, selectedCourseId.value)
-    selectedCourseId.value = stable?.id ?? courses.value[0]?.id ?? null
-    if (!selectedCourseId.value) {
-      items.value = []
-      selectedItemId.value = null
+    coursesLoading.value = true
+    try {
+      const fresh = responseData(await api.listCourses(accountId), [])
+      if (generation !== courseRequestGeneration || accountId !== selectedAccountId.value) return []
+      courses.value = Array.isArray(fresh) ? fresh : []
+      const stable = reconcileSelection(courses.value, selectedCourseId.value)
+      selectedCourseId.value = stable?.id ?? courses.value[0]?.id ?? null
+      if (!selectedCourseId.value) {
+        items.value = []
+        selectedItemId.value = null
+      }
+      return courses.value
+    } finally {
+      if (generation === courseRequestGeneration) coursesLoading.value = false
     }
-    return courses.value
   }
 
   async function loadItems(courseId = selectedCourseId.value) {
+    const generation = ++itemRequestGeneration
     if (!courseId) {
       items.value = []
       selectedItemId.value = null
+      itemsLoading.value = false
       return []
     }
-    const fresh = responseData(await api.listItems(courseId), [])
-    items.value = Array.isArray(fresh) ? fresh : []
-    const stable = reconcileSelection(items.value, selectedItemId.value)
-    selectedItemId.value = stable?.id ?? items.value[0]?.id ?? null
-    return items.value
+    itemsLoading.value = true
+    try {
+      const fresh = responseData(await api.listItems(courseId), [])
+      if (generation !== itemRequestGeneration || courseId !== selectedCourseId.value) return []
+      items.value = Array.isArray(fresh) ? fresh : []
+      const stable = reconcileSelection(items.value, selectedItemId.value)
+      selectedItemId.value = stable?.id ?? items.value[0]?.id ?? null
+      return items.value
+    } finally {
+      if (generation === itemRequestGeneration) itemsLoading.value = false
+    }
   }
 
   async function loadTasks(params = taskFilters.value) {
@@ -177,17 +199,27 @@ export function useClassCube(api = classCubeApi) {
   }
 
   async function selectAccount(accountId) {
+    const selectionGeneration = ++accountSelectionGeneration
     selectedAccountId.value = accountId
     selectedCourseId.value = null
     selectedItemId.value = null
+    courses.value = []
+    items.value = []
+    ++courseSelectionGeneration
+    ++itemRequestGeneration
     await loadCourses(accountId)
+    if (selectionGeneration !== accountSelectionGeneration || accountId !== selectedAccountId.value) return []
     return loadItems()
   }
 
   async function selectCourse(courseId) {
+    const selectionGeneration = ++courseSelectionGeneration
     selectedCourseId.value = courseId
     selectedItemId.value = null
-    return loadItems(courseId)
+    items.value = []
+    const loaded = await loadItems(courseId)
+    if (selectionGeneration !== courseSelectionGeneration || courseId !== selectedCourseId.value) return []
+    return loaded
   }
 
   async function syncCourses(accountId = selectedAccountId.value) {
@@ -312,6 +344,17 @@ export function useClassCube(api = classCubeApi) {
       scheduleQrPoll(qrSession.value.token, generation)
       return qrSession.value
     } catch (caught) {
+      if (generation === qrGeneration) {
+        qrSession.value = {
+          token: '',
+          qrImage: '',
+          status: 'error',
+          retryable: true,
+          expiresInSeconds: 0,
+          deadlineMs: Date.now(),
+        }
+        qrRemainingSeconds.value = 0
+      }
       reportError(caught)
       throw caught
     }
@@ -358,6 +401,8 @@ export function useClassCube(api = classCubeApi) {
     qrSession,
     qrRemainingSeconds,
     loading,
+    coursesLoading,
+    itemsLoading,
     error,
     loadAccounts,
     loadCourses,

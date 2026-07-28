@@ -53,8 +53,8 @@
             <div><strong>课程签到中心</strong><small>选择课程后同步当前签到项</small></div>
             <el-button
               :icon="Refresh"
-              :disabled="!selectedCourseId"
-              :loading="syncing"
+              :disabled="!selectedCourseId || coursesLoading || itemsLoading"
+              :loading="syncing || itemsLoading"
               @click="emit('sync-items', selectedCourseId)"
             >同步签到项</el-button>
           </div>
@@ -63,7 +63,8 @@
           <el-select
             :model-value="selectedCourseId"
             placeholder="请选择课程"
-            :disabled="!selectedAccountId"
+            :disabled="!selectedAccountId || coursesLoading"
+            :loading="coursesLoading"
             @change="value => emit('select-course', value)"
           >
             <el-option v-for="course in courses" :key="course.id" :value="course.id" :label="course.name">
@@ -73,7 +74,8 @@
           <span v-if="selectedCourse" class="course-code">班级码 {{ selectedCourse.class_code || '—' }}</span>
         </div>
 
-        <el-empty v-if="!selectedCourseId" description="先选择账号与课程" :image-size="88" />
+        <el-skeleton v-if="itemsLoading" :rows="3" animated />
+        <el-empty v-else-if="!selectedCourseId" description="先选择账号与课程" :image-size="88" />
         <el-empty v-else-if="!items.length" description="当前课程暂无签到项" :image-size="88" />
         <div v-else class="item-list">
           <article
@@ -130,7 +132,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import {
   Aim, Camera, Cellphone, CircleCheck, CircleCheckFilled, CircleCloseFilled,
   Key, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, User, WarningFilled,
@@ -148,6 +150,8 @@ const props = defineProps({
   selectedItemId: { type: Number, default: null },
   selectedCourse: { type: Object, default: null },
   selectedItem: { type: Object, default: null },
+  coursesLoading: { type: Boolean, default: false },
+  itemsLoading: { type: Boolean, default: false },
   uploadPhotoAction: { type: Function, required: true },
   manualCheckinAction: { type: Function, required: true },
 })
@@ -158,6 +162,29 @@ const resultVisible = ref(false)
 const result = ref(null)
 const photoFiles = ref([])
 const form = reactive({ latitude: null, longitude: null, accuracy: 20, photo_path: '', password: '' })
+
+function resetManualState() {
+  Object.assign(form, {
+    latitude: null,
+    longitude: null,
+    accuracy: 20,
+    photo_path: '',
+    password: '',
+  })
+  photoFiles.value = []
+  result.value = null
+  resultVisible.value = false
+}
+
+watch(
+  () => [
+    props.selectedAccountId,
+    props.selectedCourseId,
+    props.selectedItemId,
+    props.selectedItem?.mode,
+  ],
+  resetManualState,
+)
 
 const activeItems = computed(() => props.items.filter(item => item.status === 'active').length)
 const enabledTasks = computed(() => props.tasks.filter(task => task.enabled).length)

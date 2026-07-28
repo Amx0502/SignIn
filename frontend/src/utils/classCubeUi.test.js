@@ -38,6 +38,8 @@ test('manual check-in panel renders every mode and sync action', async () => {
   assert.match(panel, /gps_photo/)
   assert.match(panel, /同步签到项/)
   assert.match(panel, /photo_path/)
+  assert.match(panel, /watch/)
+  assert.match(panel, /resetManualState/)
   assert.doesNotMatch(panel, /v-html/)
 })
 
