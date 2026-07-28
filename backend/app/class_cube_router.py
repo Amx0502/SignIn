@@ -14,6 +14,9 @@ from .class_cube_models import (
     ClassCubeAccountUpdate,
     ManualCheckinRequest,
     QrSessionCreate,
+    ClassCubeTaskCreate,
+    ClassCubeTaskUpdate,
+    ClassCubeTaskBatchDelete,
 )
 from .class_cube_repository import ClassCubeNotFound
 from .class_cube_service import (
@@ -239,6 +242,117 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
             file,
             actor,
             account_id=account_id,
+        )
+
+    @router.get("/tasks")
+    def list_tasks(
+        request: Request,
+        owner_user_id: int | None = Query(default=None, gt=0),
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request, _service(request).list_tasks, actor,
+            owner_user_id=owner_user_id,
+        )
+
+    @router.post("/tasks")
+    def create_task(
+        payload: ClassCubeTaskCreate,
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request, _service(request).create_task,
+            payload.model_dump(), actor,
+        )
+
+    @router.put("/tasks/{task_id}")
+    def update_task(
+        task_id: int,
+        payload: ClassCubeTaskUpdate,
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request, _service(request).update_task, task_id,
+            payload.model_dump(exclude_unset=True), actor,
+        )
+
+    @router.delete("/tasks/{task_id}")
+    def delete_task(
+        task_id: int,
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request, _service(request).delete_task, task_id, actor
+        )
+
+    @router.post("/tasks/batch-delete")
+    def batch_delete_tasks(
+        payload: ClassCubeTaskBatchDelete,
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request, _service(request).batch_delete_tasks,
+            payload.ids, actor,
+        )
+
+    @router.post("/tasks/{task_id}/run")
+    def run_task_now(
+        task_id: int,
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        service = _service(request)
+        try:
+            actor_user_id, is_admin = service._actor_scope(actor)
+            service.repository.get_task(
+                task_id, actor_user_id, is_admin
+            )
+            accepted = request.app.state.class_cube_scheduler.submit(
+                task_id
+            )
+            return _success({"accepted": accepted})
+        except ClassCubeNotFound as exc:
+            return JSONResponse(
+                status_code=404,
+                content={"ok": False, "error": str(exc)},
+            )
+
+    @router.get("/runs")
+    def list_runs(
+        request: Request,
+        owner_user_id: int | None = Query(default=None, gt=0),
+        account_id: int | None = Query(default=None, gt=0),
+        course_id: int | None = Query(default=None, gt=0),
+        task_id: int | None = Query(default=None, gt=0),
+        status: str | None = Query(default=None, max_length=32),
+        limit: int = Query(default=100, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request, _service(request).list_runs, actor,
+            owner_user_id=owner_user_id,
+            account_id=account_id,
+            course_id=course_id,
+            task_id=task_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+
+    @router.post("/claims/{claim_id}/retry")
+    def confirm_claim_retry(
+        claim_id: int,
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request, _service(request).confirm_claim_retry,
+            claim_id, actor,
         )
 
     return router

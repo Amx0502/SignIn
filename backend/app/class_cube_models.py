@@ -31,6 +31,65 @@ class ManualCheckinRequest(BaseModel):
     photo_path: str = Field(default="", max_length=512)
 
 
+class ClassCubeTaskCreate(BaseModel):
+    owner_user_id: int | None = Field(default=None, gt=0)
+    account_id: int = Field(gt=0)
+    course_id: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=255)
+    enabled: bool = True
+    poll_interval_seconds: int = 30
+    latitude: float | None = Field(default=None, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, allow_inf_nan=False)
+    accuracy: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    photo_path: str = Field(default="", max_length=512)
+    password: str = Field(default="", max_length=255)
+
+
+class ClassCubeTaskUpdate(BaseModel):
+    account_id: int | None = Field(default=None, gt=0)
+    course_id: int | None = Field(default=None, gt=0)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    enabled: bool | None = None
+    latitude: float | None = Field(default=None, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, allow_inf_nan=False)
+    accuracy: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    photo_path: str | None = Field(default=None, max_length=512)
+    password: str | None = Field(default=None, max_length=255)
+    clear_password: bool = False
+
+
+class ClassCubeTaskBatchDelete(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+
+
+def task_view(task: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": task.get("id"),
+        "owner_user_id": task.get("owner_user_id"),
+        "account_id": task.get("account_id"),
+        "course_id": task.get("course_id"),
+        "name": task.get("name", ""),
+        "enabled": bool(task.get("enabled", False)),
+        "poll_interval_seconds": 30,
+        "latitude": task.get("latitude"),
+        "longitude": task.get("longitude"),
+        "accuracy": task.get("accuracy"),
+        "photo_path": task.get("photo_path", ""),
+        "has_password": bool(task.get("password")),
+        "last_scan_at": _iso(task.get("last_scan_at")),
+        "created_at": _iso(task.get("created_at")),
+        "updated_at": _iso(task.get("updated_at")),
+    }
+
+
+def run_view(run: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: _iso(value)
+        for key, value in run.items()
+        if key not in {"password", "cookie"}
+    }
+
+
 def _iso(value: Any) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()

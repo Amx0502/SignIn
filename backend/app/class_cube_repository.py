@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Iterable
 
 from sqlalchemy import Select, select
+from sqlalchemy.exc import IntegrityError
 
 from .class_cube_client import RemoteItemBundle
 from .class_cube_database import ClassCubeDatabase
@@ -9,6 +10,9 @@ from .class_cube_db_models import (
     ClassCubeAccountRow,
     ClassCubeCheckinItemRow,
     ClassCubeCourseRow,
+    ClassCubeTaskItemClaimRow,
+    ClassCubeTaskRow,
+    ClassCubeTaskRunRow,
 )
 from .class_cube_parser import (
     PASSWORD_FIELD_ALIASES,
@@ -71,6 +75,20 @@ class ClassCubeRepository:
             "synced_at": row.synced_at,
             "created_at": row.created_at,
             "updated_at": row.updated_at,
+        }
+
+    @staticmethod
+    def _task_record(row):
+        return {
+            column.name: getattr(row, column.name)
+            for column in row.__table__.columns
+        }
+
+    @staticmethod
+    def _run_record(row):
+        return {
+            column.name: getattr(row, column.name)
+            for column in row.__table__.columns
         }
 
     @staticmethod
@@ -274,6 +292,12 @@ class ClassCubeRepository:
                 )
             row.status = "expired"
             row.updated_at = datetime.now()
+            session.query(ClassCubeTaskRow).filter(
+                ClassCubeTaskRow.account_id == account_id
+            ).update(
+                {"enabled": False, "updated_at": datetime.now()},
+                synchronize_session=False,
+            )
             session.flush()
             return self._account_record(row)
 
@@ -463,11 +487,17 @@ class ClassCubeRepository:
                 (row.remote_item_id, row.remote_module): row
                 for row in existing_rows
             }
+            bundles = list(bundles)
+            source_modules = {
+                str(bundle.item.remote_module) for bundle in bundles
+            }
+            seen_keys = set()
             for bundle in bundles:
                 remote_key = (
                     str(bundle.item.remote_item_id),
                     str(bundle.item.remote_module),
                 )
+                seen_keys.add(remote_key)
                 row = by_remote_key.get(remote_key)
                 form_schema = {
                     "method": bundle.form.method,
@@ -547,6 +577,14 @@ class ClassCubeRepository:
                     row.status = "active"
                     row.synced_at = now
                     row.updated_at = now
+            for row in existing_rows:
+                if (
+                    row.remote_module in source_modules
+                    and (row.remote_item_id, row.remote_module)
+                    not in seen_keys
+                ):
+                    row.status = "closed"
+                    row.updated_at = now
             session.flush()
             rows = session.scalars(
                 select(ClassCubeCheckinItemRow)
@@ -556,3 +594,279 @@ class ClassCubeRepository:
                 .order_by(ClassCubeCheckinItemRow.id)
             ).all()
             return [self._item_record(row) for row in rows]
+
+    def close_missing_items(
+        self, course_id, source_module, active_remote_keys,
+        actor_user_id, is_admin
+    ):
+        now = datetime.now()
+        active_remote_keys = {
+            (str(module), str(remote_id))
+            for module, remote_id in active_remote_keys
+        }
+        with self.database.session() as session:
+            if session.scalar(
+                self._scoped_course_query(
+                    course_id, actor_user_id, is_admin
+                )
+            ) is None:
+                raise ClassCubeNotFound("班级魔方课程不存在")
+            query = select(ClassCubeCheckinItemRow).where(
+                ClassCubeCheckinItemRow.course_id == course_id
+            )
+            if source_module == "daka":
+                query = query.where(
+                    ClassCubeCheckinItemRow.remote_module == "daka"
+                )
+            else:
+                query = query.where(
+                    ClassCubeCheckinItemRow.remote_module != "daka"
+                )
+            rows = session.scalars(query).all()
+            for row in rows:
+                if (
+                    row.remote_module, row.remote_item_id
+                ) not in active_remote_keys:
+                    row.status = "closed"
+                    row.updated_at = now
+
+    def list_tasks(
+        self, actor_user_id, is_admin, owner_user_id=None, *, enabled=None
+    ):
+        with self.database.session() as session:
+            query = select(ClassCubeTaskRow)
+            if is_admin and owner_user_id is not None:
+                query = query.where(
+                    ClassCubeTaskRow.owner_user_id == owner_user_id
+                )
+            elif not is_admin:
+                query = query.where(
+                    ClassCubeTaskRow.owner_user_id == actor_user_id
+                )
+            if enabled is not None:
+                query = query.where(ClassCubeTaskRow.enabled == enabled)
+            rows = session.scalars(query.order_by(ClassCubeTaskRow.id)).all()
+            return [self._task_record(row) for row in rows]
+
+    def get_task(self, task_id, actor_user_id, is_admin):
+        with self.database.session() as session:
+            query = select(ClassCubeTaskRow).where(
+                ClassCubeTaskRow.id == task_id
+            )
+            if not is_admin:
+                query = query.where(
+                    ClassCubeTaskRow.owner_user_id == actor_user_id
+                )
+            row = session.scalar(query)
+            if row is None:
+                raise ClassCubeNotFound("班级魔方任务不存在")
+            return self._task_record(row)
+
+    def save_task(
+        self, values, actor_user_id, is_admin, task_id=None
+    ):
+        with self.database.session() as session:
+            owner_id = int(values.get("owner_user_id") or actor_user_id)
+            if not is_admin and owner_id != actor_user_id:
+                raise ClassCubeNotFound("班级魔方账号不存在")
+            account = session.scalar(
+                select(ClassCubeAccountRow).where(
+                    ClassCubeAccountRow.id == values["account_id"],
+                    ClassCubeAccountRow.owner_user_id == owner_id,
+                )
+            )
+            course = session.scalar(
+                select(ClassCubeCourseRow).where(
+                    ClassCubeCourseRow.id == values["course_id"],
+                    ClassCubeCourseRow.account_id == values["account_id"],
+                )
+            )
+            if account is None or course is None:
+                raise ClassCubeNotFound("班级魔方账号或课程不存在")
+            if values.get("enabled") and account.status != "active":
+                raise ValueError("登录失效的账号不能启用任务")
+            if task_id is None:
+                row = ClassCubeTaskRow(owner_user_id=owner_id)
+                session.add(row)
+            else:
+                query = select(ClassCubeTaskRow).where(
+                    ClassCubeTaskRow.id == task_id
+                )
+                if not is_admin:
+                    query = query.where(
+                        ClassCubeTaskRow.owner_user_id == actor_user_id
+                    )
+                row = session.scalar(query)
+                if row is None:
+                    raise ClassCubeNotFound("班级魔方任务不存在")
+            for key, value in values.items():
+                if key in {
+                    "account_id", "course_id", "name", "enabled",
+                    "latitude", "longitude", "accuracy", "photo_path",
+                    "password",
+                }:
+                    setattr(row, key, value)
+            row.poll_interval_seconds = 30
+            row.updated_at = datetime.now()
+            session.flush()
+            return self._task_record(row)
+
+    def delete_tasks(self, task_ids, actor_user_id, is_admin):
+        ids = list(dict.fromkeys(int(value) for value in task_ids))
+        with self.database.session() as session:
+            query = select(ClassCubeTaskRow).where(
+                ClassCubeTaskRow.id.in_(ids)
+            )
+            if not is_admin:
+                query = query.where(
+                    ClassCubeTaskRow.owner_user_id == actor_user_id
+                )
+            rows = session.scalars(query).all()
+            if len(rows) != len(ids):
+                raise ClassCubeNotFound("班级魔方任务不存在")
+            for row in rows:
+                session.delete(row)
+        return len(ids)
+
+    def try_claim(
+        self, task_id, item_id, remote_item_id, remote_module,
+        *, lease_seconds=120
+    ):
+        now = datetime.now()
+        lease_until = now + timedelta(seconds=lease_seconds)
+        try:
+            with self.database.session() as session:
+                row = session.scalar(
+                    select(ClassCubeTaskItemClaimRow)
+                    .where(
+                        ClassCubeTaskItemClaimRow.task_id == task_id,
+                        ClassCubeTaskItemClaimRow.remote_module
+                        == remote_module,
+                        ClassCubeTaskItemClaimRow.remote_item_id
+                        == remote_item_id,
+                    )
+                    .with_for_update()
+                )
+                if row is None:
+                    row = ClassCubeTaskItemClaimRow(
+                        task_id=task_id,
+                        checkin_item_id=item_id,
+                        remote_item_id=remote_item_id,
+                        remote_module=remote_module,
+                        state="processing",
+                        lease_until=lease_until,
+                    )
+                    session.add(row)
+                elif not (
+                    row.state == "retryable"
+                    or (
+                        row.state == "processing"
+                        and (row.lease_until is None or row.lease_until <= now)
+                    )
+                ):
+                    return None
+                else:
+                    row.state = "processing"
+                    row.checkin_item_id = item_id
+                    row.lease_until = lease_until
+                    row.updated_at = now
+                session.flush()
+                return {
+                    "id": row.id, "state": row.state,
+                    "lease_until": row.lease_until,
+                }
+        except IntegrityError:
+            return None
+
+    def finish_claim(
+        self, claim_id, task_id, item_id, remote_item_id, remote_module,
+        state, run_status, message="", mode="unknown",
+        expected_lease_until=None,
+    ):
+        now = datetime.now()
+        with self.database.session() as session:
+            claim = session.scalar(
+                select(ClassCubeTaskItemClaimRow)
+                .where(
+                    ClassCubeTaskItemClaimRow.id == claim_id,
+                    ClassCubeTaskItemClaimRow.task_id == task_id,
+                )
+                .with_for_update()
+            )
+            if claim is None:
+                raise ClassCubeNotFound("签到声明不存在")
+            if (
+                expected_lease_until is not None
+                and claim.lease_until != expected_lease_until
+            ):
+                raise ClassCubeNotFound("签到声明租约已失效")
+            run = ClassCubeTaskRunRow(
+                task_id=task_id,
+                checkin_item_id=item_id,
+                remote_item_id=remote_item_id,
+                mode=mode,
+                status=run_status,
+                message=" ".join(str(message).split())[:500],
+                response_summary={},
+                finished_at=now,
+            )
+            session.add(run)
+            session.flush()
+            claim.state = state
+            claim.last_run_id = run.id
+            claim.lease_until = None
+            claim.updated_at = now
+            session.flush()
+            return self._run_record(run)
+
+    def confirm_claim_retry(self, claim_id, actor_user_id, is_admin):
+        with self.database.session() as session:
+            query = (
+                select(ClassCubeTaskItemClaimRow)
+                .join(ClassCubeTaskRow)
+                .where(ClassCubeTaskItemClaimRow.id == claim_id)
+            )
+            if not is_admin:
+                query = query.where(
+                    ClassCubeTaskRow.owner_user_id == actor_user_id
+                )
+            row = session.scalar(query.with_for_update())
+            if row is None:
+                raise ClassCubeNotFound("签到声明不存在")
+            if row.state != "unknown":
+                raise ValueError("只有未知结果可确认重试")
+            row.state = "retryable"
+            row.updated_at = datetime.now()
+            return True
+
+    def list_runs(
+        self, actor_user_id, is_admin, owner_user_id=None,
+        account_id=None, course_id=None, task_id=None, status=None,
+        limit=100, offset=0
+    ):
+        with self.database.session() as session:
+            query = (
+                select(ClassCubeTaskRunRow)
+                .join(ClassCubeTaskRow)
+            )
+            if is_admin and owner_user_id is not None:
+                query = query.where(
+                    ClassCubeTaskRow.owner_user_id == owner_user_id
+                )
+            elif not is_admin:
+                query = query.where(
+                    ClassCubeTaskRow.owner_user_id == actor_user_id
+                )
+            if account_id is not None:
+                query = query.where(ClassCubeTaskRow.account_id == account_id)
+            if course_id is not None:
+                query = query.where(ClassCubeTaskRow.course_id == course_id)
+            if task_id is not None:
+                query = query.where(ClassCubeTaskRunRow.task_id == task_id)
+            if status:
+                query = query.where(ClassCubeTaskRunRow.status == status)
+            rows = session.scalars(
+                query.order_by(ClassCubeTaskRunRow.id.desc())
+                .offset(offset).limit(min(200, max(1, limit)))
+            ).all()
+            return [self._run_record(row) for row in rows]

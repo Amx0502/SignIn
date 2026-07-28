@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, call, patch
 
 from sqlalchemy import UniqueConstraint, create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
 from app.class_cube_database import ClassCubeDatabase
 from app.class_cube_db_models import (
@@ -141,8 +142,10 @@ class ClassCubeModelTest(unittest.TestCase):
             "task_id",
             "checkin_item_id",
             "remote_item_id",
+            "remote_module",
             "state",
             "last_run_id",
+            "lease_until",
             "created_at",
             "updated_at",
         },
@@ -177,7 +180,9 @@ class ClassCubeModelTest(unittest.TestCase):
             },
             "class_cube_tasks": set(),
             "class_cube_task_runs": set(),
-            "class_cube_task_item_claims": {("task_id", "remote_item_id")},
+            "class_cube_task_item_claims": {
+                ("task_id", "remote_module", "remote_item_id")
+            },
         }
         actual = {}
         for name, table in ClassCubeBase.metadata.tables.items():
@@ -350,8 +355,15 @@ class ClassCubeDatabaseTest(unittest.TestCase):
                     self.settings.server_url(),
                     isolation_level="AUTOCOMMIT",
                     pool_pre_ping=True,
+                    poolclass=NullPool,
                 ),
-                call(self.settings.url(), pool_pre_ping=True),
+                call(
+                    self.settings.url(),
+                    pool_pre_ping=True,
+                    pool_size=2,
+                    max_overflow=0,
+                    pool_recycle=1800,
+                ),
             ],
         )
         create_all.assert_called_once_with(database_engine)

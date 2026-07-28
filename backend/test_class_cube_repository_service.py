@@ -1325,6 +1325,12 @@ class ClassCubeRouterTest(unittest.TestCase):
             "/api/class-cube/courses/{course_id}/items",
             "/api/class-cube/items/{item_id}/checkin",
             "/api/class-cube/photos",
+            "/api/class-cube/tasks",
+            "/api/class-cube/tasks/{task_id}",
+            "/api/class-cube/tasks/{task_id}/run",
+            "/api/class-cube/tasks/batch-delete",
+            "/api/class-cube/runs",
+            "/api/class-cube/claims/{claim_id}/retry",
         }
         routes = {
             route.path: route

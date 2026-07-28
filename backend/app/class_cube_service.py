@@ -24,6 +24,8 @@ from .class_cube_models import (
     course_view,
     item_view,
     qr_result_view,
+    run_view,
+    task_view,
 )
 from .class_cube_parser import ParsedForm
 from .class_cube_repository import (
@@ -569,6 +571,11 @@ class ClassCubeService:
         try:
             courses = self.client.fetch_courses(account["cookie"])
         except ClassCubeCookieExpired as exc:
+            marker = getattr(
+                self.repository, "mark_account_expired", None
+            )
+            if marker is not None:
+                marker(account_id, actor_user_id, is_admin)
             raise self._cookie_expired_error(exc) from exc
         except ClassCubeRequestError as exc:
             raise self._remote_error("同步课程", exc) from exc
@@ -620,6 +627,13 @@ class ClassCubeService:
                     module=module,
                 )
             except ClassCubeCookieExpired as exc:
+                marker = getattr(
+                    self.repository, "mark_account_expired", None
+                )
+                if marker is not None:
+                    marker(
+                        account["id"], actor_user_id, is_admin
+                    )
                 raise self._cookie_expired_error(exc) from exc
             except ClassCubeRequestError as exc:
                 last_error = exc
@@ -634,6 +648,31 @@ class ClassCubeService:
                 actor_user_id,
                 is_admin,
             )
+            close_missing = getattr(
+                self.repository, "close_missing_items", None
+            )
+            if close_missing is not None:
+                close_missing(
+                    course_id,
+                    module,
+                    [
+                        (
+                            bundle.item.remote_module,
+                            bundle.item.remote_item_id,
+                        )
+                        for bundle in bundles
+                        if (
+                            module == "daka"
+                            and bundle.item.remote_module == "daka"
+                        )
+                        or (
+                            module == "punchs"
+                            and bundle.item.remote_module != "daka"
+                        )
+                    ],
+                    actor_user_id,
+                    is_admin,
+                )
             successful_sources += 1
 
         if successful_sources == 0:
@@ -642,6 +681,153 @@ class ClassCubeService:
                 retryable=True,
             ) from last_error
         return self.list_items(course_id, actor)
+
+    def list_tasks(self, actor, owner_user_id=None):
+        actor_user_id, is_admin = self._actor_scope(actor)
+        if not is_admin and owner_user_id not in (None, actor_user_id):
+            raise ClassCubeNotFound("班级魔方任务不存在")
+        return [
+            task_view(task)
+            for task in self.repository.list_tasks(
+                actor_user_id, is_admin, owner_user_id
+            )
+        ]
+
+    def create_task(self, payload, actor):
+        actor_user_id, is_admin = self._actor_scope(actor)
+        values = dict(payload)
+        values["poll_interval_seconds"] = 30
+        try:
+            row = self.repository.save_task(
+                values, actor_user_id, is_admin
+            )
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
+        return task_view(row)
+
+    def update_task(self, task_id, payload, actor):
+        actor_user_id, is_admin = self._actor_scope(actor)
+        current = self.repository.get_task(
+            task_id, actor_user_id, is_admin
+        )
+        values = dict(current)
+        supplied = dict(payload)
+        if supplied.pop("clear_password", False):
+            values["password"] = ""
+        elif supplied.get("password") is None:
+            supplied.pop("password", None)
+        values.update(supplied)
+        values["poll_interval_seconds"] = 30
+        try:
+            row = self.repository.save_task(
+                values, actor_user_id, is_admin, task_id=task_id
+            )
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
+        return task_view(row)
+
+    def delete_task(self, task_id, actor):
+        actor_user_id, is_admin = self._actor_scope(actor)
+        self.repository.delete_tasks([task_id], actor_user_id, is_admin)
+        return True
+
+    def batch_delete_tasks(self, task_ids, actor):
+        actor_user_id, is_admin = self._actor_scope(actor)
+        return self.repository.delete_tasks(
+            task_ids, actor_user_id, is_admin
+        )
+
+    def list_due_tasks(self):
+        return self.repository.list_tasks(
+            0, True, enabled=True
+        )
+
+    @staticmethod
+    def _task_actor(task):
+        return {
+            "id": int(task["owner_user_id"]),
+            "role": "user",
+        }
+
+    def run_scheduled_task(self, task_id):
+        try:
+            task = self.repository.get_task(task_id, 0, True)
+        except ClassCubeNotFound:
+            return False
+        if not task.get("enabled"):
+            return False
+        actor = self._task_actor(task)
+        account = self.repository.get_account(
+            task["account_id"], task["owner_user_id"], False
+        )
+        if account.get("status") != "active":
+            return False
+        items = self.sync_items(task["course_id"], actor)
+        for item in items:
+            if item.get("status") != "active":
+                continue
+            current = self.repository.get_task(task_id, 0, True)
+            if not current.get("enabled"):
+                break
+            claim = self.repository.try_claim(
+                task_id,
+                item["id"],
+                item["remote_item_id"],
+                item["remote_module"],
+            )
+            if not claim:
+                continue
+            result = self.manual_checkin(
+                item["id"],
+                {
+                    "latitude": task.get("latitude"),
+                    "longitude": task.get("longitude"),
+                    "accuracy": task.get("accuracy"),
+                    "photo_path": task.get("photo_path") or "",
+                    "password": task.get("password") or "",
+                },
+                actor,
+            )
+            status = result["status"]
+            state = {
+                "success": "succeeded",
+                "already_signed": "already_signed",
+                "unknown_result": "unknown",
+            }.get(status, "retryable")
+            self.repository.finish_claim(
+                claim["id"],
+                task_id,
+                item["id"],
+                item["remote_item_id"],
+                item["remote_module"],
+                state,
+                status,
+                result.get("message", ""),
+                item.get("mode", "unknown"),
+                expected_lease_until=claim["lease_until"],
+            )
+        return True
+
+    def list_runs(self, actor, **filters):
+        actor_user_id, is_admin = self._actor_scope(actor)
+        owner_user_id = filters.get("owner_user_id")
+        if not is_admin and owner_user_id not in (None, actor_user_id):
+            raise ClassCubeNotFound("班级魔方运行记录不存在")
+        return [
+            run_view(row)
+            for row in self.repository.list_runs(
+                actor_user_id, is_admin, **filters
+            )
+        ]
+
+    def confirm_claim_retry(self, claim_id, actor):
+        actor_user_id, is_admin = self._actor_scope(actor)
+        try:
+            return self.repository.confirm_claim_retry(
+                claim_id, actor_user_id, is_admin
+            )
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
 
     def list_items(
         self,

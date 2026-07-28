@@ -243,7 +243,9 @@ class ClassCubeTaskRunRow(ClassCubeBase):
     __tablename__ = "class_cube_task_runs"
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
     task_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -286,13 +288,16 @@ class ClassCubeTaskItemClaimRow(ClassCubeBase):
     __table_args__ = (
         UniqueConstraint(
             "task_id",
+            "remote_module",
             "remote_item_id",
             name="uq_class_cube_claims_task_remote",
         ),
     )
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
     task_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -307,6 +312,9 @@ class ClassCubeTaskItemClaimRow(ClassCubeBase):
         index=True,
     )
     remote_item_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    remote_module: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="punchs"
+    )
     state: Mapped[str] = mapped_column(
         String(32), nullable=False, default="processing"
     )
@@ -314,6 +322,9 @@ class ClassCubeTaskItemClaimRow(ClassCubeBase):
         BigInteger,
         ForeignKey("class_cube_task_runs.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    lease_until: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now
