@@ -90,6 +90,18 @@ class ClassCubeDatabase:
                 "ALTER TABLE class_cube_task_item_claims "
                 "ADD COLUMN lease_until DATETIME NULL AFTER last_run_id"
             )
+        if "lease_token" not in columns:
+            statements.append(
+                "ALTER TABLE class_cube_task_item_claims "
+                "ADD COLUMN lease_token VARCHAR(64) NOT NULL "
+                "DEFAULT '' AFTER lease_until"
+            )
+        if "phase" not in columns:
+            statements.append(
+                "ALTER TABLE class_cube_task_item_claims "
+                "ADD COLUMN phase VARCHAR(32) NOT NULL "
+                "DEFAULT 'submitting' AFTER lease_token"
+            )
         existing = unique_constraints.get(
             "uq_class_cube_claims_task_remote"
         )

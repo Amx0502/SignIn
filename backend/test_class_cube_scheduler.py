@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from unittest.mock import MagicMock, patch
 
 from app.class_cube_database import ClassCubeDatabase
 from app.class_cube_db_models import (
@@ -139,12 +140,74 @@ class ContractTests(unittest.TestCase):
             {"task_id", "remote_module", "remote_item_id"},
         )
         self.assertIn("lease_until", ClassCubeTaskItemClaimRow.__table__.columns)
+        self.assertIn("lease_token", ClassCubeTaskItemClaimRow.__table__.columns)
+        self.assertIn("phase", ClassCubeTaskItemClaimRow.__table__.columns)
 
     def test_database_uses_small_pool(self):
         source = inspect.getsource(ClassCubeDatabase.initialize)
         self.assertIn("pool_size=2", source)
         self.assertIn("max_overflow=0", source)
         self.assertIn("poolclass=NullPool", source)
+
+    @patch("app.class_cube_database.inspect")
+    def test_phase_ddl_atomically_defaults_old_rows_to_submitting(
+        self, inspect_database
+    ):
+        inspector = inspect_database.return_value
+        inspector.get_columns.return_value = [
+            {"name": "id"},
+            {"name": "remote_module"},
+            {"name": "lease_until"},
+            {"name": "lease_token"},
+        ]
+        inspector.get_unique_constraints.return_value = [
+            {
+                "name": "uq_class_cube_claims_task_remote",
+                "column_names": [
+                    "task_id", "remote_module", "remote_item_id"
+                ],
+            }
+        ]
+        engine = MagicMock()
+        ClassCubeDatabase._migrate_claim_table(engine)
+        statements = [
+            str(call.args[0])
+            for call in (
+                engine.begin.return_value.__enter__.return_value
+                .execute.call_args_list
+            )
+        ]
+        self.assertTrue(
+            any(
+                "ADD COLUMN phase" in value
+                and "DEFAULT 'submitting'" in value
+                for value in statements
+            )
+        )
+
+    @patch("app.class_cube_database.inspect")
+    def test_claim_migration_is_idempotent_when_schema_is_current(
+        self, inspect_database
+    ):
+        inspector = inspect_database.return_value
+        inspector.get_columns.return_value = [
+            {"name": name}
+            for name in (
+                "id", "remote_module", "lease_until",
+                "lease_token", "phase",
+            )
+        ]
+        inspector.get_unique_constraints.return_value = [
+            {
+                "name": "uq_class_cube_claims_task_remote",
+                "column_names": [
+                    "task_id", "remote_module", "remote_item_id"
+                ],
+            }
+        ]
+        engine = MagicMock()
+        ClassCubeDatabase._migrate_claim_table(engine)
+        engine.begin.assert_not_called()
 
 
 class MemoryDatabase:
@@ -241,12 +304,26 @@ class RepositoryTests(unittest.TestCase):
         second = self.repository.try_claim(31, 22, "same", "daka")
         self.assertIsNotNone(first)
         self.assertIsNotNone(second)
+        self.assertNotEqual(first["lease_token"], second["lease_token"])
+        with self.database.session() as session:
+            row = session.get(ClassCubeTaskItemClaimRow, first["id"])
+            self.assertEqual(row.phase, "pre_submit")
+
+    def test_finish_rejects_stale_lease_token(self):
+        claim = self.repository.try_claim(31, 21, "same", "punchs")
+        with self.assertRaises(ClassCubeNotFound):
+            self.repository.finish_claim(
+                claim["id"], 31, 21, "same", "punchs",
+                "succeeded", "success",
+                expected_lease_token="stale",
+            )
 
     def test_retryable_and_expired_lease_can_be_reclaimed(self):
         claim = self.repository.try_claim(31, 21, "same", "punchs")
         self.repository.finish_claim(
             claim["id"], 31, 21, "same", "punchs",
             "retryable", "waiting_parameter",
+            expected_lease_token=claim["lease_token"],
         )
         self.assertIsNotNone(
             self.repository.try_claim(31, 21, "same", "punchs")
@@ -263,6 +340,7 @@ class RepositoryTests(unittest.TestCase):
         self.repository.finish_claim(
             claim["id"], 31, 21, "same", "punchs",
             "unknown", "unknown_result",
+            expected_lease_token=claim["lease_token"],
         )
         self.assertIsNone(
             self.repository.try_claim(31, 21, "same", "punchs")
@@ -272,6 +350,40 @@ class RepositoryTests(unittest.TestCase):
         )
         self.assertIsNotNone(
             self.repository.try_claim(31, 21, "same", "punchs")
+        )
+
+    def test_expired_submitting_claim_becomes_unknown(self):
+        claim = self.repository.try_claim(31, 21, "same", "punchs")
+        self.assertTrue(
+            self.repository.mark_claim_submitting(
+                claim["id"], claim["lease_token"]
+            )
+        )
+        with self.database.session() as session:
+            row = session.get(ClassCubeTaskItemClaimRow, claim["id"])
+            row.lease_until = datetime.now() - timedelta(seconds=1)
+        self.assertIsNone(
+            self.repository.try_claim(31, 21, "same", "punchs")
+        )
+        with self.database.session() as session:
+            row = session.get(ClassCubeTaskItemClaimRow, claim["id"])
+            self.assertEqual(row.state, "unknown")
+        runs = self.repository.list_runs(7, False)
+        self.assertEqual(runs[0]["claim_id"], claim["id"])
+        self.assertEqual(runs[0]["status"], "unknown_result")
+
+    def test_task_scan_claim_persists_thirty_second_due_window(self):
+        now = datetime(2026, 1, 1, 0, 0, 0)
+        self.assertTrue(self.repository.claim_task_scan(31, now))
+        self.assertFalse(
+            self.repository.claim_task_scan(
+                31, now + timedelta(seconds=29, milliseconds=999)
+            )
+        )
+        self.assertTrue(
+            self.repository.claim_task_scan(
+                31, now + timedelta(seconds=30)
+            )
         )
 
     def test_batch_delete_is_all_or_nothing_for_owner(self):

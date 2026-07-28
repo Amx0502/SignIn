@@ -326,6 +326,12 @@ class ClassCubeTaskItemClaimRow(ClassCubeBase):
     lease_until: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True
     )
+    lease_token: Mapped[str] = mapped_column(
+        String(64), nullable=False, default=""
+    )
+    phase: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pre_submit"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now
     )

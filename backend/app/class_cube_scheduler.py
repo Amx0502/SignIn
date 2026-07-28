@@ -1,7 +1,12 @@
 import logging
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, wait
+from concurrent.futures import (
+    CancelledError,
+    Future,
+    ThreadPoolExecutor,
+    wait,
+)
 
 
 class ClassCubeScheduler:
@@ -70,6 +75,9 @@ class ClassCubeScheduler:
         with self._lock:
             if self._closed or task_id in self._running_task_ids:
                 return False
+            reserve = getattr(self.service, "reserve_task_scan", None)
+            if reserve is not None and not reserve(task_id):
+                return False
             self._running_task_ids.add(task_id)
             try:
                 future = self._executor.submit(
@@ -85,6 +93,15 @@ class ClassCubeScheduler:
             return True
 
     def _release(self, task_id, future):
+        try:
+            error = future.exception()
+            if error is not None:
+                self.logger.error(
+                    "班级魔方任务执行失败（%s）",
+                    type(error).__name__,
+                )
+        except CancelledError:
+            pass
         with self._lock:
             self._running_task_ids.discard(task_id)
             self._futures.discard(future)
@@ -105,5 +122,5 @@ class ClassCubeScheduler:
             self._stop.set()
             thread = self._thread
         if thread and thread is not threading.current_thread():
-            thread.join(timeout=2)
+            thread.join()
         self._executor.shutdown(wait=True, cancel_futures=True)

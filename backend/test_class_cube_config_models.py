@@ -146,6 +146,8 @@ class ClassCubeModelTest(unittest.TestCase):
             "state",
             "last_run_id",
             "lease_until",
+            "lease_token",
+            "phase",
             "created_at",
             "updated_at",
         },

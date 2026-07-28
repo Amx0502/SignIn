@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 import math
 import os
 from pathlib import Path, PurePosixPath
@@ -642,36 +643,17 @@ class ClassCubeService:
                     exc,
                 )
                 continue
-            self.repository.upsert_items(
-                course_id,
-                bundles,
-                actor_user_id,
-                is_admin,
+            sync_source = getattr(
+                self.repository, "sync_source_items", None
             )
-            close_missing = getattr(
-                self.repository, "close_missing_items", None
-            )
-            if close_missing is not None:
-                close_missing(
-                    course_id,
-                    module,
-                    [
-                        (
-                            bundle.item.remote_module,
-                            bundle.item.remote_item_id,
-                        )
-                        for bundle in bundles
-                        if (
-                            module == "daka"
-                            and bundle.item.remote_module == "daka"
-                        )
-                        or (
-                            module == "punchs"
-                            and bundle.item.remote_module != "daka"
-                        )
-                    ],
-                    actor_user_id,
-                    is_admin,
+            if sync_source is not None:
+                sync_source(
+                    course_id, module, bundles,
+                    actor_user_id, is_admin,
+                )
+            else:
+                self.repository.upsert_items(
+                    course_id, bundles, actor_user_id, is_admin
                 )
             successful_sources += 1
 
@@ -739,8 +721,11 @@ class ClassCubeService:
 
     def list_due_tasks(self):
         return self.repository.list_tasks(
-            0, True, enabled=True
+            0, True, enabled=True, due_at=datetime.now()
         )
+
+    def reserve_task_scan(self, task_id):
+        return self.repository.claim_task_scan(task_id)
 
     @staticmethod
     def _task_actor(task):
@@ -787,6 +772,9 @@ class ClassCubeService:
                     "password": task.get("password") or "",
                 },
                 actor,
+                before_submit=lambda: self._mark_automatic_submitting(
+                    claim
+                ),
             )
             status = result["status"]
             state = {
@@ -804,9 +792,16 @@ class ClassCubeService:
                 status,
                 result.get("message", ""),
                 item.get("mode", "unknown"),
-                expected_lease_until=claim["lease_until"],
+                expected_lease_token=claim["lease_token"],
+                started_at=claim["started_at"],
             )
         return True
+
+    def _mark_automatic_submitting(self, claim):
+        if not self.repository.mark_claim_submitting(
+            claim["id"], claim["lease_token"]
+        ):
+            raise ClassCubeValidationError("签到声明租约已失效")
 
     def list_runs(self, actor, **filters):
         actor_user_id, is_admin = self._actor_scope(actor)
@@ -930,6 +925,7 @@ class ClassCubeService:
         item_id: int,
         payload: dict[str, Any],
         actor: dict[str, Any],
+        before_submit: Callable[[], None] | None = None,
     ) -> dict[str, str]:
         actor_user_id, is_admin = self._actor_scope(actor)
         item = self.repository.get_item(
@@ -977,6 +973,13 @@ class ClassCubeService:
 
         photo_path = None
         remote_photo_value = ""
+        submit_started = False
+
+        def mark_submitting():
+            nonlocal submit_started
+            if not submit_started and before_submit is not None:
+                before_submit()
+                submit_started = True
         if form.mode == "gps_photo":
             supplied_path = str(payload.get("photo_path") or "")
             if not supplied_path:
@@ -1005,6 +1008,7 @@ class ClassCubeService:
             ):
                 photo_path = owned_photo
                 try:
+                    mark_submitting()
                     remote_photo_value = self.client.upload_photo(
                         account["cookie"],
                         form,
@@ -1051,6 +1055,7 @@ class ClassCubeService:
             )
 
         try:
+            mark_submitting()
             result = self.client.submit_form(
                 account["cookie"],
                 form,
