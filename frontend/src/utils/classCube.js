@@ -36,3 +36,24 @@ export function reconcileSelection(items, selectedId) {
   }
   return items.find(item => item?.id === selectedId) || null
 }
+
+export function createUploadGenerationGuard() {
+  let generation = 0
+
+  return {
+    begin(identity) {
+      generation += 1
+      return { generation, identity }
+    },
+    invalidate() {
+      generation += 1
+    },
+    isCurrent(ticket, identity) {
+      return Boolean(
+        ticket
+        && ticket.generation === generation
+        && ticket.identity === identity,
+      )
+    },
+  }
+}

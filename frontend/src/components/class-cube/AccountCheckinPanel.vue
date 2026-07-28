@@ -139,6 +139,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TaskImageUpload from '../TaskImageUpload.vue'
+import { createUploadGenerationGuard } from '../../utils/classCube.js'
 
 const props = defineProps({
   accounts: { type: Array, default: () => [] },
@@ -162,8 +163,19 @@ const resultVisible = ref(false)
 const result = ref(null)
 const photoFiles = ref([])
 const form = reactive({ latitude: null, longitude: null, accuracy: 20, photo_path: '', password: '' })
+const uploadGuard = createUploadGenerationGuard()
+
+function uploadIdentity() {
+  return [
+    props.selectedAccountId,
+    props.selectedCourseId,
+    props.selectedItemId,
+    props.selectedItem?.mode,
+  ].join(':')
+}
 
 function resetManualState() {
+  uploadGuard.invalidate()
   Object.assign(form, {
     latitude: null,
     longitude: null,
@@ -224,8 +236,14 @@ async function accountCommand(command, account) {
 }
 
 async function uploadPhoto(options) {
+  const identity = uploadIdentity()
+  const ticket = uploadGuard.begin(identity)
   try {
     const uploaded = await props.uploadPhotoAction(options.file, props.selectedAccountId)
+    if (!uploadGuard.isCurrent(ticket, uploadIdentity())) {
+      options.onSuccess(uploaded)
+      return
+    }
     const path = uploaded.path || uploaded.photo_path
     photoFiles.value = [{ uid: `${Date.now()}`, name: options.file.name, path, url: uploaded.url, status: 'success' }]
     form.photo_path = path
@@ -233,10 +251,15 @@ async function uploadPhoto(options) {
     ElMessage.success('照片上传成功')
   } catch (error) {
     options.onError(error)
+    if (!uploadGuard.isCurrent(ticket, uploadIdentity())) return
     ElMessage.error(error.message || '照片上传失败')
   }
 }
-function removePhoto() { photoFiles.value = []; form.photo_path = '' }
+function removePhoto() {
+  uploadGuard.invalidate()
+  photoFiles.value = []
+  form.photo_path = ''
+}
 
 async function submitManual() {
   checkingIn.value = true

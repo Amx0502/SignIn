@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  createUploadGenerationGuard,
   normalizeQrSession,
   reconcileSelection,
   requiredFieldsForMode,
@@ -258,4 +259,27 @@ test('exposes an error QR session when session creation fails', async () => {
   assert.equal(state.qrSession.value.status, 'error')
   assert.equal(state.qrSession.value.retryable, true)
   assert.equal(state.qrRemainingSeconds.value, 0)
+})
+
+test('rejects a deferred photo upload after its form identity is invalidated', async () => {
+  let resolveUpload
+  const upload = new Promise(resolve => { resolveUpload = resolve })
+  const guard = createUploadGenerationGuard()
+  const ticket = guard.begin('account:1/course:2/item:3/gps_photo')
+  let applied = null
+  const completion = upload.then(result => {
+    if (guard.isCurrent(ticket, 'account:1/course:2/item:3/gps_photo')) {
+      applied = result
+    }
+  })
+
+  guard.invalidate()
+  resolveUpload({ path: 'class-cube/1/old.jpg' })
+  await completion
+
+  assert.equal(applied, null)
+  assert.equal(
+    guard.isCurrent(ticket, 'account:1/course:2/item:3/gps_photo'),
+    false,
+  )
 })

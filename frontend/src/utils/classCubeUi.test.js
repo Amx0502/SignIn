@@ -40,6 +40,8 @@ test('manual check-in panel renders every mode and sync action', async () => {
   assert.match(panel, /photo_path/)
   assert.match(panel, /watch/)
   assert.match(panel, /resetManualState/)
+  assert.match(panel, /createUploadGenerationGuard/)
+  assert.match(panel, /uploadIdentity/)
   assert.doesNotMatch(panel, /v-html/)
 })
 
