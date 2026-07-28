@@ -40,13 +40,22 @@ class ClassCubeDatabase:
         finally:
             server_engine.dispose()
 
-        self._engine = create_engine(self.settings.url(), pool_pre_ping=True)
-        self._session_factory = sessionmaker(
-            bind=self._engine,
-            autoflush=False,
-            expire_on_commit=False,
+        database_engine = create_engine(
+            self.settings.url(), pool_pre_ping=True
         )
-        ClassCubeBase.metadata.create_all(self._engine)
+        try:
+            ClassCubeBase.metadata.create_all(database_engine)
+            session_factory = sessionmaker(
+                bind=database_engine,
+                autoflush=False,
+                expire_on_commit=False,
+            )
+        except Exception:
+            database_engine.dispose()
+            raise
+
+        self._engine = database_engine
+        self._session_factory = session_factory
 
     @contextmanager
     def session(self) -> Iterator[Session]:

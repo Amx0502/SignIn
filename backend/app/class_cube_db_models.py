@@ -107,6 +107,7 @@ class ClassCubeCourseRow(ClassCubeBase):
     )
     tasks: Mapped[list["ClassCubeTaskRow"]] = relationship(
         back_populates="course",
+        cascade="all, delete-orphan",
         passive_deletes=True,
     )
 
@@ -159,10 +160,12 @@ class ClassCubeCheckinItemRow(ClassCubeBase):
     )
     task_runs: Mapped[list["ClassCubeTaskRunRow"]] = relationship(
         back_populates="checkin_item",
+        cascade="all, delete-orphan",
         passive_deletes=True,
     )
     task_item_claims: Mapped[list["ClassCubeTaskItemClaimRow"]] = relationship(
         back_populates="checkin_item",
+        cascade="all, delete-orphan",
         passive_deletes=True,
     )
 

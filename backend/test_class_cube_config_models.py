@@ -4,10 +4,19 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, create_engine
+from sqlalchemy.orm import Session
 
 from app.class_cube_database import ClassCubeDatabase
-from app.class_cube_db_models import ClassCubeBase
+from app.class_cube_db_models import (
+    ClassCubeAccountRow,
+    ClassCubeBase,
+    ClassCubeCheckinItemRow,
+    ClassCubeCourseRow,
+    ClassCubeTaskItemClaimRow,
+    ClassCubeTaskRow,
+    ClassCubeTaskRunRow,
+)
 from app.database_config import ConnectionSettings, load_database_config
 
 
@@ -206,6 +215,111 @@ class ClassCubeModelTest(unittest.TestCase):
         self.assertEqual(column.default.arg, 30)
 
 
+class ClassCubeRelationshipTest(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine("sqlite://")
+        ClassCubeBase.metadata.create_all(self.engine)
+
+    def tearDown(self):
+        self.engine.dispose()
+
+    @staticmethod
+    def account() -> ClassCubeAccountRow:
+        return ClassCubeAccountRow(
+            id=1,
+            owner_user_id=7,
+            name="测试账号",
+            remote_user_name="测试用户",
+            cookie="remember_student_test=secret",
+        )
+
+    def test_deleting_loaded_course_cascades_to_tasks(self):
+        account = self.account()
+        course = ClassCubeCourseRow(
+            id=2,
+            account=account,
+            remote_course_id="course-1",
+            name="测试课程",
+        )
+        task = ClassCubeTaskRow(
+            id=3,
+            owner_user_id=7,
+            account=account,
+            course=course,
+            name="测试任务",
+        )
+        with Session(self.engine) as session:
+            session.add(account)
+            session.commit()
+            session.expire_all()
+
+            loaded_course = session.get(ClassCubeCourseRow, course.id)
+            self.assertIsNotNone(loaded_course)
+            self.assertEqual([row.id for row in loaded_course.tasks], [task.id])
+            session.delete(loaded_course)
+            session.commit()
+
+            self.assertIsNone(session.get(ClassCubeTaskRow, task.id))
+
+    def test_deleting_loaded_checkin_item_cascades_to_runs_and_claims(self):
+        account = self.account()
+        course = ClassCubeCourseRow(
+            id=2,
+            account=account,
+            remote_course_id="course-1",
+            name="测试课程",
+        )
+        task = ClassCubeTaskRow(
+            id=3,
+            owner_user_id=7,
+            account=account,
+            course=course,
+            name="测试任务",
+        )
+        item = ClassCubeCheckinItemRow(
+            id=4,
+            course=course,
+            remote_item_id="item-1",
+            title="测试签到",
+            mode="qr",
+            remote_module="punchs",
+        )
+        run = ClassCubeTaskRunRow(
+            id=5,
+            task=task,
+            checkin_item=item,
+            remote_item_id="item-1",
+            mode="qr",
+            status="success",
+        )
+        claim = ClassCubeTaskItemClaimRow(
+            id=6,
+            task=task,
+            checkin_item=item,
+            remote_item_id="item-1",
+            state="succeeded",
+            last_run=run,
+        )
+        with Session(self.engine) as session:
+            session.add(account)
+            session.commit()
+            session.expire_all()
+
+            loaded_item = session.get(ClassCubeCheckinItemRow, item.id)
+            self.assertIsNotNone(loaded_item)
+            self.assertEqual([row.id for row in loaded_item.task_runs], [run.id])
+            self.assertEqual(
+                [row.id for row in loaded_item.task_item_claims], [claim.id]
+            )
+            session.delete(loaded_item)
+            session.commit()
+
+            self.assertIsNone(session.get(ClassCubeTaskRunRow, run.id))
+            self.assertIsNone(
+                session.get(ClassCubeTaskItemClaimRow, claim.id)
+            )
+
+
 class ClassCubeDatabaseTest(unittest.TestCase):
     def setUp(self):
         self.settings = ConnectionSettings(
@@ -241,12 +355,47 @@ class ClassCubeDatabaseTest(unittest.TestCase):
             ],
         )
         create_all.assert_called_once_with(database_engine)
+        server_connection = (
+            server_engine.connect.return_value.__enter__.return_value
+        )
+        server_connection.execute.assert_called_once()
+        self.assertEqual(
+            str(server_connection.execute.call_args.args[0]),
+            "CREATE DATABASE IF NOT EXISTS `bjmf` "
+            "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        )
+        server_engine.dispose.assert_called_once_with()
+        database_engine.dispose.assert_not_called()
         self.assertIs(database.engine, database_engine)
         sessionmaker.assert_called_once_with(
             bind=database_engine,
             autoflush=False,
             expire_on_commit=False,
         )
+
+    @patch("app.class_cube_database.ClassCubeBase.metadata.create_all")
+    @patch("app.class_cube_database.sessionmaker")
+    @patch("app.class_cube_database.create_engine")
+    def test_create_all_failure_disposes_engine_and_keeps_uninitialized(
+        self, create_engine, sessionmaker, create_all
+    ):
+        server_engine = MagicMock()
+        database_engine = MagicMock()
+        create_engine.side_effect = [server_engine, database_engine]
+        create_all.side_effect = RuntimeError("create tables failed")
+        database = ClassCubeDatabase(self.settings)
+
+        with self.assertRaisesRegex(RuntimeError, "create tables failed"):
+            database.initialize()
+
+        server_engine.dispose.assert_called_once_with()
+        database_engine.dispose.assert_called_once_with()
+        sessionmaker.assert_not_called()
+        with self.assertRaisesRegex(RuntimeError, "尚未初始化"):
+            _ = database.engine
+        with self.assertRaisesRegex(RuntimeError, "尚未初始化"):
+            with database.session():
+                pass
 
     def test_session_commits_and_closes(self):
         database = ClassCubeDatabase(self.settings)
