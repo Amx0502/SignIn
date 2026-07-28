@@ -64,6 +64,21 @@ class ClassCubeParserTest(unittest.TestCase):
             ],
         )
 
+    def test_excludes_class_code_node_from_course_name(self):
+        html = """
+        <a href="/student/course/404">
+          <span>数据结构</span>
+          <small class="class-code">CLASS-404</small>
+        </a>
+        """
+
+        actual = parse_courses(html)
+
+        self.assertEqual(
+            actual,
+            [ParsedCourse("404", "数据结构", "CLASS-404")],
+        )
+
     def test_parses_checkin_items_in_page_order_and_deduplicates(self):
         html = """
         <a href="/student/punchs/course/1/12"
@@ -102,6 +117,77 @@ class ClassCubeParserTest(unittest.TestCase):
                         "https://bjmf.k8n.cn/student/punchs/course/1/13"
                     ),
                 ),
+            ],
+        )
+
+    def test_parses_item_markers_and_exact_routes_in_first_seen_order(self):
+        html = """
+        <section id="punchcard_21">
+          <button>二维码签到</button>
+        </section>
+        <button onclick="punch_gps(22)">GPS 签到</button>
+        <a href="/student/punch_gps/course/1/22">GPS 详情</a>
+        <a href="/student/daka/course/1/23">日常打卡</a>
+        <a href="/student/punchs/course/1/21">重复二维码签到</a>
+        <a href="/student/punchs/course/10/88">其他课程</a>
+        <a href="/student/homework/course/1/99">非签到模块</a>
+        """
+
+        actual = parse_checkin_items(
+            html,
+            course_id="1",
+            module="punchs",
+            response_url="https://bjmf.k8n.cn/student/punchs/course/1",
+        )
+
+        self.assertEqual(
+            [
+                (
+                    item.remote_item_id,
+                    item.remote_module,
+                    item.mode_hint,
+                )
+                for item in actual
+            ],
+            [
+                ("21", "punchs", "qr"),
+                ("22", "punch_gps", "gps"),
+                ("23", "daka", "unknown"),
+            ],
+        )
+        self.assertEqual(
+            actual[0].detail_url,
+            "https://bjmf.k8n.cn/student/punchs/course/1/21",
+        )
+        self.assertEqual(
+            actual[1].detail_url,
+            "https://bjmf.k8n.cn/student/punch_gps/course/1/22",
+        )
+
+    def test_parses_item_from_direct_response_url(self):
+        actual = parse_checkin_items(
+            '<h1 id="title">直接进入的签到</h1>',
+            course_id="1",
+            module="punchs",
+            response_url=(
+                "https://bjmf.k8n.cn/student/daka/course/1/77"
+                "?from=notice"
+            ),
+        )
+
+        self.assertEqual(
+            actual,
+            [
+                ParsedItem(
+                    remote_item_id="77",
+                    course_id="1",
+                    title="直接进入的签到",
+                    remote_module="daka",
+                    detail_url=(
+                        "https://bjmf.k8n.cn/student/daka/course/1/77"
+                        "?from=notice"
+                    ),
+                )
             ],
         )
 
@@ -175,11 +261,49 @@ class ClassCubeParserTest(unittest.TestCase):
             ),
         )
 
+    def test_selects_requested_item_form_after_navigation_form(self):
+        html = """
+        <form action="/student/search" method="get">
+          <input name="keyword">
+        </form>
+        <section id="punchcard_12">
+          <form action="/student/punchs/course/1/12" method="POST">
+            <input type="hidden" name="_token" value="item-token">
+            <input type="password" name="passcode">
+          </form>
+        </section>
+        """
+
+        form = parse_checkin_form(
+            html,
+            "https://bjmf.k8n.cn/student/punchs/course/1/12",
+            self.item,
+        )
+
+        self.assertEqual(
+            form,
+            ParsedForm(
+                action=(
+                    "https://bjmf.k8n.cn/student/punchs/course/1/12"
+                ),
+                method="post",
+                mode="password",
+                hidden_fields={"_token": "item-token"},
+                password_field="passcode",
+            ),
+        )
+
     def test_detects_explicit_result_statuses(self):
         cases = {
-            "success": '<div class="alert-success">签到成功</div>',
-            "already_signed": "<main>您已签到，请勿重复提交</main>",
-            "not_started": "<p>本次签到尚未开始</p>",
+            "success": (
+                '<div class="punch-success-info">签到成功</div>'
+            ),
+            "already_signed": (
+                '<h1 id="title">您已签到，请勿重复提交</h1>'
+            ),
+            "not_started": (
+                '<p class="punch-status">本次签到尚未开始</p>'
+            ),
         }
         for expected, html in cases.items():
             with self.subTest(expected):
@@ -227,6 +351,20 @@ class ClassCubeParserTest(unittest.TestCase):
         result = parse_checkin_result(
             "<html><body>处理中</body></html>",
             "https://bjmf.k8n.cn/x",
+        )
+
+        self.assertEqual(result.status, "unknown_result")
+
+    def test_ignores_success_words_outside_result_nodes(self):
+        html = """
+        <aside class="help">
+          提交完成后，页面将显示“签到成功”。
+        </aside>
+        <main>当前请求仍在处理中</main>
+        """
+
+        result = parse_checkin_result(
+            html, "https://bjmf.k8n.cn/result"
         )
 
         self.assertEqual(result.status, "unknown_result")

@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from urllib.parse import unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
@@ -86,32 +86,96 @@ def parse_checkin_items(
 ) -> list[ParsedItem]:
     soup = BeautifulSoup(html, "html.parser")
     normalized_module = module.strip("/")
-    path_pattern = re.compile(
-        rf"/student/{re.escape(normalized_module)}/course/"
-        rf"{re.escape(course_id)}/([^/?#]+)/?$"
-    )
     items: list[ParsedItem] = []
-    seen: set[str] = set()
-    for anchor in soup.find_all("a", href=True):
-        href = _attribute_text(anchor.get("href"))
-        match = path_pattern.search(urlparse(href).path)
-        if not match:
-            continue
-        remote_item_id = unquote(match.group(1))
-        if remote_item_id in seen:
-            continue
-        seen.add(remote_item_id)
-        items.append(
-            ParsedItem(
-                remote_item_id=remote_item_id,
-                course_id=course_id,
-                title=_attribute_text(anchor.get("data-title"))
-                or anchor.get_text(" ", strip=True),
-                remote_module=normalized_module,
-                detail_url=urljoin(response_url, href),
-                mode_hint=_attribute_text(anchor.get("data-mode"))
-                or "unknown",
+    positions: dict[str, int] = {}
+
+    def add_item(
+        remote_item_id: str,
+        *,
+        title: str = "",
+        remote_module: str = "",
+        detail_url: str = "",
+        mode_hint: str = "unknown",
+    ) -> None:
+        remote_item_id = unquote(remote_item_id).strip()
+        if not remote_item_id:
+            return
+        if remote_item_id not in positions:
+            positions[remote_item_id] = len(items)
+            items.append(
+                ParsedItem(
+                    remote_item_id=remote_item_id,
+                    course_id=course_id,
+                    title=title,
+                    remote_module=remote_module or normalized_module,
+                    detail_url=detail_url,
+                    mode_hint=mode_hint,
+                )
             )
+            return
+
+        index = positions[remote_item_id]
+        current = items[index]
+        resolved_module = current.remote_module
+        if (
+            remote_module
+            and current.remote_module == normalized_module
+            and remote_module != normalized_module
+        ):
+            resolved_module = remote_module
+        items[index] = replace(
+            current,
+            title=current.title or title,
+            remote_module=resolved_module,
+            detail_url=current.detail_url or detail_url,
+            mode_hint=(
+                current.mode_hint
+                if current.mode_hint != "unknown"
+                else mode_hint
+            ),
+        )
+
+    for tag in soup.find_all(True):
+        title = _item_title(tag)
+        punchcard_id = _punchcard_item_id(tag)
+        if punchcard_id:
+            add_item(
+                punchcard_id,
+                title=title,
+                mode_hint="qr",
+            )
+
+        gps_item_id = _gps_item_id(tag)
+        if gps_item_id:
+            add_item(
+                gps_item_id,
+                title=title,
+                remote_module="punch_gps",
+                mode_hint="gps",
+            )
+
+        if tag.name == "a" and tag.get("href"):
+            href = _attribute_text(tag.get("href"))
+            route = _checkin_route(href, course_id)
+            if route:
+                route_module, remote_item_id = route
+                add_item(
+                    remote_item_id,
+                    title=title,
+                    remote_module=route_module,
+                    detail_url=urljoin(response_url, href),
+                    mode_hint=_item_mode_hint(tag, route_module),
+                )
+
+    response_route = _checkin_route(response_url, course_id)
+    if response_route:
+        route_module, remote_item_id = response_route
+        add_item(
+            remote_item_id,
+            title=_direct_item_title(soup),
+            remote_module=route_module,
+            detail_url=response_url,
+            mode_hint=_module_mode_hint(route_module),
         )
     return items
 
@@ -121,10 +185,9 @@ def parse_checkin_form(
     response_url: str,
     item: ParsedItem,
 ) -> ParsedForm:
-    del item
     soup = BeautifulSoup(html, "html.parser")
-    form = soup.find("form")
-    inputs = form.find_all("input") if form else soup.find_all("input")
+    form = _select_checkin_form(soup, response_url, item)
+    inputs = form.find_all("input") if form else []
 
     hidden_fields = {
         _attribute_text(input_tag.get("name")): _attribute_text(
@@ -175,6 +238,46 @@ def parse_checkin_form(
     )
 
 
+def _select_checkin_form(
+    soup: BeautifulSoup,
+    response_url: str,
+    item: ParsedItem,
+) -> Tag | None:
+    container = soup.find(id=f"punchcard_{item.remote_item_id}")
+    if isinstance(container, Tag):
+        if container.name == "form":
+            return container
+        nested_form = container.find("form")
+        if isinstance(nested_form, Tag):
+            return nested_form
+
+    forms = soup.find_all("form")
+    if item.detail_url:
+        expected_url = urlparse(item.detail_url)
+        for form in forms:
+            action = _attribute_text(form.get("action"))
+            actual_url = urlparse(urljoin(response_url, action))
+            if (
+                actual_url.netloc == expected_url.netloc
+                and actual_url.path.rstrip("/")
+                == expected_url.path.rstrip("/")
+            ):
+                return form
+
+    expected_suffix = (
+        f"/course/{item.course_id}/{item.remote_item_id}"
+    )
+    for form in forms:
+        action = _attribute_text(form.get("action"))
+        action_path = unquote(urlparse(urljoin(response_url, action)).path)
+        if action_path.rstrip("/").endswith(expected_suffix):
+            return form
+
+    if len(forms) == 1:
+        return forms[0]
+    return None
+
+
 def parse_checkin_result(html: str, response_url: str) -> ParsedResult:
     soup = BeautifulSoup(html, "html.parser")
     message = " ".join(soup.get_text(" ", strip=True).split())
@@ -182,7 +285,7 @@ def parse_checkin_result(html: str, response_url: str) -> ParsedResult:
     if _is_login_page(soup, response_url, message):
         status = "cookie_expired"
     else:
-        status = _structured_status(soup) or _status_from_text(message)
+        status = _structured_status(soup) or _result_node_status(soup)
 
     return ParsedResult(
         status=status or "unknown_result",
@@ -195,6 +298,77 @@ def _attribute_text(value: object) -> str:
     if isinstance(value, list):
         return " ".join(str(part) for part in value)
     return str(value) if value is not None else ""
+
+
+def _item_title(tag: Tag) -> str:
+    return _attribute_text(
+        tag.get("data-title")
+    ) or tag.get_text(" ", strip=True)
+
+
+def _punchcard_item_id(tag: Tag) -> str:
+    for attribute in ("id", "data-target", "data-id", "href"):
+        value = _attribute_text(tag.get(attribute))
+        match = re.search(
+            r"(?:^|[#\s])punchcard_([A-Za-z0-9_.-]+)(?:$|[\s])",
+            value,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _gps_item_id(tag: Tag) -> str:
+    for value in tag.attrs.values():
+        match = re.search(
+            r"\bpunch_gps\s*\(\s*['\"]?([^,'\"\s)]+)",
+            _attribute_text(value),
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _checkin_route(
+    url: str,
+    expected_course_id: str,
+) -> tuple[str, str] | None:
+    path = unquote(urlparse(url).path)
+    match = re.fullmatch(
+        r"/student/(punch\w+|daka)/course/([^/]+)/([^/]+)/?",
+        path,
+        re.IGNORECASE | re.ASCII,
+    )
+    if not match or match.group(2) != expected_course_id:
+        return None
+    return match.group(1), match.group(3)
+
+
+def _module_mode_hint(module: str) -> str:
+    lowered_module = module.lower()
+    if "gps" in lowered_module:
+        return "gps"
+    if "punchcard" in lowered_module:
+        return "qr"
+    return "unknown"
+
+
+def _item_mode_hint(tag: Tag, module: str) -> str:
+    explicit_mode = _attribute_text(tag.get("data-mode"))
+    if explicit_mode:
+        return explicit_mode
+    if _gps_item_id(tag):
+        return "gps"
+    if _punchcard_item_id(tag):
+        return "qr"
+    return _module_mode_hint(module)
+
+
+def _direct_item_title(soup: BeautifulSoup) -> str:
+    title = soup.select_one("#title, .punch-title, h1, h2")
+    return title.get_text(" ", strip=True) if isinstance(title, Tag) else ""
 
 
 def _course_id(href: str) -> str:
@@ -211,9 +385,28 @@ def _course_name(anchor: Tag) -> str:
         return _attribute_text(
             name_node.get("data-course-name")
         ) or name_node.get_text(" ", strip=True)
-    return _attribute_text(
-        anchor.get("data-course-name")
-    ) or anchor.get_text(" ", strip=True)
+    explicit_name = _attribute_text(anchor.get("data-course-name"))
+    if explicit_name:
+        return explicit_name
+
+    name_parts: list[str] = []
+    for text_node in anchor.find_all(string=True):
+        text = str(text_node).strip()
+        if not text:
+            continue
+        belongs_to_class_code = False
+        for parent in text_node.parents:
+            if parent is anchor:
+                break
+            if isinstance(parent, Tag) and (
+                "class-code" in parent.get("class", [])
+                or parent.has_attr("data-class-code")
+            ):
+                belongs_to_class_code = True
+                break
+        if not belongs_to_class_code:
+            name_parts.append(text)
+    return " ".join(name_parts)
 
 
 def _class_code(anchor: Tag) -> str:
@@ -294,6 +487,16 @@ def _structured_status(soup: BeautifulSoup) -> str:
             value = _attribute_text(tag.get(attribute)).strip().lower()
             if value in aliases:
                 return aliases[value]
+    return ""
+
+
+def _result_node_status(soup: BeautifulSoup) -> str:
+    for node in soup.select(
+        "#title, .punch-success-info, .punch-status"
+    ):
+        status = _status_from_text(node.get_text(" ", strip=True))
+        if status:
+            return status
     return ""
 
 
