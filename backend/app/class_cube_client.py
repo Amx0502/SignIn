@@ -30,6 +30,8 @@ CONNECT_TIMEOUT = 5
 READ_TIMEOUT = 10
 GET_MAX_ATTEMPTS = 3
 AUTHENTICATED_HOSTS = frozenset({"bjmf.k8n.cn", "bj.k8n.cn"})
+AUTH_REDIRECT_MAX_HOPS = 5
+AUTH_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 
 WECHAT_USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 "
@@ -235,9 +237,11 @@ class ClassCubeClient:
                 }
                 if files is not None:
                     request_kwargs["files"] = files
-                response = session.post(
+                response = self._request_authenticated(
+                    session,
+                    "post",
                     form.action,
-                    **request_kwargs,
+                    post_kwargs=request_kwargs,
                 )
             response.raise_for_status()
             return parse_checkin_result(
@@ -373,7 +377,81 @@ class ClassCubeClient:
         url: str,
         **request_kwargs,
     ):
-        self._validate_authenticated_url(url)
+        return self._request_authenticated(
+            session,
+            "get",
+            url,
+            get_kwargs=request_kwargs,
+        )
+
+    def _request_authenticated(
+        self,
+        session,
+        method: str,
+        url: str,
+        *,
+        get_kwargs=None,
+        post_kwargs=None,
+    ):
+        current_method = method.lower()
+        current_url = url
+        current_get_kwargs = dict(get_kwargs or {})
+        preserved_post_kwargs = dict(post_kwargs or {})
+        redirect_count = 0
+
+        while True:
+            self._validate_authenticated_url(current_url)
+            if current_method == "get":
+                response = self._get_single_url_with_retries(
+                    session,
+                    current_url,
+                    **current_get_kwargs,
+                )
+            else:
+                response = self._post_single_url(
+                    session,
+                    current_url,
+                    **preserved_post_kwargs,
+                )
+
+            if (
+                response.status_code
+                not in AUTH_REDIRECT_STATUS_CODES
+            ):
+                return response
+
+            location = response.headers.get("Location", "").strip()
+            if not location:
+                raise ClassCubeRequestError(
+                    "authenticated redirect is missing Location"
+                )
+            if redirect_count >= AUTH_REDIRECT_MAX_HOPS:
+                raise ClassCubeRequestError(
+                    "authenticated redirect limit exceeded"
+                )
+            try:
+                next_url = urljoin(current_url, location)
+            except (TypeError, ValueError) as exc:
+                raise ClassCubeRequestError(
+                    "authenticated redirect Location is invalid"
+                ) from exc
+            self._validate_authenticated_url(next_url)
+
+            redirect_count += 1
+            if (
+                current_method == "post"
+                and response.status_code in {301, 302, 303}
+            ):
+                current_method = "get"
+            current_url = next_url
+            current_get_kwargs = {}
+
+    def _get_single_url_with_retries(
+        self,
+        session,
+        url: str,
+        **request_kwargs,
+    ):
         last_error = None
         for _ in range(GET_MAX_ATTEMPTS):
             try:
@@ -381,6 +459,7 @@ class ClassCubeClient:
                     url,
                     headers=self._request_headers(),
                     timeout=REQUEST_TIMEOUT,
+                    allow_redirects=False,
                     **request_kwargs,
                 )
                 response.raise_for_status()
@@ -390,6 +469,36 @@ class ClassCubeClient:
         raise ClassCubeRequestError(
             f"GET request failed after {GET_MAX_ATTEMPTS} attempts"
         ) from last_error
+
+    def _post_single_url(
+        self,
+        session,
+        url: str,
+        **request_kwargs,
+    ):
+        self._rewind_uploads(request_kwargs.get("files"))
+        try:
+            response = session.post(
+                url,
+                allow_redirects=False,
+                **request_kwargs,
+            )
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            raise ClassCubeRequestError(
+                "check-in form submission failed"
+            ) from exc
+
+    @staticmethod
+    def _rewind_uploads(files) -> None:
+        for file_value in (files or {}).values():
+            if (
+                isinstance(file_value, tuple)
+                and len(file_value) >= 2
+                and hasattr(file_value[1], "seek")
+            ):
+                file_value[1].seek(0)
 
     @staticmethod
     def _request_headers() -> dict[str, str]:

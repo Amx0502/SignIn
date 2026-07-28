@@ -950,6 +950,222 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
 
                 self.assertEqual(session.calls, [])
 
+    def test_fetch_courses_rejects_untrusted_redirect_before_next_get(self):
+        first_url = "https://bjmf.k8n.cn/student/courses"
+        malicious_url = "https://evil.k8n.cn/student/courses"
+        session = FakeSession(
+            [
+                FakeResponse(
+                    status_code=302,
+                    headers={"Location": malicious_url},
+                    url=first_url,
+                ),
+                FakeResponse(
+                    text='<a href="/student/course/1">Leaked</a>',
+                    url=malicious_url,
+                ),
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+
+        with self.assertRaises(ClassCubeRequestError):
+            client.fetch_courses(
+                "remember_student_abc=cookie-token"
+            )
+
+        self.assertEqual(len(session.calls), 1)
+        method, url, kwargs = session.calls[0]
+        self.assertEqual((method, url), ("GET", first_url))
+        self.assertFalse(kwargs["allow_redirects"])
+        self.assertNotIn("Cookie", kwargs["headers"])
+        self.assertTrue(session.closed)
+
+    def test_fetch_courses_follows_redirect_between_allowed_hosts(self):
+        first_url = "https://bjmf.k8n.cn/student/courses"
+        second_url = "https://bj.k8n.cn/student/courses"
+        session = FakeSession(
+            [
+                FakeResponse(
+                    status_code=302,
+                    headers={"Location": second_url},
+                    url=first_url,
+                ),
+                FakeResponse(
+                    text='<a href="/student/course/101">Math</a>',
+                    url=second_url,
+                ),
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+
+        courses = client.fetch_courses("cookie=value")
+
+        self.assertEqual(courses, [ParsedCourse("101", "Math")])
+        self.assertEqual(
+            [(method, url) for method, url, _ in session.calls],
+            [("GET", first_url), ("GET", second_url)],
+        )
+        for _, _, kwargs in session.calls:
+            self.assertFalse(kwargs["allow_redirects"])
+            self.assertNotIn("Cookie", kwargs["headers"])
+
+    def test_authenticated_get_rejects_missing_or_excessive_redirects(self):
+        cases = {
+            "missing-location": [
+                FakeResponse(status_code=302),
+            ],
+            "too-many": [
+                FakeResponse(
+                    status_code=302,
+                    headers={
+                        "Location": f"/student/courses?hop={index}"
+                    },
+                )
+                for index in range(7)
+            ],
+        }
+        for name, responses in cases.items():
+            with self.subTest(name):
+                session = FakeSession(responses)
+                client = ClassCubeClient(
+                    session_factory=lambda: session
+                )
+
+                with self.assertRaises(ClassCubeRequestError):
+                    client.fetch_courses("cookie=value")
+
+                expected_calls = 1 if name == "missing-location" else 6
+                self.assertEqual(len(session.calls), expected_calls)
+                self.assertTrue(session.closed)
+
+    def test_submit_post_rejects_untrusted_redirect_before_next_request(self):
+        first_url = (
+            "https://bjmf.k8n.cn/student/punchs/course/1/12"
+        )
+        malicious_url = (
+            "https://evil.k8n.cn/student/punchs/course/1/12"
+        )
+        session = FakeSession(
+            [
+                FakeResponse(
+                    status_code=302,
+                    headers={"Location": malicious_url},
+                    url=first_url,
+                ),
+                FakeResponse(
+                    text='<div data-status="success">Leaked</div>',
+                    url=malicious_url,
+                ),
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+        form = ParsedForm(
+            action=first_url,
+            method="post",
+            mode="password",
+            hidden_fields={"_token": "token"},
+        )
+
+        with self.assertRaises(ClassCubeRequestError):
+            client.submit_form("cookie=value", form, {})
+
+        self.assertEqual(len(session.calls), 1)
+        method, url, kwargs = session.calls[0]
+        self.assertEqual((method, url), ("POST", first_url))
+        self.assertFalse(kwargs["allow_redirects"])
+        self.assertNotIn("Cookie", kwargs["headers"])
+
+    def test_submit_post_302_follows_allowed_redirect_as_get(self):
+        first_url = (
+            "https://bjmf.k8n.cn/student/punchs/course/1/12"
+        )
+        second_url = "https://bj.k8n.cn/student/punchs/result"
+        session = FakeSession(
+            [
+                FakeResponse(
+                    status_code=302,
+                    headers={"Location": second_url},
+                    url=first_url,
+                ),
+                FakeResponse(
+                    text='<div data-status="success">Done</div>',
+                    url=second_url,
+                ),
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+        form = ParsedForm(
+            action=first_url,
+            method="post",
+            mode="password",
+            hidden_fields={"_token": "token"},
+        )
+
+        result = client.submit_form(
+            "cookie=value",
+            form,
+            {"passcode": "1234"},
+        )
+
+        self.assertEqual(result.status, "success")
+        self.assertEqual(
+            [(method, url) for method, url, _ in session.calls],
+            [("POST", first_url), ("GET", second_url)],
+        )
+        self.assertEqual(
+            session.calls[0][2]["data"],
+            {"_token": "token", "passcode": "1234"},
+        )
+        self.assertNotIn("data", session.calls[1][2])
+        for _, _, kwargs in session.calls:
+            self.assertFalse(kwargs["allow_redirects"])
+
+    def test_submit_post_307_follows_allowed_redirect_as_post(self):
+        first_url = (
+            "https://bjmf.k8n.cn/student/punchs/course/1/12"
+        )
+        second_url = (
+            "https://bj.k8n.cn/student/punchs/course/1/12"
+        )
+        session = FakeSession(
+            [
+                FakeResponse(
+                    status_code=307,
+                    headers={"Location": second_url},
+                    url=first_url,
+                ),
+                FakeResponse(
+                    text='<div data-status="success">Done</div>',
+                    url=second_url,
+                ),
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+        form = ParsedForm(
+            action=first_url,
+            method="post",
+            mode="password",
+            hidden_fields={"_token": "token"},
+        )
+
+        result = client.submit_form(
+            "cookie=value",
+            form,
+            {"passcode": "1234"},
+        )
+
+        self.assertEqual(result.status, "success")
+        self.assertEqual(
+            [(method, url) for method, url, _ in session.calls],
+            [("POST", first_url), ("POST", second_url)],
+        )
+        for _, _, kwargs in session.calls:
+            self.assertEqual(
+                kwargs["data"],
+                {"_token": "token", "passcode": "1234"},
+            )
+            self.assertFalse(kwargs["allow_redirects"])
+
     def test_submit_get_uses_params_and_finite_get_retries(self):
         session = FakeSession(
             [
