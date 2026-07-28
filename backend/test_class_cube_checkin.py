@@ -192,6 +192,66 @@ class ClassCubeCheckinFormContractTest(unittest.TestCase):
             "https://bjmf.k8n.cn/student/search",
         )
 
+    def test_broad_ancestor_item_marker_does_not_bind_search_get_form(self):
+        form = parse_checkin_form(
+            """
+            <section data-item-id="item-12">
+              <form action="/student/search" method="get">
+                <input name="keyword">
+              </form>
+            </section>
+            """,
+            self.item.detail_url,
+            self.item,
+        )
+
+        self.assertFalse(form.submit_capable)
+        self.assertEqual(form.method, "get")
+
+    def test_get_form_matching_detail_action_is_not_selected(self):
+        form = parse_checkin_form(
+            """
+            <form action="/student/punchs/course/course-1/item-12"
+                  method="GET">
+              <input type="hidden" name="id" value="">
+            </form>
+            """,
+            self.item.detail_url,
+            self.item,
+        )
+
+        self.assertFalse(form.submit_capable)
+        self.assertEqual(form.method, "get")
+
+    def test_form_without_method_matching_detail_action_is_get_and_rejected(self):
+        form = parse_checkin_form(
+            """
+            <form action="/student/punchs/course/course-1/item-12">
+              <input type="hidden" name="id" value="">
+            </form>
+            """,
+            self.item.detail_url,
+            self.item,
+        )
+
+        self.assertFalse(form.submit_capable)
+        self.assertEqual(form.method, "get")
+
+    def test_post_form_matching_detail_action_is_selected_case_insensitively(self):
+        form = parse_checkin_form(
+            """
+            <form action="/student/punchs/course/course-1/item-12"
+                  method="PoSt">
+              <input type="hidden" name="id" value="">
+            </form>
+            """,
+            self.item.detail_url,
+            self.item,
+        )
+
+        self.assertTrue(form.submit_capable)
+        self.assertEqual(form.method, "post")
+
     def test_explicit_item_attribute_can_bind_noncanonical_form_action(self):
         form = parse_checkin_form(
             """

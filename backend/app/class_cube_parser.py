@@ -345,7 +345,10 @@ def parse_checkin_form(
             response_url,
             _attribute_text(form.get("action")) or response_url,
         )
-        method = _attribute_text(form.get("method")) or "get"
+        method = (
+            _attribute_text(form.get("method")).strip()
+            or "get"
+        ).lower()
     else:
         synthetic = _synthetic_contract(
             soup,
@@ -442,13 +445,20 @@ def _select_checkin_form(
 ) -> Tag | None:
     container = soup.find(id=f"punchcard_{item.remote_item_id}")
     if isinstance(container, Tag):
-        if container.name == "form":
+        if container.name == "form" and _is_post_form(container):
             return container
         nested_form = container.find("form")
-        if isinstance(nested_form, Tag):
+        if (
+            isinstance(nested_form, Tag)
+            and _is_post_form(nested_form)
+        ):
             return nested_form
 
-    forms = soup.find_all("form")
+    forms = [
+        form
+        for form in soup.find_all("form")
+        if _is_post_form(form)
+    ]
     for form in forms:
         if _form_explicitly_targets_item(form, item):
             return form
@@ -489,21 +499,23 @@ def _form_explicitly_targets_item(
     item: ParsedItem,
 ) -> bool:
     expected_id = str(item.remote_item_id)
-    for node in (form, *form.parents):
-        if not isinstance(node, Tag):
-            continue
+    return any(
+        _attribute_text(form.get(attribute)).strip()
+        == expected_id
         for attribute in (
             "data-checkin-item-id",
             "data-item-id",
             "item-id",
             "data-checkin",
-        ):
-            if (
-                _attribute_text(node.get(attribute)).strip()
-                == expected_id
-            ):
-                return True
-    return False
+        )
+    )
+
+
+def _is_post_form(form: Tag) -> bool:
+    return (
+        _attribute_text(form.get("method")).strip().lower()
+        == "post"
+    )
 
 
 def parse_checkin_result(html: str, response_url: str) -> ParsedResult:

@@ -224,17 +224,20 @@ class ClassCubeParserTest(unittest.TestCase):
                 'action="/student/punchs/course/1/12"></form></div>'
             ),
             "gps": (
-                '<form action="/student/punch_gps/course/1/12">'
+                '<form action="/student/punch_gps/course/1/12" '
+                'method="post">'
                 '<input name="lat"><input name="lng">'
                 '<input name="acc"></form>'
             ),
             "gps_photo": (
-                '<form action="/student/punch_gps/course/1/12">'
+                '<form action="/student/punch_gps/course/1/12" '
+                'method="post">'
                 '<input name="lat">'
                 '<input type="file" name="photo"></form>'
             ),
             "password": (
-                '<form action="/student/daka/course/1/12">'
+                '<form action="/student/daka/course/1/12" '
+                'method="post">'
                 '<input type="password" name="passcode"></form>'
             ),
         }
@@ -247,7 +250,8 @@ class ClassCubeParserTest(unittest.TestCase):
 
     def test_mode_priority_prefers_gps_photo_over_password(self):
         html = """
-        <form action="/student/punch_gps/course/1/12">
+        <form action="/student/punch_gps/course/1/12"
+              method="post">
           <input name="lat">
           <input name="lng">
           <input type="file" name="photo">
