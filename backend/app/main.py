@@ -51,6 +51,7 @@ security = HTTPBearer()
 async def lifespan(app: FastAPI):
     global auth_database, class_cube_database
     created_auth_repository = False
+    class_cube_service: ClassCubeService | None = None
     try:
         database_config = load_database_config()
         app_state.initialize_database(database_config.business)
@@ -71,11 +72,12 @@ async def lifespan(app: FastAPI):
             database_config.class_cube
         )
         class_cube_database.initialize()
-        app.state.class_cube_service = ClassCubeService(
+        class_cube_service = ClassCubeService(
             ClassCubeRepository(class_cube_database),
             ClassCubeClient(),
             app_state.logger,
         )
+        app.state.class_cube_service = class_cube_service
         app_state.start_background_scheduler()
         yield
     finally:
@@ -83,15 +85,20 @@ async def lifespan(app: FastAPI):
             app_state.shutdown()
         finally:
             try:
-                if class_cube_database is not None:
-                    class_cube_database.dispose()
+                if class_cube_service is not None:
+                    class_cube_service.close()
             finally:
-                class_cube_database = None
-                if auth_database is not None:
-                    auth_database.dispose()
-                    auth_database = None
-                if created_auth_repository:
-                    auth_service.repository = None
+                app.state.class_cube_service = None
+                try:
+                    if class_cube_database is not None:
+                        class_cube_database.dispose()
+                finally:
+                    class_cube_database = None
+                    if auth_database is not None:
+                        auth_database.dispose()
+                        auth_database = None
+                    if created_auth_repository:
+                        auth_service.repository = None
 
 
 app = FastAPI(title="签到管理系统", version="1.0.0", lifespan=lifespan)

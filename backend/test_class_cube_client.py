@@ -69,6 +69,7 @@ class FakeSession:
         self.calls = []
         self.cookies = requests.cookies.RequestsCookieJar()
         self.closed = False
+        self.close_calls = 0
         self.uploaded_files = {}
 
     def get(self, url, **kwargs):
@@ -78,6 +79,7 @@ class FakeSession:
         return self._request("POST", url, kwargs)
 
     def close(self):
+        self.close_calls += 1
         self.closed = True
 
     def _request(self, method, url, kwargs):
@@ -607,6 +609,82 @@ class ClassCubeQrSessionTest(unittest.TestCase):
         self.assertEqual(result.status, "pending")
         self.assertTrue(first_session.closed)
         self.assertFalse(second_session.closed)
+
+    def test_cancel_qr_session_closes_pending_session_once(self):
+        session = FakeSession([qr_page(), qr_image()])
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+
+        first = client.cancel_qr_session(created.token, 7)
+        second = client.cancel_qr_session(created.token, 7)
+        client.close()
+
+        self.assertTrue(first)
+        self.assertFalse(second)
+        self.assertTrue(session.closed)
+        self.assertEqual(session.close_calls, 1)
+        with self.assertRaises(QrSessionNotFound):
+            client.poll_qr_session(created.token, 7)
+
+    def test_cancel_in_flight_session_defers_close_until_poll_finishes(self):
+        request_started = threading.Event()
+        release_request = threading.Event()
+
+        def blocking_pending():
+            request_started.set()
+            if not release_request.wait(2):
+                raise AssertionError("test did not release remote request")
+            return FakeResponse(json_data={"status": "pending"})
+
+        session = FakeSession(
+            [qr_page(), qr_image(), blocking_pending]
+        )
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+        results = []
+
+        worker = threading.Thread(
+            target=lambda: results.append(
+                client.poll_qr_session(created.token, 7)
+            )
+        )
+        worker.start()
+        self.assertTrue(request_started.wait(1))
+
+        cancelled = client.cancel_qr_session(created.token, 7)
+        closed_before_release = session.closed
+        release_request.set()
+        worker.join(2)
+
+        self.assertTrue(cancelled)
+        self.assertFalse(closed_before_release)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(results[0].status, "expired")
+        self.assertTrue(session.closed)
+        self.assertEqual(session.close_calls, 1)
+
+    def test_close_cancels_all_sessions_and_is_idempotent(self):
+        first_session = FakeSession([qr_page(), qr_image()])
+        second_session = FakeSession([qr_page(), qr_image()])
+        sessions = iter([first_session, second_session])
+        client = ClassCubeClient(
+            session_factory=lambda: next(sessions),
+            clock=lambda: 100.0,
+        )
+        first = client.create_qr_session(7)
+        second = client.create_qr_session(8)
+
+        client.close()
+        client.close()
+
+        self.assertTrue(first_session.closed)
+        self.assertTrue(second_session.closed)
+        self.assertEqual(first_session.close_calls, 1)
+        self.assertEqual(second_session.close_calls, 1)
+        with self.assertRaises(QrSessionNotFound):
+            client.poll_qr_session(first.token, 7)
+        with self.assertRaises(QrSessionNotFound):
+            client.poll_qr_session(second.token, 8)
 
 
 class ClassCubeRemoteRequestTest(unittest.TestCase):

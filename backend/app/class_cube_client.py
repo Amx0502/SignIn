@@ -387,6 +387,41 @@ class ClassCubeClient:
             terminal=terminal,
         )
 
+    def cancel_qr_session(
+        self,
+        token: str,
+        owner_user_id: int,
+    ) -> bool:
+        session_to_close = None
+        with self._qr_lock:
+            qr_session = self._qr_sessions.get(token)
+            if (
+                qr_session is None
+                or qr_session.owner_user_id != owner_user_id
+            ):
+                return False
+            self._qr_sessions.pop(token)
+            qr_session.expired = True
+            if not qr_session.in_flight:
+                session_to_close = qr_session.session
+        if session_to_close is not None:
+            session_to_close.close()
+        return True
+
+    def close(self) -> None:
+        sessions_to_close = []
+        with self._qr_lock:
+            qr_sessions = list(self._qr_sessions.values())
+            self._qr_sessions.clear()
+            for qr_session in qr_sessions:
+                qr_session.expired = True
+                if not qr_session.in_flight:
+                    sessions_to_close.append(
+                        qr_session.session
+                    )
+        for session in sessions_to_close:
+            session.close()
+
     def _short_lived_session(self, cookie: str):
         session = self._session_factory()
         parsed_cookie = SimpleCookie()

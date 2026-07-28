@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+import time
 from threading import RLock
-from typing import Any
+from typing import Any, Callable
 
 from .class_cube_client import (
+    QR_TTL_SECONDS,
     ClassCubeClient,
     ClassCubeCookieExpired,
     ClassCubeRequestError,
@@ -44,6 +46,7 @@ class ClassCubeRemoteError(RuntimeError):
 class _QrTarget:
     owner_user_id: int
     account_id: int | None
+    expires_at: float
 
 
 class ClassCubeService:
@@ -52,12 +55,47 @@ class ClassCubeService:
         repository: ClassCubeRepository,
         client: ClassCubeClient,
         logger,
+        clock: Callable[[], float] | None = None,
     ):
         self.repository = repository
         self.client = client
         self.logger = logger
+        self._clock = clock or time.monotonic
         self._qr_targets: dict[str, _QrTarget] = {}
         self._qr_lock = RLock()
+        self._closed = False
+
+    def _pop_expired_targets(
+        self,
+        now: float,
+    ) -> dict[str, _QrTarget]:
+        with self._qr_lock:
+            expired = {
+                token: target
+                for token, target in self._qr_targets.items()
+                if now >= target.expires_at
+            }
+            for token in expired:
+                self._qr_targets.pop(token, None)
+        return expired
+
+    def _cancel_targets(
+        self,
+        targets: dict[str, _QrTarget],
+    ) -> None:
+        for token, target in targets.items():
+            self.client.cancel_qr_session(
+                token,
+                target.owner_user_id,
+            )
+
+    def _cleanup_expired_targets(
+        self,
+        now: float,
+    ) -> dict[str, _QrTarget]:
+        expired = self._pop_expired_targets(now)
+        self._cancel_targets(expired)
+        return expired
 
     @staticmethod
     def _actor_scope(actor: dict[str, Any]) -> tuple[int, bool]:
@@ -141,6 +179,12 @@ class ClassCubeService:
         account_id: int | None = None,
     ) -> dict[str, Any]:
         actor_user_id, is_admin = self._actor_scope(actor)
+        self._cleanup_expired_targets(self._clock())
+        with self._qr_lock:
+            if self._closed:
+                raise ClassCubeValidationError(
+                    "班级魔方服务已关闭"
+                )
         if account_id is not None:
             self.repository.get_account(
                 account_id,
@@ -151,11 +195,31 @@ class ClassCubeService:
             created = self.client.create_qr_session(actor_user_id)
         except ClassCubeRequestError as exc:
             raise self._remote_error("创建扫码会话", exc) from exc
-        with self._qr_lock:
-            self._qr_targets[created.token] = _QrTarget(
-                owner_user_id=actor_user_id,
-                account_id=account_id,
+        try:
+            with self._qr_lock:
+                if self._closed:
+                    raise ClassCubeValidationError(
+                        "班级魔方服务已关闭"
+                    )
+                if account_id is not None:
+                    self.repository.get_account(
+                        account_id,
+                        actor_user_id,
+                        is_admin,
+                    )
+                self._qr_targets[created.token] = _QrTarget(
+                    owner_user_id=actor_user_id,
+                    account_id=account_id,
+                    expires_at=(
+                        self._clock() + QR_TTL_SECONDS
+                    ),
+                )
+        except Exception:
+            self.client.cancel_qr_session(
+                created.token,
+                actor_user_id,
             )
+            raise
         return {
             "token": created.token,
             "qr_image": (
@@ -171,6 +235,17 @@ class ClassCubeService:
         actor: dict[str, Any],
     ) -> dict[str, Any]:
         actor_user_id, is_admin = self._actor_scope(actor)
+        expired = self._cleanup_expired_targets(self._clock())
+        expired_target = expired.get(token)
+        if expired_target is not None:
+            if expired_target.owner_user_id != actor_user_id:
+                raise ClassCubeNotFound(
+                    "扫码会话不存在或已失效"
+                )
+            return {
+                "status": "expired",
+                "retryable": False,
+            }
         with self._qr_lock:
             target = self._qr_targets.get(token)
         if (
@@ -297,12 +372,29 @@ class ClassCubeService:
         actor: dict[str, Any],
     ) -> bool:
         actor_user_id, is_admin = self._actor_scope(actor)
-        self.repository.delete_account(
-            account_id,
-            actor_user_id,
-            is_admin,
-        )
+        with self._qr_lock:
+            self.repository.delete_account(
+                account_id,
+                actor_user_id,
+                is_admin,
+            )
+            cancelled_targets = {
+                token: target
+                for token, target in self._qr_targets.items()
+                if target.account_id == account_id
+            }
+            for token in cancelled_targets:
+                self._qr_targets.pop(token, None)
+        self._cancel_targets(cancelled_targets)
         return True
+
+    def close(self) -> None:
+        with self._qr_lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._qr_targets.clear()
+        self.client.close()
 
     def sync_courses(
         self,

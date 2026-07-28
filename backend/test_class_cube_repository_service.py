@@ -642,6 +642,7 @@ class RecordingRepository:
         is_admin,
     ):
         self.get_account(account_id, actor_user_id, is_admin)
+        self.events.append(("delete_account", account_id))
         del self.accounts[account_id]
 
     def get_course(self, course_id, actor_user_id, is_admin):
@@ -766,6 +767,7 @@ class RecordingClient:
             "punchs": [],
             "daka": [],
         }
+        self.close_calls = 0
 
     def create_qr_session(self, owner_user_id):
         self.events.append(("create_qr", owner_user_id))
@@ -795,6 +797,24 @@ class RecordingClient:
         if isinstance(result, BaseException):
             raise result
         return list(result)
+
+    def cancel_qr_session(self, token, owner_user_id):
+        self.events.append(
+            ("cancel_qr", token, owner_user_id)
+        )
+        return True
+
+    def close(self):
+        self.close_calls += 1
+        self.events.append(("client_close",))
+
+
+class ServiceClock:
+    def __init__(self, value):
+        self.value = value
+
+    def __call__(self):
+        return self.value
 
 
 class RecordingLogger:
@@ -1052,6 +1072,94 @@ class ClassCubeServiceTest(unittest.TestCase):
             [],
         )
 
+    def test_next_create_cleans_abandoned_expired_target(self):
+        clock = ServiceClock(100.0)
+        service = ClassCubeService(
+            self.repository,
+            self.client,
+            self.logger,
+            clock=clock,
+        )
+        first = service.create_qr_session(self.user)
+        clock.value = 221.0
+        self.client.created = QrSessionView(
+            token="second-token",
+            qr_image_base64="cXI=",
+            expires_at=999.0,
+        )
+
+        second = service.create_qr_session(self.user)
+
+        self.assertEqual(first["token"], "qr-token")
+        self.assertEqual(second["token"], "second-token")
+        self.assertIn(
+            ("cancel_qr", "qr-token", 1),
+            self.events,
+        )
+
+    def test_poll_current_expired_target_returns_expired_without_client_poll(self):
+        clock = ServiceClock(100.0)
+        service = ClassCubeService(
+            self.repository,
+            self.client,
+            self.logger,
+            clock=clock,
+        )
+        service.create_qr_session(self.user)
+        clock.value = 220.0
+
+        result = service.poll_qr_session(
+            "qr-token",
+            self.user,
+        )
+
+        self.assertEqual(
+            result,
+            {"status": "expired", "retryable": False},
+        )
+        self.assertIn(
+            ("cancel_qr", "qr-token", 1),
+            self.events,
+        )
+        self.assertNotIn(
+            ("poll_qr", "qr-token", 1),
+            self.events,
+        )
+
+    def test_delete_account_cancels_its_qr_targets_after_delete(self):
+        clock = ServiceClock(100.0)
+        service = ClassCubeService(
+            self.repository,
+            self.client,
+            self.logger,
+            clock=clock,
+        )
+        service.create_qr_session(self.user, account_id=1)
+
+        service.delete_account(1, self.user)
+
+        delete_index = self.events.index(("delete_account", 1))
+        cancel_index = self.events.index(
+            ("cancel_qr", "qr-token", 1)
+        )
+        self.assertLess(delete_index, cancel_index)
+
+    def test_service_close_clears_targets_and_closes_client_once(self):
+        clock = ServiceClock(100.0)
+        service = ClassCubeService(
+            self.repository,
+            self.client,
+            self.logger,
+            clock=clock,
+        )
+        service.create_qr_session(self.user)
+
+        service.close()
+        service.close()
+
+        self.assertEqual(service._qr_targets, {})
+        self.assertEqual(self.client.close_calls, 1)
+
 
 class RouterFakeService:
     def __init__(self):
@@ -1297,8 +1405,9 @@ class LifecycleFakeBusinessRepository:
 
 
 class LifecycleFakeAppState:
-    def __init__(self, events):
+    def __init__(self, events, fail_scheduler=False):
         self.events = events
+        self.fail_scheduler = fail_scheduler
         self.repository = LifecycleFakeBusinessRepository(events)
         self.logger = RecordingLogger()
 
@@ -1307,6 +1416,8 @@ class LifecycleFakeAppState:
 
     def start_background_scheduler(self):
         self.events.append("business_scheduler_start")
+        if self.fail_scheduler:
+            raise RuntimeError("scheduler startup failed")
 
     def shutdown(self):
         self.events.append("business_shutdown")
@@ -1348,6 +1459,7 @@ class LifecycleFakeAuthRepository:
 class LifecycleFakeClassCubeDatabase:
     instances = []
     fail_initialize = False
+    events = None
 
     def __init__(self, _settings):
         self.initialized = False
@@ -1363,6 +1475,10 @@ class LifecycleFakeClassCubeDatabase:
 
     def dispose(self):
         self.disposed = True
+        if self.__class__.events is not None:
+            self.__class__.events.append(
+                "class_cube_database_dispose"
+            )
 
 
 class MainIntegrationTest(unittest.TestCase):
@@ -1403,8 +1519,16 @@ class MainIntegrationTest(unittest.TestCase):
                 catch_all_indices[0],
             )
 
-    def _lifespan_patches(self, events):
-        fake_app_state = LifecycleFakeAppState(events)
+    def _lifespan_patches(
+        self,
+        events,
+        *,
+        fail_scheduler=False,
+    ):
+        fake_app_state = LifecycleFakeAppState(
+            events,
+            fail_scheduler=fail_scheduler,
+        )
         fake_auth_service = LifecycleFakeAuthService(events)
         config = SimpleNamespace(
             business=object(),
@@ -1424,6 +1548,13 @@ class MainIntegrationTest(unittest.TestCase):
                 self.repository = repository
                 self.client = client
                 self.logger = logger
+                self.close_calls = 0
+
+            def close(self):
+                self.close_calls += 1
+                events.append("class_cube_service_close")
+
+        LifecycleFakeClassCubeDatabase.events = events
 
         return (
             fake_app_state,
@@ -1494,8 +1625,9 @@ class MainIntegrationTest(unittest.TestCase):
             patches,
         ) = self._lifespan_patches(events)
 
+        test_app = FastAPI()
+
         async def exercise():
-            test_app = FastAPI()
             async with main_module.lifespan(test_app):
                 service = test_app.state.class_cube_service
                 self.assertIs(
@@ -1527,6 +1659,17 @@ class MainIntegrationTest(unittest.TestCase):
             LifecycleFakeAuthDatabase.instances[0].disposed
         )
         self.assertIn("business_shutdown", events)
+        self.assertLess(
+            events.index("class_cube_service_close"),
+            events.index("class_cube_database_dispose"),
+        )
+        self.assertIsNone(
+            getattr(
+                test_app.state,
+                "class_cube_service",
+                None,
+            )
+        )
 
     def test_lifespan_failure_releases_every_created_resource(self):
         events = []
@@ -1562,6 +1705,40 @@ class MainIntegrationTest(unittest.TestCase):
             LifecycleFakeAuthDatabase.instances[0].disposed
         )
         self.assertIn("business_shutdown", events)
+
+    def test_scheduler_start_failure_closes_service_before_database(self):
+        events = []
+        _, _, patches = self._lifespan_patches(
+            events,
+            fail_scheduler=True,
+        )
+
+        async def exercise():
+            test_app = FastAPI()
+            async with main_module.lifespan(test_app):
+                self.fail("lifespan should not yield")
+
+        with patches[0]:
+            with patches[1]:
+                with patches[2]:
+                    with patches[3]:
+                        with patches[4]:
+                            with patches[5]:
+                                with patches[6]:
+                                    with patches[7]:
+                                        with patches[8]:
+                                            with patches[9]:
+                                                with self.assertRaises(
+                                                    RuntimeError
+                                                ):
+                                                    asyncio.run(
+                                                        exercise()
+                                                    )
+
+        self.assertLess(
+            events.index("class_cube_service_close"),
+            events.index("class_cube_database_dispose"),
+        )
 
 
 if __name__ == "__main__":
