@@ -12,5 +12,12 @@
     "database": "User",
     "user": "root",
     "password": "<数据库密码>"
+  },
+  "class_cube": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "database": "bjmf",
+    "user": "root",
+    "password": "<数据库密码>"
   }
 }

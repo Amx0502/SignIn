@@ -45,6 +45,7 @@ class ConnectionSettings:
 class DatabaseConfig:
     business: ConnectionSettings
     auth: ConnectionSettings
+    class_cube: ConnectionSettings
 
 
 def _connection_settings(data: object, section: str, path: Path) -> ConnectionSettings:
@@ -103,11 +104,20 @@ def load_database_config(
     if not isinstance(data, dict):
         raise RuntimeError(f"数据库配置文件 {config_path} 的根节点必须是对象")
 
-    for section in ("business", "auth"):
+    for section in ("business", "auth", "class_cube"):
         if section not in data:
             raise RuntimeError(f"数据库配置文件 {config_path} 缺少配置段 {section}")
+
+    class_cube = _connection_settings(
+        data["class_cube"], "class_cube", config_path
+    )
+    if class_cube.name != "bjmf":
+        raise RuntimeError(
+            f"数据库配置文件 {config_path} 的 class_cube.database 必须为 bjmf"
+        )
 
     return DatabaseConfig(
         business=_connection_settings(data["business"], "business", config_path),
         auth=_connection_settings(data["auth"], "auth", config_path),
+        class_cube=class_cube,
     )
