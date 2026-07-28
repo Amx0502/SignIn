@@ -32,34 +32,66 @@ from .models import (
     UserUpdate,
 )
 from .database_config import load_database_config
+from .class_cube_client import ClassCubeClient
+from .class_cube_database import ClassCubeDatabase
+from .class_cube_repository import ClassCubeRepository
+from .class_cube_router import create_class_cube_router
+from .class_cube_service import ClassCubeService
 from .repository import DuplicateMobileError
 from .service import AppState
 
 app_state = AppState(start_scheduler=False)
 auth_service = AuthService()
 auth_database: AuthDatabase | None = None
+class_cube_database: ClassCubeDatabase | None = None
 security = HTTPBearer()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global auth_database
-    database_config = load_database_config()
-    app_state.initialize_database(database_config.business)
-    app_state.repository.import_legacy_json_if_empty(config.LEGACY_ACCOUNTS_FILE)
-    if auth_service.repository is None:
-        auth_database = AuthDatabase(database_config.auth)
-        auth_database.initialize()
-        auth_repository = AuthRepository(auth_database)
-        auth_repository.initialize_users(config.LEGACY_USERS_FILE)
-        auth_service.set_repository(auth_repository)
-    app_state.start_background_scheduler()
+    global auth_database, class_cube_database
+    created_auth_repository = False
     try:
+        database_config = load_database_config()
+        app_state.initialize_database(database_config.business)
+        app_state.repository.import_legacy_json_if_empty(
+            config.LEGACY_ACCOUNTS_FILE
+        )
+        if auth_service.repository is None:
+            auth_database = AuthDatabase(database_config.auth)
+            auth_database.initialize()
+            auth_repository = AuthRepository(auth_database)
+            auth_repository.initialize_users(
+                config.LEGACY_USERS_FILE
+            )
+            auth_service.set_repository(auth_repository)
+            created_auth_repository = True
+
+        class_cube_database = ClassCubeDatabase(
+            database_config.class_cube
+        )
+        class_cube_database.initialize()
+        app.state.class_cube_service = ClassCubeService(
+            ClassCubeRepository(class_cube_database),
+            ClassCubeClient(),
+            app_state.logger,
+        )
+        app_state.start_background_scheduler()
         yield
     finally:
-        app_state.shutdown()
-        if auth_database is not None:
-            auth_database.dispose()
+        try:
+            app_state.shutdown()
+        finally:
+            try:
+                if class_cube_database is not None:
+                    class_cube_database.dispose()
+            finally:
+                class_cube_database = None
+                if auth_database is not None:
+                    auth_database.dispose()
+                    auth_database = None
+                if created_auth_repository:
+                    auth_service.repository = None
 
 
 app = FastAPI(title="签到管理系统", version="1.0.0", lifespan=lifespan)
@@ -126,6 +158,9 @@ async def require_admin(user=Depends(get_current_user)):
             detail={"ok": False, "error": "需要管理员权限"},
         )
     return user
+
+
+app.include_router(create_class_cube_router(get_current_user))
 
 
 @app.get("/api/state")

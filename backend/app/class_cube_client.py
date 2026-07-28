@@ -19,12 +19,18 @@ from app.class_cube_parser import (
     parse_checkin_result,
     parse_courses,
     parse_qr_image_url,
+    parse_student_name,
 )
 
 
 QR_LOGIN_URL = "https://bjmf.k8n.cn/weixin/qrlogin/student"
 COURSES_URL = "https://bjmf.k8n.cn/student/courses"
+STUDENT_PROFILE_URL = "https://bjmf.k8n.cn/student/my"
 CHECKIN_LIST_URL = "https://bjmf.k8n.cn/student/punchs/course/{course_id}"
+CHECKIN_LIST_URLS = {
+    "punchs": CHECKIN_LIST_URL,
+    "daka": "https://bjmf.k8n.cn/student/daka/course/{course_id}",
+}
 QR_TTL_SECONDS = 120
 CONNECT_TIMEOUT = 5
 READ_TIMEOUT = 10
@@ -46,6 +52,10 @@ class QrSessionNotFound(LookupError):
 
 
 class ClassCubeRequestError(RuntimeError):
+    pass
+
+
+class ClassCubeCookieExpired(ClassCubeRequestError):
     pass
 
 
@@ -149,8 +159,20 @@ class ClassCubeClient:
                 session,
                 COURSES_URL,
             )
-
+            self._raise_if_cookie_expired(response)
             return parse_courses(response.text)
+        finally:
+            session.close()
+
+    def fetch_student_name(self, cookie: str) -> str:
+        session = self._short_lived_session(cookie)
+        try:
+            response = self._get_with_retries(
+                session,
+                STUDENT_PROFILE_URL,
+            )
+            self._raise_if_cookie_expired(response)
+            return parse_student_name(response.text)
         finally:
             session.close()
 
@@ -158,22 +180,28 @@ class ClassCubeClient:
         self,
         cookie: str,
         remote_course_id: str,
+        module: str = "punchs",
     ) -> list[RemoteItemBundle]:
         session = self._short_lived_session(cookie)
         course_id = str(remote_course_id)
-        list_url = CHECKIN_LIST_URL.format(
-            course_id=quote(course_id, safe=""),
-        )
         try:
+            if module not in CHECKIN_LIST_URLS:
+                raise ValueError(
+                    "check-in list module must be punchs or daka"
+                )
+            list_url = CHECKIN_LIST_URLS[module].format(
+                course_id=quote(course_id, safe=""),
+            )
             list_response = self._get_with_retries(
                 session,
                 list_url,
             )
+            self._raise_if_cookie_expired(list_response)
             response_url = list_response.url or list_url
             items = parse_checkin_items(
                 list_response.text,
                 course_id=course_id,
-                module="punchs",
+                module=module,
                 response_url=response_url,
             )
             bundles = []
@@ -183,6 +211,7 @@ class ClassCubeClient:
                         session,
                         item.detail_url,
                     )
+                    self._raise_if_cookie_expired(form_response)
                     form = parse_checkin_form(
                         form_response.text,
                         form_response.url or item.detail_url,
@@ -503,6 +532,17 @@ class ClassCubeClient:
     @staticmethod
     def _request_headers() -> dict[str, str]:
         return {"User-Agent": WECHAT_USER_AGENT}
+
+    @staticmethod
+    def _raise_if_cookie_expired(response) -> None:
+        parsed = parse_checkin_result(
+            response.text,
+            response.url or "",
+        )
+        if parsed.status == "cookie_expired":
+            raise ClassCubeCookieExpired(
+                "remote login session has expired"
+            )
 
     @staticmethod
     def _validate_authenticated_url(url: str) -> None:

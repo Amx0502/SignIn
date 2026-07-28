@@ -11,6 +11,7 @@ from app.class_cube_parser import (
     parse_checkin_result,
     parse_courses,
     parse_qr_image_url,
+    parse_student_name,
 )
 
 
@@ -78,6 +79,31 @@ class ClassCubeParserTest(unittest.TestCase):
             actual,
             [ParsedCourse("404", "数据结构", "CLASS-404")],
         )
+
+    def test_parses_student_name_from_strict_gconfig_or_named_node(self):
+        cases = (
+            (
+                "<script>var gconfig={uid:'7',uname:'张同学',"
+                "cname:'软件工程'};</script>",
+                "张同学",
+            ),
+            (
+                '<span data-student-name="李同学">个人中心</span>',
+                "李同学",
+            ),
+        )
+
+        for html, expected in cases:
+            with self.subTest(expected):
+                self.assertEqual(parse_student_name(html), expected)
+
+    def test_student_name_does_not_use_unrelated_page_text(self):
+        html = (
+            "<main>用户名：不应猜测</main>"
+            "<script>var other={uname:'也不应读取'};</script>"
+        )
+
+        self.assertEqual(parse_student_name(html), "")
 
     def test_parses_checkin_items_in_page_order_and_deduplicates(self):
         html = """

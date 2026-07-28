@@ -9,6 +9,7 @@ import requests
 from app.class_cube_client import (
     QR_LOGIN_URL,
     ClassCubeClient,
+    ClassCubeCookieExpired,
     ClassCubeRequestError,
     QrSessionNotFound,
     RemoteItemBundle,
@@ -609,6 +610,134 @@ class ClassCubeQrSessionTest(unittest.TestCase):
 
 
 class ClassCubeRemoteRequestTest(unittest.TestCase):
+    def test_fetch_student_name_uses_authenticated_profile_page(self):
+        profile_url = "https://bjmf.k8n.cn/student/my"
+        session = FakeSession(
+            [
+                FakeResponse(
+                    text=(
+                        "<script>var gconfig={uid:'7',"
+                        "uname:'扫码同学'};</script>"
+                    ),
+                    url=profile_url,
+                )
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+
+        name = client.fetch_student_name(
+            "remember_student_abc=cookie-token"
+        )
+
+        self.assertEqual(name, "扫码同学")
+        self.assertTrue(session.closed)
+        self.assertEqual(
+            [(method, url) for method, url, _ in session.calls],
+            [("GET", profile_url)],
+        )
+        _, _, kwargs = session.calls[0]
+        self.assertNotIn("Cookie", kwargs["headers"])
+        self.assertEqual(
+            [
+                (cookie.name, cookie.value, cookie.domain)
+                for cookie in session.cookies
+            ],
+            [
+                (
+                    "remember_student_abc",
+                    "cookie-token",
+                    ".k8n.cn",
+                )
+            ],
+        )
+
+    def test_authenticated_readers_reject_login_page_as_cookie_expired(self):
+        login_html = (
+            '<form action="/student/login">'
+            '<input type="password" name="password">'
+            "</form>"
+        )
+        cases = (
+            (
+                "profile",
+                lambda client: client.fetch_student_name(
+                    "cookie=value"
+                ),
+                [
+                    FakeResponse(
+                        text=login_html,
+                        url="https://bjmf.k8n.cn/student/login",
+                    )
+                ],
+                1,
+            ),
+            (
+                "courses",
+                lambda client: client.fetch_courses("cookie=value"),
+                [
+                    FakeResponse(
+                        text=login_html,
+                        url="https://bjmf.k8n.cn/student/login",
+                    )
+                ],
+                1,
+            ),
+            (
+                "item-list",
+                lambda client: client.fetch_items(
+                    "cookie=value",
+                    "1",
+                ),
+                [
+                    FakeResponse(
+                        text=login_html,
+                        url="https://bjmf.k8n.cn/student/login",
+                    )
+                ],
+                1,
+            ),
+            (
+                "item-detail",
+                lambda client: client.fetch_items(
+                    "cookie=value",
+                    "1",
+                ),
+                [
+                    FakeResponse(
+                        text=(
+                            '<a href="/student/punchs/course/1/12">'
+                            "签到</a>"
+                        ),
+                        url=(
+                            "https://bjmf.k8n.cn/student/"
+                            "punchs/course/1"
+                        ),
+                    ),
+                    FakeResponse(
+                        text=login_html,
+                        url="https://bjmf.k8n.cn/student/login",
+                    ),
+                ],
+                2,
+            ),
+        )
+
+        for name, invoke, responses, expected_calls in cases:
+            with self.subTest(name):
+                session = FakeSession(responses)
+                client = ClassCubeClient(
+                    session_factory=lambda: session
+                )
+
+                with self.assertRaises(ClassCubeCookieExpired):
+                    invoke(client)
+
+                self.assertEqual(
+                    len(session.calls),
+                    expected_calls,
+                )
+                self.assertTrue(session.closed)
+
     def test_fetch_courses_parses_response_and_injects_request_policy(self):
         session = FakeSession(
             [
@@ -788,6 +917,52 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             ],
             [("cookie", "value", ".k8n.cn")],
         )
+
+    def test_fetch_items_supports_daka_as_an_explicit_list_source(self):
+        list_url = "https://bjmf.k8n.cn/student/daka/course/1"
+        session = FakeSession(
+            [
+                FakeResponse(
+                    text=(
+                        '<form id="punchcard_88" '
+                        'action="/student/daka/course/1/88" '
+                        'method="post">'
+                        '<input type="hidden" name="_token" value="safe">'
+                        "</form>"
+                    ),
+                    url=list_url,
+                )
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+
+        bundles = client.fetch_items(
+            "cookie=value",
+            "1",
+            module="daka",
+        )
+
+        self.assertEqual(len(bundles), 1)
+        self.assertEqual(bundles[0].item.remote_module, "daka")
+        self.assertEqual(bundles[0].item.remote_item_id, "88")
+        self.assertEqual(
+            [(method, url) for method, url, _ in session.calls],
+            [("GET", list_url)],
+        )
+
+    def test_fetch_items_rejects_unapproved_list_module_before_request(self):
+        session = FakeSession([])
+        client = ClassCubeClient(session_factory=lambda: session)
+
+        with self.assertRaises(ValueError):
+            client.fetch_items(
+                "cookie=value",
+                "1",
+                module="../../evil",
+            )
+
+        self.assertEqual(session.calls, [])
+        self.assertTrue(session.closed)
 
     def test_submit_form_posts_merged_fields_and_parses_result(self):
         result_url = "https://bjmf.k8n.cn/student/punchs/result"
