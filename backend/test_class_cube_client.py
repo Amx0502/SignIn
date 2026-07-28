@@ -57,6 +57,11 @@ class FakeResponse:
             )
 
 
+class ExplodingJsonResponse(FakeResponse):
+    def json(self):
+        raise RuntimeError("malformed remote JSON")
+
+
 class FakeSession:
     def __init__(self, responses):
         self.responses = list(responses)
@@ -180,6 +185,92 @@ class ClassCubeQrSessionTest(unittest.TestCase):
         result = client.poll_qr_session(created.token, 7)
         self.assertEqual(result.status, "pending")
         self.assertFalse(session.closed)
+
+    def test_success_response_finishing_after_ttl_is_expired(self):
+        clock = MutableClock(100.0)
+
+        def delayed_success():
+            clock.value = 221.0
+            return FakeResponse(
+                status_code=302,
+                headers={
+                    "Location": "/weixin/uidlogin/student",
+                },
+                cookies={"remember_student_abc": "cookie-token"},
+            )
+
+        session = FakeSession(
+            [qr_page(), qr_image(), delayed_success]
+        )
+        client = self.make_client(session, clock)
+        created = client.create_qr_session(7)
+
+        result = client.poll_qr_session(created.token, 7)
+
+        self.assertEqual(result.status, "expired")
+        self.assertEqual(result.cookie, "")
+        self.assertFalse(result.retryable)
+        self.assertTrue(session.closed)
+
+    def test_expired_in_flight_session_is_removed_then_closed_on_finish(self):
+        clock = MutableClock(100.0)
+        request_started = threading.Event()
+        release_request = threading.Event()
+
+        def blocking_success():
+            request_started.set()
+            if not release_request.wait(2):
+                raise AssertionError("test did not release remote request")
+            return FakeResponse(
+                status_code=302,
+                headers={
+                    "Location": "/weixin/uidlogin/student",
+                },
+                cookies={"remember_student_abc": "cookie-token"},
+            )
+
+        session = FakeSession(
+            [qr_page(), qr_image(), blocking_success]
+        )
+        client = self.make_client(session, clock)
+        created = client.create_qr_session(7)
+        first_results = []
+        first_errors = []
+
+        def first_poll():
+            try:
+                first_results.append(
+                    client.poll_qr_session(created.token, 7)
+                )
+            except BaseException as exc:
+                first_errors.append(exc)
+
+        first = threading.Thread(target=first_poll)
+        first.start()
+        self.assertTrue(request_started.wait(1))
+        clock.value = 221.0
+
+        second_result = client.poll_qr_session(created.token, 7)
+        closed_before_release = session.closed
+        try:
+            client.poll_qr_session(created.token, 7)
+        except QrSessionNotFound:
+            removed_before_release = True
+        else:
+            removed_before_release = False
+        release_request.set()
+        first.join(2)
+
+        self.assertEqual(second_result.status, "expired")
+        self.assertTrue(removed_before_release)
+        self.assertFalse(closed_before_release)
+        self.assertFalse(first.is_alive())
+        self.assertEqual(first_errors, [])
+        self.assertEqual(len(first_results), 1)
+        self.assertEqual(first_results[0].status, "expired")
+        self.assertEqual(first_results[0].cookie, "")
+        self.assertTrue(session.closed)
+        self.assertEqual(len(session.calls), 3)
 
     def test_poll_pending_json_keeps_session_open(self):
         session = FakeSession(
@@ -393,6 +484,34 @@ class ClassCubeQrSessionTest(unittest.TestCase):
         self.assertFalse(result.retryable)
         self.assertTrue(session.closed)
 
+    def test_poll_parse_exception_releases_in_flight_for_retry(self):
+        session = FakeSession(
+            [
+                qr_page(),
+                qr_image(),
+                ExplodingJsonResponse(),
+                FakeResponse(
+                    status_code=302,
+                    headers={
+                        "Location": "/weixin/uidlogin/student",
+                    },
+                    cookies={"remember_student_abc": "cookie-token"},
+                ),
+            ]
+        )
+        client = self.make_client(session)
+        created = client.create_qr_session(7)
+
+        first_result = client.poll_qr_session(created.token, 7)
+
+        self.assertEqual(first_result.status, "error")
+        self.assertTrue(first_result.retryable)
+        self.assertFalse(session.closed)
+        second_result = client.poll_qr_session(created.token, 7)
+        self.assertEqual(second_result.status, "success")
+        self.assertTrue(session.closed)
+        self.assertEqual(len(session.calls), 4)
+
     def test_concurrent_poll_returns_pending_while_first_is_in_flight(self):
         request_started = threading.Event()
         release_request = threading.Event()
@@ -520,10 +639,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             url,
             "https://bjmf.k8n.cn/student/courses",
         )
-        self.assertEqual(
-            kwargs["headers"]["Cookie"],
-            "remember_student_abc=cookie-token",
-        )
+        self.assertNotIn("Cookie", kwargs["headers"])
         self.assertEqual(
             [
                 (cookie.name, cookie.value, cookie.domain)
@@ -659,10 +775,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             [("GET", list_url), ("GET", detail_url)],
         )
         for _, _, kwargs in session.calls:
-            self.assertEqual(
-                kwargs["headers"]["Cookie"],
-                "cookie=value",
-            )
+            self.assertNotIn("Cookie", kwargs["headers"])
             self.assertIn(
                 "MicroMessenger",
                 kwargs["headers"]["User-Agent"],
@@ -724,10 +837,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
                 "passcode": "1234",
             },
         )
-        self.assertEqual(
-            kwargs["headers"]["Cookie"],
-            "remember_student_abc=cookie-token",
-        )
+        self.assertNotIn("Cookie", kwargs["headers"])
         self.assertIn(
             "MicroMessenger",
             kwargs["headers"]["User-Agent"],
@@ -771,6 +881,74 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
 
         self.assertEqual(len(session.calls), 1)
         self.assertTrue(session.closed)
+
+    def test_fetch_items_rejects_untrusted_detail_url_before_request(self):
+        list_url = "https://bjmf.k8n.cn/student/punchs/course/1"
+        malicious_url = (
+            "https://evil.example/student/punchs/course/1/12"
+        )
+        session = FakeSession(
+            [
+                FakeResponse(
+                    text=(
+                        f'<a href="{malicious_url}">'
+                        "Untrusted check-in</a>"
+                    ),
+                    url=list_url,
+                ),
+                FakeResponse(
+                    text='<form method="post"></form>',
+                    url=malicious_url,
+                ),
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+
+        with self.assertRaises(ClassCubeRequestError):
+            client.fetch_items(
+                "remember_student_abc=cookie-token",
+                "1",
+            )
+
+        self.assertEqual(len(session.calls), 1)
+        self.assertEqual(session.calls[0][1], list_url)
+        self.assertNotIn("Cookie", session.calls[0][2]["headers"])
+        self.assertTrue(session.closed)
+
+    def test_submit_form_rejects_untrusted_action_before_request(self):
+        actions = [
+            "https://evil.example/student/punchs/course/1/12",
+            "http://bjmf.k8n.cn/student/punchs/course/1/12",
+        ]
+        for action in actions:
+            with self.subTest(action):
+                session = FakeSession(
+                    [
+                        FakeResponse(
+                            text=(
+                                '<div data-status="success">Done</div>'
+                            )
+                        )
+                    ]
+                )
+                client = ClassCubeClient(
+                    session_factory=lambda: session
+                )
+                form = ParsedForm(
+                    action=action,
+                    method="post",
+                    mode="password",
+                    hidden_fields={"_token": "token"},
+                )
+
+                with self.assertRaises(ClassCubeRequestError):
+                    client.submit_form(
+                        "remember_student_abc=cookie-token",
+                        form,
+                        {},
+                    )
+
+                self.assertEqual(session.calls, [])
 
     def test_submit_get_uses_params_and_finite_get_retries(self):
         session = FakeSession(
