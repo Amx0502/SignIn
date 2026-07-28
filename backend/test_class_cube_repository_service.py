@@ -409,7 +409,10 @@ class ClassCubeRepositoryTest(unittest.TestCase):
                         ),
                         method="post",
                         mode="gps",
-                        hidden_fields={"_token": "new-secret"},
+                        hidden_fields={
+                            "_token": "new-secret",
+                            "password": "must-not-persist",
+                        },
                         item_id_field="id",
                         latitude_field="lat",
                         longitude_field="lng",
@@ -431,6 +434,10 @@ class ClassCubeRepositoryTest(unittest.TestCase):
         )
         self.assertTrue(
             items[0]["form_schema"]["submit_capable"]
+        )
+        self.assertEqual(
+            items[0]["form_schema"]["hidden_fields"],
+            {"_token": "new-secret"},
         )
         with self.database.session() as session:
             run = session.get(ClassCubeTaskRunRow, 41)

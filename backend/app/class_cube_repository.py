@@ -10,7 +10,10 @@ from .class_cube_db_models import (
     ClassCubeCheckinItemRow,
     ClassCubeCourseRow,
 )
-from .class_cube_parser import ParsedCourse
+from .class_cube_parser import (
+    PASSWORD_FIELD_ALIASES,
+    ParsedCourse,
+)
 
 
 class ClassCubeNotFound(LookupError):
@@ -470,7 +473,14 @@ class ClassCubeRepository:
                     "method": bundle.form.method,
                     "mode": bundle.form.mode,
                     "hidden_fields": dict(
-                        bundle.form.hidden_fields
+                        (
+                            key,
+                            value,
+                        )
+                        for key, value
+                        in bundle.form.hidden_fields.items()
+                        if str(key).strip().lower()
+                        not in PASSWORD_FIELD_ALIASES
                     ),
                     "password_field": (
                         bundle.form.password_field

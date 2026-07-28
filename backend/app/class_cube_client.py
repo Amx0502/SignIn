@@ -10,6 +10,7 @@ from urllib.parse import quote, urljoin, urlparse
 import requests
 
 from app.class_cube_parser import (
+    PASSWORD_FIELD_ALIASES,
     ParsedCourse,
     ParsedForm,
     ParsedItem,
@@ -245,7 +246,12 @@ class ClassCubeClient:
             )
         self._validate_authenticated_url(form.action)
         session = self._short_lived_session(cookie)
-        payload = dict(form.hidden_fields)
+        payload = {
+            key: value
+            for key, value in form.hidden_fields.items()
+            if str(key).strip().lower()
+            not in PASSWORD_FIELD_ALIASES
+        }
         if (
             form.photo_resource_field
             and not payload.get(form.photo_resource_field)
@@ -339,6 +345,7 @@ class ClassCubeClient:
                     "timeout": REQUEST_TIMEOUT,
                 },
             )
+            self._raise_if_cookie_expired(response)
             try:
                 payload = response.json()
             except (TypeError, ValueError) as exc:

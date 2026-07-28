@@ -224,15 +224,18 @@ class ClassCubeParserTest(unittest.TestCase):
                 'action="/student/punchs/course/1/12"></form></div>'
             ),
             "gps": (
-                '<form><input name="lat"><input name="lng">'
+                '<form action="/student/punch_gps/course/1/12">'
+                '<input name="lat"><input name="lng">'
                 '<input name="acc"></form>'
             ),
             "gps_photo": (
-                '<form><input name="lat">'
+                '<form action="/student/punch_gps/course/1/12">'
+                '<input name="lat">'
                 '<input type="file" name="photo"></form>'
             ),
             "password": (
-                '<form><input type="password" name="passcode"></form>'
+                '<form action="/student/daka/course/1/12">'
+                '<input type="password" name="passcode"></form>'
             ),
         }
         for expected, html in cases.items():
@@ -244,7 +247,7 @@ class ClassCubeParserTest(unittest.TestCase):
 
     def test_mode_priority_prefers_gps_photo_over_password(self):
         html = """
-        <form>
+        <form action="/student/punch_gps/course/1/12">
           <input name="lat">
           <input name="lng">
           <input type="file" name="photo">
@@ -260,7 +263,7 @@ class ClassCubeParserTest(unittest.TestCase):
 
     def test_parses_form_action_method_and_fields(self):
         html = """
-        <form action="../submit/12" method="POST">
+        <form action="/student/punchs/course/1/12" method="POST">
           <input type="hidden" name="_token" value="redacted-token">
           <input type="hidden" name="course_id" value="1">
           <input type="password" name="passcode">
@@ -275,7 +278,9 @@ class ClassCubeParserTest(unittest.TestCase):
         self.assertEqual(
             form,
             ParsedForm(
-                action="https://bjmf.k8n.cn/student/submit/12",
+                action=(
+                    "https://bjmf.k8n.cn/student/punchs/course/1/12"
+                ),
                 method="post",
                 mode="password",
                 hidden_fields={

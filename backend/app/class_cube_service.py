@@ -60,6 +60,28 @@ def _photo_signature(extension: str, header: bytes) -> bool:
     return False
 
 
+def _reject_symlink_components(*paths: Path) -> None:
+    try:
+        if any(path.is_symlink() for path in paths):
+            raise ClassCubeValidationError(
+                "签到照片路径无效"
+            )
+    except OSError as exc:
+        raise ClassCubeValidationError(
+            "签到照片路径无效"
+        ) from exc
+
+
+def _path_is_contained(path: Path, root: Path) -> bool:
+    try:
+        return (
+            os.path.commonpath([str(path), str(root)])
+            == str(root)
+        )
+    except ValueError:
+        return False
+
+
 @dataclass(frozen=True)
 class CheckinParameters:
     latitude: float | None = None
@@ -97,17 +119,34 @@ def build_submission_fields(
     remote_item_id: str = "",
     remote_photo_value: str = "",
 ) -> dict[str, str]:
+    if form.mode not in {
+        "qr",
+        "gps",
+        "gps_photo",
+        "password",
+    }:
+        raise ClassCubeValidationError(
+            "无法识别该签到项的提交方式"
+        )
+
     fields: dict[str, str] = {}
     if form.item_id_field:
         fields[form.item_id_field] = str(remote_item_id)
 
-    has_coordinate_contract = bool(
-        form.latitude_field
-        or form.longitude_field
-        or form.accuracy_field
-        or form.gps_address_field
-    )
-    if has_coordinate_contract:
+    if form.mode == "qr":
+        return fields
+
+    if form.mode == "password":
+        if not form.password_field:
+            raise ClassCubeValidationError(
+                "无法识别签到密码字段"
+            )
+        if not parameters.password:
+            raise ClassCubeValidationError("请填写签到密码")
+        fields[form.password_field] = parameters.password
+        return fields
+
+    if form.mode in {"gps", "gps_photo"}:
         if not form.latitude_field or not form.longitude_field:
             raise ClassCubeValidationError(
                 "无法识别完整位置字段"
@@ -137,12 +176,11 @@ def build_submission_fields(
         if form.gps_address_field:
             fields[form.gps_address_field] = ""
 
-    if form.password_field:
-        if not parameters.password:
-            raise ClassCubeValidationError("请填写签到密码")
-        fields[form.password_field] = parameters.password
-
-    if form.photo_resource_field and remote_photo_value:
+    if (
+        form.mode == "gps_photo"
+        and form.photo_resource_field
+        and remote_photo_value
+    ):
         fields[form.photo_resource_field] = remote_photo_value
     return fields
 
@@ -893,10 +931,11 @@ class ClassCubeService:
         relative_path: str,
         owner_user_id: int,
     ) -> Path:
-        normalized = str(relative_path).replace("\\", "/")
+        normalized = str(relative_path)
         if (
             not normalized
             or "\x00" in normalized
+            or "\\" in normalized
             or normalized.startswith("/")
             or re.match(r"^[A-Za-z]:", normalized)
         ):
@@ -916,28 +955,42 @@ class ClassCubeService:
                 "签到照片不属于当前账号"
             )
 
-        candidate = config.UPLOAD_DIR.joinpath(*parts)
-        if candidate.is_symlink():
-            raise ClassCubeValidationError(
-                "签到照片路径无效"
-            )
+        class_cube_root = config.CLASS_CUBE_UPLOAD_DIR
+        owner_root = class_cube_root / str(owner_user_id)
+        candidate = owner_root / parts[2]
+        _reject_symlink_components(
+            class_cube_root,
+            owner_root,
+            candidate,
+        )
         try:
             resolved = candidate.resolve(strict=True)
-            owner_root = (
-                config.CLASS_CUBE_UPLOAD_DIR
-                / str(owner_user_id)
-            ).resolve(strict=True)
-            contained = (
-                os.path.commonpath(
-                    [str(resolved), str(owner_root)]
-                )
-                == str(owner_root)
+            resolved_owner_root = owner_root.resolve(strict=True)
+            resolved_class_cube_root = (
+                class_cube_root.resolve(strict=True)
+            )
+            resolved_upload_root = config.UPLOAD_DIR.resolve(
+                strict=True
             )
         except (OSError, ValueError) as exc:
             raise ClassCubeValidationError(
                 "签到照片不存在"
             ) from exc
-        if not contained or not resolved.is_file():
+        if (
+            not _path_is_contained(
+                resolved_class_cube_root,
+                resolved_upload_root,
+            )
+            or not _path_is_contained(
+                resolved_owner_root,
+                resolved_class_cube_root,
+            )
+            or not _path_is_contained(
+                resolved,
+                resolved_owner_root,
+            )
+            or not resolved.is_file()
+        ):
             raise ClassCubeValidationError(
                 "签到照片不属于当前账号"
             )
@@ -999,15 +1052,55 @@ class ClassCubeService:
             config.CLASS_CUBE_UPLOAD_DIR
             / str(owner_user_id)
         )
-        target = owner_directory / (
-            f"{uuid.uuid4().hex}{normalized_extension}"
-        )
+        class_cube_root = config.CLASS_CUBE_UPLOAD_DIR
+        target = None
         written = 0
         try:
+            _reject_symlink_components(
+                class_cube_root,
+                owner_directory,
+            )
             owner_directory.mkdir(
                 parents=True,
                 exist_ok=True,
             )
+            _reject_symlink_components(
+                class_cube_root,
+                owner_directory,
+            )
+            resolved_upload_root = config.UPLOAD_DIR.resolve(
+                strict=True
+            )
+            resolved_class_cube_root = class_cube_root.resolve(
+                strict=True
+            )
+            resolved_owner_directory = owner_directory.resolve(
+                strict=True
+            )
+            if (
+                not _path_is_contained(
+                    resolved_class_cube_root,
+                    resolved_upload_root,
+                )
+                or not _path_is_contained(
+                    resolved_owner_directory,
+                    resolved_class_cube_root,
+                )
+            ):
+                raise ClassCubeValidationError(
+                    "签到照片存储路径无效"
+                )
+            target = owner_directory / (
+                f"{uuid.uuid4().hex}{normalized_extension}"
+            )
+            _reject_symlink_components(target)
+            if not _path_is_contained(
+                target.resolve(strict=False),
+                resolved_owner_directory,
+            ):
+                raise ClassCubeValidationError(
+                    "签到照片存储路径无效"
+                )
             with target.open("xb") as output:
                 chunk = first_chunk
                 while chunk:
@@ -1022,7 +1115,8 @@ class ClassCubeService:
                     )
         except Exception:
             try:
-                target.unlink(missing_ok=True)
+                if target is not None:
+                    target.unlink(missing_ok=True)
             except OSError:
                 pass
             raise

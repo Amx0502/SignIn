@@ -151,7 +151,7 @@ class ClassCubeCheckinFormContractTest(unittest.TestCase):
         )
         self.assertEqual(form.item_id_field, "id")
 
-    def test_exact_known_route_can_synthesize_recognized_qr_contract(self):
+    def test_exact_known_route_without_marker_is_not_submit_capable(self):
         item = ParsedItem(
             remote_item_id="24",
             course_id="1",
@@ -168,10 +168,68 @@ class ClassCubeCheckinFormContractTest(unittest.TestCase):
             item,
         )
 
+        self.assertFalse(form.submit_capable)
+        self.assertEqual(form.method, "get")
+
+    def test_single_search_form_is_not_selected_for_exact_punchcard_marker(self):
+        form = parse_checkin_form(
+            """
+            <form action="/student/search" method="get">
+              <input name="keyword">
+            </form>
+            <section id="punchcard_item-12">二维码签到</section>
+            """,
+            self.item.detail_url,
+            self.item,
+        )
+
         self.assertTrue(form.submit_capable)
-        self.assertEqual(form.action, item.detail_url)
         self.assertEqual(form.method, "post")
+        self.assertEqual(form.action, self.item.detail_url)
         self.assertEqual(form.item_id_field, "id")
+        self.assertNotEqual(
+            form.action,
+            "https://bjmf.k8n.cn/student/search",
+        )
+
+    def test_explicit_item_attribute_can_bind_noncanonical_form_action(self):
+        form = parse_checkin_form(
+            """
+            <form action="/student/search" method="get">
+              <input name="keyword">
+            </form>
+            <form action="/student/submit" method="post"
+                  data-checkin-item-id="item-12">
+              <input type="hidden" name="id" value="">
+            </form>
+            """,
+            self.item.detail_url,
+            self.item,
+        )
+
+        self.assertTrue(form.submit_capable)
+        self.assertEqual(
+            form.action,
+            "https://bjmf.k8n.cn/student/submit",
+        )
+
+    def test_hidden_password_alias_is_neither_secret_field_nor_hidden_payload(self):
+        form = parse_checkin_form(
+            """
+            <section id="punchcard_item-12">
+              <form action="/student/punchs/course/course-1/item-12"
+                    method="post">
+                <input type="hidden" name="_token" value="keep">
+                <input type="hidden" name="password" value="server-secret">
+              </form>
+            </section>
+            """,
+            self.item.detail_url,
+            self.item,
+        )
+
+        self.assertEqual(form.password_field, "")
+        self.assertEqual(form.hidden_fields, {"_token": "keep"})
 
     def test_explicit_separate_upload_contract_is_parsed(self):
         form = parse_checkin_form(
@@ -365,6 +423,33 @@ class ClassCubeSubmissionFieldTest(unittest.TestCase):
 
         self.assertEqual(fields, {"code": " 1234 "})
 
+    def test_password_mode_ignores_mixed_coordinate_fields(self):
+        form = ParsedForm(
+            action="https://bjmf.k8n.cn/student/daka/course/1/9",
+            method="post",
+            mode="password",
+            hidden_fields={},
+            item_id_field="id",
+            latitude_field="lat",
+            longitude_field="lng",
+            password_field="passcode",
+            submit_capable=True,
+        )
+
+        fields = build_submission_fields(
+            form,
+            CheckinParameters(password="one-time-secret"),
+            remote_item_id="9",
+        )
+
+        self.assertEqual(
+            fields,
+            {
+                "id": "9",
+                "passcode": "one-time-secret",
+            },
+        )
+
     def test_manual_request_enforces_secret_and_path_lengths(self):
         with self.assertRaises(ValidationError):
             ManualCheckinRequest(password="x" * 129)
@@ -437,6 +522,75 @@ class ClassCubeRemoteSubmissionTest(unittest.TestCase):
         self.assertEqual(session.uploaded_files["image"], b"\xff\xd8\xffphoto")
         self.assertEqual(len(session.calls), 1)
         self.assertTrue(session.closed)
+
+    def test_upload_login_html_raises_cookie_expired_before_json_decode(self):
+        session = FakeSession(
+            [
+                FakeResponse(
+                    text=(
+                        '<form action="/login">'
+                        '<input type="password" name="password">'
+                        "</form>"
+                    ),
+                    url="https://bjmf.k8n.cn/login",
+                )
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+        form = ParsedForm(
+            action="https://bjmf.k8n.cn/student/punch_gps/course/1/9",
+            method="post",
+            mode="gps_photo",
+            hidden_fields={},
+            photo_resource_field="res",
+            submit_capable=True,
+            upload_action=(
+                "https://bjmf.k8n.cn/student/uploads/checkin-photo"
+            ),
+            upload_method="post",
+            upload_file_field="image",
+            upload_response_key="data.resource",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            photo = Path(directory) / "proof.jpg"
+            photo.write_bytes(b"\xff\xd8\xffphoto")
+
+            with self.assertRaises(ClassCubeCookieExpired):
+                client.upload_photo("cookie=value", form, photo)
+
+        self.assertEqual(len(session.calls), 1)
+        self.assertTrue(session.closed)
+
+    def test_hidden_password_aliases_are_never_sent_as_remote_payload(self):
+        session = FakeSession(
+            [FakeResponse(text='<div data-status="success">完成</div>')]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+        form = ParsedForm(
+            action="https://bjmf.k8n.cn/student/punchs/course/1/9",
+            method="post",
+            mode="qr",
+            hidden_fields={
+                "_token": "keep",
+                "password": "server-secret",
+                "pwd": "server-secret",
+                "code": "server-secret",
+                "passcode": "server-secret",
+            },
+            item_id_field="id",
+            submit_capable=True,
+        )
+
+        client.submit_form(
+            "cookie=value",
+            form,
+            {"id": "9"},
+        )
+
+        self.assertEqual(
+            session.calls[0][2]["data"],
+            {"_token": "keep", "id": "9"},
+        )
 
     def test_untrusted_upload_action_is_rejected_before_request(self):
         session = FakeSession(
@@ -761,6 +915,25 @@ class ClassCubeManualCheckinServiceTest(unittest.TestCase):
         )
         self.assertEqual(repr(self.repository.items), before)
 
+    def test_password_mode_without_password_contract_waits_without_request(self):
+        self.add_item(
+            231,
+            "password",
+            self.form(
+                "password",
+                item_id_field="id",
+            ),
+        )
+
+        result = self.service.manual_checkin(
+            231,
+            {"password": "must-not-submit"},
+            self.actor,
+        )
+
+        self.assertEqual(result["status"], "waiting_parameter")
+        self.assertEqual(self.client.calls, [])
+
     def test_gps_requires_complete_valid_coordinates_before_post(self):
         self.add_item(
             24,
@@ -953,12 +1126,16 @@ class ClassCubeManualCheckinServiceTest(unittest.TestCase):
             other = upload_root / "class-cube" / "8"
             own.mkdir(parents=True)
             other.mkdir(parents=True)
+            (own / "proof.jpg").write_bytes(
+                b"\xff\xd8\xffvalid-photo"
+            )
             (own / "bad.jpg").write_bytes(b"not-an-image")
             (other / "proof.jpg").write_bytes(
                 b"\xff\xd8\xffother-photo"
             )
             cases = [
                 "../proof.jpg",
+                r"class-cube\7\proof.jpg",
                 r"class-cube\7\..\8\proof.jpg",
                 "class-cube/8/proof.jpg",
                 str((other / "proof.jpg").resolve()),
@@ -1025,6 +1202,57 @@ class ClassCubeManualCheckinServiceTest(unittest.TestCase):
                         "latitude": 30,
                         "longitude": 120,
                         "photo_path": "class-cube/7/link.jpg",
+                    },
+                    self.actor,
+                )
+
+        self.assertEqual(result["status"], "waiting_parameter")
+        self.assertEqual(self.client.calls, [])
+
+    def test_manual_photo_rejects_mocked_owner_directory_symlink(self):
+        self.add_item(
+            321,
+            "gps_photo",
+            self.form(
+                "gps_photo",
+                latitude_field="lat",
+                longitude_field="lng",
+                file_field="proof",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            upload_root = Path(directory) / "uploads"
+            owner_dir = upload_root / "class-cube" / "7"
+            owner_dir.mkdir(parents=True)
+            (owner_dir / "proof.jpg").write_bytes(
+                b"\xff\xd8\xffvalid-photo"
+            )
+            original_is_symlink = Path.is_symlink
+
+            def fake_is_symlink(path):
+                if path == owner_dir:
+                    return True
+                return original_is_symlink(path)
+
+            with (
+                patch.object(config, "UPLOAD_DIR", upload_root),
+                patch.object(
+                    config,
+                    "CLASS_CUBE_UPLOAD_DIR",
+                    upload_root / "class-cube",
+                ),
+                patch.object(
+                    Path,
+                    "is_symlink",
+                    fake_is_symlink,
+                ),
+            ):
+                result = self.service.manual_checkin(
+                    321,
+                    {
+                        "latitude": 30,
+                        "longitude": 120,
+                        "photo_path": "class-cube/7/proof.jpg",
                     },
                     self.actor,
                 )
@@ -1135,6 +1363,58 @@ class ClassCubeManualCheckinServiceTest(unittest.TestCase):
                 )
 
         self.assertEqual(result["status"], "waiting_parameter")
+        self.assertEqual(
+            [call[0] for call in self.client.calls],
+            ["upload"],
+        )
+
+    def test_upload_cookie_expired_marks_account_without_final_submit(self):
+        self.add_item(
+            35,
+            "gps_photo",
+            self.form(
+                "gps_photo",
+                latitude_field="lat",
+                longitude_field="lng",
+                photo_resource_field="res",
+                upload_action=(
+                    "https://bjmf.k8n.cn/student/uploads/photo"
+                ),
+                upload_method="post",
+                upload_file_field="image",
+                upload_response_key="data.resource",
+            ),
+        )
+        self.client.upload_resource = ClassCubeCookieExpired(
+            "remote login"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            upload_root = Path(directory) / "uploads"
+            owner_dir = upload_root / "class-cube" / "7"
+            owner_dir.mkdir(parents=True)
+            (owner_dir / "proof.jpg").write_bytes(
+                b"\xff\xd8\xffvalid-photo"
+            )
+            with (
+                patch.object(config, "UPLOAD_DIR", upload_root),
+                patch.object(
+                    config,
+                    "CLASS_CUBE_UPLOAD_DIR",
+                    upload_root / "class-cube",
+                ),
+            ):
+                result = self.service.manual_checkin(
+                    35,
+                    {
+                        "latitude": 30,
+                        "longitude": 120,
+                        "photo_path": "class-cube/7/proof.jpg",
+                    },
+                    self.actor,
+                )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(self.repository.expired, [1])
         self.assertEqual(
             [call[0] for call in self.client.calls],
             ["upload"],
@@ -1291,6 +1571,107 @@ class ClassCubeLocalPhotoTest(unittest.TestCase):
                     if path.is_file()
                 ]
                 self.assertEqual(files, [])
+
+    def test_save_rejects_mocked_symlink_at_every_managed_component(self):
+        for symlink_component in ("class-cube", "owner", "target"):
+            with self.subTest(symlink_component=symlink_component):
+                with tempfile.TemporaryDirectory() as directory:
+                    upload_root = Path(directory) / "uploads"
+                    class_cube_root = upload_root / "class-cube"
+                    owner_dir = class_cube_root / "7"
+                    owner_dir.mkdir(parents=True)
+                    original_is_symlink = Path.is_symlink
+
+                    def fake_is_symlink(path):
+                        if (
+                            symlink_component == "class-cube"
+                            and path == class_cube_root
+                        ):
+                            return True
+                        if (
+                            symlink_component == "owner"
+                            and path == owner_dir
+                        ):
+                            return True
+                        if (
+                            symlink_component == "target"
+                            and path.parent == owner_dir
+                        ):
+                            return True
+                        return original_is_symlink(path)
+
+                    with (
+                        patch.object(config, "UPLOAD_DIR", upload_root),
+                        patch.object(
+                            config,
+                            "CLASS_CUBE_UPLOAD_DIR",
+                            class_cube_root,
+                        ),
+                        patch.object(
+                            Path,
+                            "is_symlink",
+                            fake_is_symlink,
+                        ),
+                    ):
+                        with self.assertRaises(
+                            ClassCubeValidationError
+                        ):
+                            self.service.save_photo(
+                                make_upload(
+                                    "proof.jpg",
+                                    "image/jpeg",
+                                    b"\xff\xd8\xffvalid-jpeg",
+                                ),
+                                self.actor,
+                            )
+
+                    self.assertEqual(
+                        [
+                            path
+                            for path in owner_dir.iterdir()
+                            if path.is_file()
+                        ],
+                        [],
+                    )
+
+    def test_actual_owner_directory_symlink_is_rejected_without_external_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            upload_root = Path(directory) / "uploads"
+            class_cube_root = upload_root / "class-cube"
+            class_cube_root.mkdir(parents=True)
+            outside = Path(directory) / "outside"
+            outside.mkdir()
+            owner_link = class_cube_root / "7"
+            try:
+                os.symlink(
+                    outside,
+                    owner_link,
+                    target_is_directory=True,
+                )
+            except OSError as exc:
+                self.skipTest(
+                    f"当前环境不能创建目录符号链接: {exc}"
+                )
+
+            with (
+                patch.object(config, "UPLOAD_DIR", upload_root),
+                patch.object(
+                    config,
+                    "CLASS_CUBE_UPLOAD_DIR",
+                    class_cube_root,
+                ),
+            ):
+                with self.assertRaises(ClassCubeValidationError):
+                    self.service.save_photo(
+                        make_upload(
+                            "proof.jpg",
+                            "image/jpeg",
+                            b"\xff\xd8\xffvalid-jpeg",
+                        ),
+                        self.actor,
+                    )
+
+            self.assertEqual(list(outside.iterdir()), [])
 
 
 class ClassCubeCheckinRouterTest(unittest.TestCase):

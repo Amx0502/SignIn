@@ -6,6 +6,14 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 from bs4 import BeautifulSoup, Tag
 
 
+PASSWORD_FIELD_ALIASES = {
+    "password",
+    "pwd",
+    "code",
+    "passcode",
+}
+
+
 @dataclass(frozen=True)
 class ParsedCourse:
     remote_course_id: str
@@ -240,6 +248,9 @@ def parse_checkin_form(
         for input_tag in inputs
         if input_tag.get("name")
         and _attribute_text(input_tag.get("type")).lower() == "hidden"
+        and _attribute_text(
+            input_tag.get("name")
+        ).strip().lower() not in PASSWORD_FIELD_ALIASES
     }
     item_id_field = _first_named_field(
         inputs,
@@ -261,9 +272,9 @@ def parse_checkin_form(
         inputs,
         {"gps_addr", "address", "addr"},
     )
-    password_field = _first_named_field(
+    password_field = _first_password_field(
         inputs,
-        {"password", "pwd", "code", "passcode"},
+        PASSWORD_FIELD_ALIASES,
     ) or _first_field_name(inputs, "password")
     file_field = _first_field_name(inputs, "file")
     photo_resource_field = _first_named_field(
@@ -399,16 +410,7 @@ def _synthetic_contract(
             ),
             "qr",
         )
-
-    route = _checkin_route(response_url, str(item.course_id))
-    if (
-        route is None
-        or route[0] != item.remote_module
-        or route[1] != str(item.remote_item_id)
-        or item.mode_hint not in {"qr", "gps"}
-    ):
-        return None
-    return response_url, item.mode_hint
+    return None
 
 
 def _canonical_submit_url(
@@ -447,6 +449,10 @@ def _select_checkin_form(
             return nested_form
 
     forms = soup.find_all("form")
+    for form in forms:
+        if _form_explicitly_targets_item(form, item):
+            return form
+
     if item.detail_url:
         expected_url = urlparse(item.detail_url)
         for form in forms:
@@ -459,18 +465,45 @@ def _select_checkin_form(
             ):
                 return form
 
-    expected_suffix = (
-        f"/course/{item.course_id}/{item.remote_item_id}"
-    )
+    expected_host = urlparse(
+        item.detail_url or response_url
+    ).netloc.lower()
     for form in forms:
         action = _attribute_text(form.get("action"))
-        action_path = unquote(urlparse(urljoin(response_url, action)).path)
-        if action_path.rstrip("/").endswith(expected_suffix):
+        actual_url = urlparse(urljoin(response_url, action))
+        route = _checkin_route(
+            actual_url.geturl(),
+            str(item.course_id),
+        )
+        if (
+            actual_url.netloc.lower() == expected_host
+            and route is not None
+            and route[1] == str(item.remote_item_id)
+        ):
             return form
-
-    if len(forms) == 1:
-        return forms[0]
     return None
+
+
+def _form_explicitly_targets_item(
+    form: Tag,
+    item: ParsedItem,
+) -> bool:
+    expected_id = str(item.remote_item_id)
+    for node in (form, *form.parents):
+        if not isinstance(node, Tag):
+            continue
+        for attribute in (
+            "data-checkin-item-id",
+            "data-item-id",
+            "item-id",
+            "data-checkin",
+        ):
+            if (
+                _attribute_text(node.get(attribute)).strip()
+                == expected_id
+            ):
+                return True
+    return False
 
 
 def parse_checkin_result(html: str, response_url: str) -> ParsedResult:
@@ -636,6 +669,26 @@ def _first_named_field(
     for input_tag in inputs:
         name = _attribute_text(input_tag.get("name")).strip()
         if name.lower() in aliases:
+            return name
+    return ""
+
+
+def _first_password_field(
+    inputs: list[Tag],
+    aliases: set[str],
+) -> str:
+    editable_types = {"", "text", "password", "tel", "number"}
+    for input_tag in inputs:
+        field_type = _attribute_text(
+            input_tag.get("type")
+        ).strip().lower()
+        name = _attribute_text(
+            input_tag.get("name")
+        ).strip()
+        if (
+            field_type in editable_types
+            and name.lower() in aliases
+        ):
             return name
     return ""
 
