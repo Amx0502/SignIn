@@ -1,4 +1,4 @@
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, getCurrentInstance, onUnmounted, ref } from 'vue'
 
 import classCubeApi from '../api/classCube.js'
 import {
@@ -9,12 +9,43 @@ import {
 const TERMINAL_QR_STATES = new Set(['success', 'expired', 'error'])
 const BACKGROUND_REFRESH_MS = 30_000
 const QR_POLL_MS = 1_000
+const TASK_FIELDS = new Set([
+  'owner_user_id',
+  'account_id',
+  'course_id',
+  'name',
+  'enabled',
+  'latitude',
+  'longitude',
+  'accuracy',
+  'photo_path',
+  'password',
+  'clear_password',
+])
 
 function responseData(response, fallback = null) {
   if (response?.ok === false) {
     throw new Error(response.error || '班级魔方请求失败')
   }
   return response?.data ?? fallback
+}
+
+function taskRequest(payload, isEdit) {
+  const request = Object.fromEntries(
+    Object.entries(payload || {}).filter(([key]) => TASK_FIELDS.has(key)),
+  )
+  if (isEdit) {
+    delete request.owner_user_id
+    if (request.clear_password) {
+      delete request.password
+    } else if (!request.password) {
+      delete request.password
+      delete request.clear_password
+    }
+  } else {
+    delete request.clear_password
+  }
+  return request
 }
 
 export function normalizeClassCubeError(error) {
@@ -120,6 +151,7 @@ export function useClassCube(api = classCubeApi) {
   }
 
   async function loadRuns(params = runFilters.value) {
+    runFilters.value = { ...params }
     const fresh = responseData(await api.listRuns(params), [])
     runs.value = Array.isArray(fresh) ? fresh : []
     return runs.value
@@ -169,9 +201,10 @@ export function useClassCube(api = classCubeApi) {
   }
 
   async function saveTask(payload, taskId = null) {
+    const request = taskRequest(payload, taskId !== null)
     const response = taskId
-      ? await api.updateTask(taskId, payload)
-      : await api.createTask(payload)
+      ? await api.updateTask(taskId, request)
+      : await api.createTask(request)
     await loadTasks()
     return responseData(response)
   }
@@ -290,7 +323,20 @@ export function useClassCube(api = classCubeApi) {
     stopQrPolling()
   }
 
-  onUnmounted(dispose)
+  if (getCurrentInstance()) onUnmounted(dispose)
+
+  async function invoke(method, ...args) {
+    return responseData(await method(...args))
+  }
+
+  function manualCheckin(itemId, payload = {}) {
+    const request = { ...payload }
+    if (Object.hasOwn(request, 'photoPath')) {
+      request.photo_path = request.photoPath
+      delete request.photoPath
+    }
+    return invoke(api.manualCheckin, itemId, request)
+  }
 
   return {
     accounts,
@@ -331,12 +377,12 @@ export function useClassCube(api = classCubeApi) {
     startQrLogin,
     stopQrPolling,
     dispose,
-    uploadPhoto: api.uploadPhoto,
-    manualCheckin: api.manualCheckin,
-    updateAccount: api.updateAccount,
-    deleteAccount: api.deleteAccount,
-    deleteTask: api.deleteTask,
-    runTask: api.runTask,
-    retryClaim: api.retryClaim,
+    uploadPhoto: (...args) => invoke(api.uploadPhoto, ...args),
+    manualCheckin,
+    updateAccount: (...args) => invoke(api.updateAccount, ...args),
+    deleteAccount: (...args) => invoke(api.deleteAccount, ...args),
+    deleteTask: (...args) => invoke(api.deleteTask, ...args),
+    runTask: (...args) => invoke(api.runTask, ...args),
+    retryClaim: (...args) => invoke(api.retryClaim, ...args),
   }
 }
