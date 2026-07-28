@@ -21,7 +21,7 @@ const routes = [
   { path: '/checkin/normal', redirect: '/checkin/auto' },
   { path: '/checkin/image', redirect: '/checkin/auto' },
   { path: '/logs', name: 'Logs', component: Logs, meta: { title: '运行日志', parentTitle: '小小签到', requiresAuth: true } },
-  { path: '/class-cube', name: 'ClassCube', component: ClassCube, meta: { title: '班级魔方', parentTitle: '班级魔方', requiresAuth: true } }
+  { path: '/class-cube', name: 'ClassCube', component: ClassCube, meta: { title: '签到管理', parentTitle: '班级魔方', requiresAuth: true } }
 ]
 
 const router = createRouter({
