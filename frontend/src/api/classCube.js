@@ -52,6 +52,8 @@ export function createClassCubeApi(instance = defaultInstance) {
 
     listRuns: (params = {}) =>
       instance.get(`${root}/runs`, { params }),
+    listLogs: (limit = 200) =>
+      instance.get(`${root}/logs`, { params: { limit } }),
   }
 }
 

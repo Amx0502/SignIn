@@ -40,7 +40,7 @@ export const deleteUserApi = id => instance.delete(`/users/${id}`)
 
 export default {
   getState: () => instance.get('/state'),
-  getLogs: (limit = 200) => instance.get('/logs', { params: { limit } }),
+  getLogs: (limit = 200) => instance.get('/xxqd/logs', { params: { limit } }),
 
   addAccount: data => instance.post('/accounts', data),
   updateAccount: (index, data) => instance.put(`/accounts/${index}`, data),

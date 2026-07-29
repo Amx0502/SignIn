@@ -481,14 +481,15 @@ class ClassCubeService:
                 },
             ) from exc
         except ClassCubeRequestError as exc:
-            raise self._remote_error(
-                "同步扫码账号资料",
-                exc,
-                data={
-                    "account": safe_account,
-                    "retryable": True,
-                },
-            ) from exc
+            sync_warning = "扫码登录成功，但账号资料同步暂时失败，可在账号管理中重试"
+            self.logger.warning("班级魔方扫码账号资料同步失败（%s）", type(exc).__name__)
+            return {
+                "status": "success",
+                "retryable": True,
+                "account": safe_account,
+                "sync_warning": sync_warning,
+                "courses": [],
+            }
 
         stored_courses = self.repository.upsert_courses(
             account["id"],

@@ -131,6 +131,14 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
             owner_user_id=owner_user_id,
         )
 
+    @router.get("/logs")
+    def get_logs(
+        request: Request,
+        limit: int = Query(default=200, ge=1, le=1000),
+        actor=Depends(auth_dependency),
+    ):
+        return _success(request.app.state.class_cube_log_store.snapshot(limit))
+
     @router.put("/accounts/{account_id}")
     def update_account(
         account_id: int,

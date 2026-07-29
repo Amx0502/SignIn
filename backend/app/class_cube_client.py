@@ -8,6 +8,7 @@ from typing import Callable
 from urllib.parse import quote, urljoin, urlparse
 
 import requests
+import time
 
 from app.class_cube_parser import (
     PASSWORD_FIELD_ALIASES,
@@ -111,11 +112,7 @@ class ClassCubeClient:
             self._cleanup_expired(cleanup_time)
         session = self._session_factory()
         try:
-            login_response = session.get(
-                QR_LOGIN_URL,
-                headers=self._request_headers(),
-                timeout=REQUEST_TIMEOUT,
-            )
+            login_response = self._qr_get_with_retries(session, QR_LOGIN_URL)
             login_response.raise_for_status()
 
             image_url = parse_qr_image_url(
@@ -126,11 +123,7 @@ class ClassCubeClient:
                 raise ClassCubeRequestError(
                     "remote QR login page did not contain a QR image"
                 )
-            image_response = session.get(
-                image_url,
-                headers=self._request_headers(),
-                timeout=REQUEST_TIMEOUT,
-            )
+            image_response = self._qr_get_with_retries(session, image_url)
             image_response.raise_for_status()
         except requests.RequestException as exc:
             session.close()
@@ -156,6 +149,23 @@ class ClassCubeClient:
             ).decode("ascii"),
             expires_at=created_at + QR_TTL_SECONDS,
         )
+
+    def _qr_get_with_retries(self, session, url):
+        last_error = None
+        for attempt in range(GET_MAX_ATTEMPTS):
+            try:
+                response = session.get(
+                    url,
+                    headers=self._request_headers(),
+                    timeout=REQUEST_TIMEOUT,
+                )
+                response.raise_for_status()
+                return response
+            except (requests.RequestException, TimeoutError) as exc:
+                last_error = exc
+                if attempt + 1 < GET_MAX_ATTEMPTS:
+                    time.sleep(0.15 * (attempt + 1))
+        raise ClassCubeRequestError("failed to create remote QR session") from last_error
 
     def fetch_courses(self, cookie: str) -> list[ParsedCourse]:
         session = self._short_lived_session(cookie)

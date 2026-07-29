@@ -37,9 +37,13 @@
           <el-menu-item index="/tasks"><el-icon><List /></el-icon><span>任务管理</span></el-menu-item>
           <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>运行日志</span></el-menu-item>
         </el-sub-menu>
-        <el-menu-item index="/class-cube">
-          <el-icon><Grid /></el-icon><span>班级魔方</span>
-        </el-menu-item>
+        <el-sub-menu index="/class-cube">
+          <template #title><el-icon><Grid /></el-icon><span>班级魔方</span></template>
+          <el-menu-item index="/class-cube/overview"><el-icon><Odometer /></el-icon><span>系统概览</span></el-menu-item>
+          <el-menu-item index="/class-cube/accounts"><el-icon><User /></el-icon><span>账号管理</span></el-menu-item>
+          <el-menu-item index="/class-cube/tasks"><el-icon><Timer /></el-icon><span>自动任务</span></el-menu-item>
+          <el-menu-item index="/class-cube/runs"><el-icon><Document /></el-icon><span>运行记录</span></el-menu-item>
+        </el-sub-menu>
       </el-menu>
       <div v-if="!sidebarCollapsed" class="sidebar-footer">
         <span>自动化调度</span>

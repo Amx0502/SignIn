@@ -38,6 +38,7 @@ from .class_cube_repository import ClassCubeRepository
 from .class_cube_router import create_class_cube_router
 from .class_cube_service import ClassCubeService
 from .class_cube_scheduler import ClassCubeScheduler
+from .class_cube_logging import ClassCubeLogStore, create_class_cube_logger
 from .repository import DuplicateMobileError
 from .service import AppState
 
@@ -45,6 +46,7 @@ app_state = AppState(start_scheduler=False)
 auth_service = AuthService()
 auth_database: AuthDatabase | None = None
 class_cube_database: ClassCubeDatabase | None = None
+class_cube_log_store = ClassCubeLogStore()
 security = HTTPBearer()
 
 
@@ -74,10 +76,12 @@ async def lifespan(app: FastAPI):
             database_config.class_cube
         )
         class_cube_database.initialize()
+        class_cube_logger = create_class_cube_logger(class_cube_log_store)
+        app.state.class_cube_log_store = class_cube_log_store
         class_cube_service = ClassCubeService(
             ClassCubeRepository(class_cube_database),
             ClassCubeClient(),
-            app_state.logger,
+            class_cube_logger,
         )
         app.state.class_cube_service = class_cube_service
         class_cube_scheduler = ClassCubeScheduler(class_cube_service)
@@ -184,7 +188,7 @@ def get_state(_user=Depends(get_current_user)):
     return success(app_state.snapshot())
 
 
-@app.get("/api/logs")
+@app.get("/api/xxqd/logs")
 def get_logs(limit: int = 200, _user=Depends(get_current_user)):
     return success(app_state.get_logs(limit))
 

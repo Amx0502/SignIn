@@ -60,6 +60,7 @@ export function useClassCube(api = classCubeApi) {
   const items = ref([])
   const tasks = ref([])
   const runs = ref([])
+  const logs = ref([])
 
   const selectedAccountId = ref(null)
   const selectedCourseId = ref(null)
@@ -177,6 +178,12 @@ export function useClassCube(api = classCubeApi) {
     const fresh = responseData(await api.listRuns(params), [])
     runs.value = Array.isArray(fresh) ? fresh : []
     return runs.value
+  }
+
+  async function loadLogs(limit = 200) {
+    const fresh = responseData(await api.listLogs(limit), [])
+    logs.value = Array.isArray(fresh) ? fresh : []
+    return logs.value
   }
 
   async function loadInitial({ accountParams = {}, taskParams = {} } = {}) {
@@ -303,6 +310,7 @@ export function useClassCube(api = classCubeApi) {
           ...qrSession.value,
           status: status.status || 'pending',
           retryable: Boolean(status.retryable),
+          syncWarning: status.sync_warning || '',
         }
         if (TERMINAL_QR_STATES.has(qrSession.value.status)) {
           stopQrPolling()
@@ -387,6 +395,7 @@ export function useClassCube(api = classCubeApi) {
     items,
     tasks,
     runs,
+    logs,
     selectedAccountId,
     selectedCourseId,
     selectedItemId,
@@ -409,6 +418,7 @@ export function useClassCube(api = classCubeApi) {
     loadItems,
     loadTasks,
     loadRuns,
+    loadLogs,
     loadInitial,
     selectAccount,
     selectCourse,

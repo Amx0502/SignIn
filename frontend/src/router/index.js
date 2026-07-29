@@ -5,7 +5,10 @@ import Logs from '../views/Logs.vue'
 import AutoCheckIn from '../views/AutoCheckIn.vue'
 import TaskManagement from '../views/TaskManagement.vue'
 import Login from '../views/Login.vue'
-import ClassCube from '../views/ClassCube.vue'
+import ClassCubeOverview from '../views/ClassCubeOverview.vue'
+import ClassCubeAccounts from '../views/ClassCubeAccounts.vue'
+import ClassCubeTasks from '../views/ClassCubeTasks.vue'
+import ClassCubeRuns from '../views/ClassCubeRuns.vue'
 import UserManagement from '../views/UserManagement.vue'
 import ChangePassword from '../views/ChangePassword.vue'
 
@@ -21,7 +24,11 @@ const routes = [
   { path: '/checkin/normal', redirect: '/checkin/auto' },
   { path: '/checkin/image', redirect: '/checkin/auto' },
   { path: '/logs', name: 'Logs', component: Logs, meta: { title: '运行日志', parentTitle: '小小签到', requiresAuth: true } },
-  { path: '/class-cube', name: 'ClassCube', component: ClassCube, meta: { title: '签到管理', parentTitle: '班级魔方', requiresAuth: true } }
+  { path: '/class-cube', redirect: '/class-cube/overview' },
+  { path: '/class-cube/overview', name: 'ClassCubeOverview', component: ClassCubeOverview, meta: { title: '系统概览', parentTitle: '班级魔方', requiresAuth: true } },
+  { path: '/class-cube/accounts', name: 'ClassCubeAccounts', component: ClassCubeAccounts, meta: { title: '账号管理', parentTitle: '班级魔方', requiresAuth: true } },
+  { path: '/class-cube/tasks', name: 'ClassCubeTasks', component: ClassCubeTasks, meta: { title: '自动任务', parentTitle: '班级魔方', requiresAuth: true } },
+  { path: '/class-cube/runs', name: 'ClassCubeRuns', component: ClassCubeRuns, meta: { title: '运行记录', parentTitle: '班级魔方', requiresAuth: true } }
 ]
 
 const router = createRouter({
