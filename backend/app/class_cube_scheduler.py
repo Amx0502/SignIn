@@ -68,15 +68,22 @@ class ClassCubeScheduler:
                     return
             self._last_tick = now
         for task in self.service.list_due_tasks():
-            self.submit(int(task["id"]))
+            self.submit(
+                int(task["id"]),
+                schedule_key=task.get("_schedule_key"),
+            )
 
-    def submit(self, task_id):
+    def submit(self, task_id, schedule_key=None):
         task_id = int(task_id)
         with self._lock:
             if self._closed or task_id in self._running_task_ids:
                 return False
             reserve = getattr(self.service, "reserve_task_scan", None)
-            if reserve is not None and not reserve(task_id):
+            if (
+                schedule_key is not None
+                and reserve is not None
+                and not reserve(task_id, schedule_key)
+            ):
                 return False
             self._running_task_ids.add(task_id)
             try:

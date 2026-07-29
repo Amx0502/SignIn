@@ -120,13 +120,26 @@ def load_settings_from_disk() -> dict:
 
 def save_settings_to_disk(auto_enabled: bool, refresh_times: list[str], webhook_url: str = "") -> None:
     ensure_dirs()
+    existing = {}
+    if SETTINGS_FILE.exists():
+        try:
+            existing = json.loads(
+                SETTINGS_FILE.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+    if not isinstance(existing, dict):
+        existing = {}
+    existing.update(
+        {
+            "auto_enabled": auto_enabled,
+            "refresh_times": refresh_times,
+            "webhook_url": webhook_url,
+        }
+    )
     with SETTINGS_FILE.open("w", encoding="utf-8") as file:
         json.dump(
-            {
-                "auto_enabled": auto_enabled,
-                "refresh_times": refresh_times,
-                "webhook_url": webhook_url,
-            },
+            existing,
             file,
             ensure_ascii=False,
             indent=2,

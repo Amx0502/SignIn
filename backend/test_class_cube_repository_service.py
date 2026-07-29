@@ -1317,6 +1317,7 @@ class ClassCubeRouterTest(unittest.TestCase):
     def test_all_router_endpoints_are_sync_and_use_unified_success_shape(self):
         expected_paths = {
             "/api/class-cube/qr-sessions",
+            "/api/class-cube/settings",
             "/api/class-cube/qr-sessions/{token}",
             "/api/class-cube/accounts",
             "/api/class-cube/logs",

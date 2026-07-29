@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import json
 from typing import Any, Iterable
 import uuid
 
@@ -80,10 +81,17 @@ class ClassCubeRepository:
 
     @staticmethod
     def _task_record(row):
-        return {
+        record = {
             column.name: getattr(row, column.name)
             for column in row.__table__.columns
         }
+        try:
+            record["schedule_times"] = json.loads(
+                record.pop("schedule_times_json", "[]") or "[]"
+            )
+        except (TypeError, json.JSONDecodeError):
+            record["schedule_times"] = []
+        return record
 
     @staticmethod
     def _run_record(row):
@@ -719,13 +727,38 @@ class ClassCubeRepository:
                 if key in {
                     "account_id", "course_id", "name", "enabled",
                     "latitude", "longitude", "accuracy", "photo_path",
-                    "password",
+                    "password", "start_date", "end_date",
+                    "notify_wecom",
                 }:
                     setattr(row, key, value)
+            if "schedule_times" in values:
+                row.schedule_times_json = json.dumps(
+                    values["schedule_times"],
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
             row.poll_interval_seconds = 30
             row.updated_at = datetime.now()
             session.flush()
             return self._task_record(row)
+
+    def claim_task_schedule(self, task_id, schedule_key, now=None):
+        now = now or datetime.now()
+        with self.database.session() as session:
+            result = session.execute(
+                update(ClassCubeTaskRow)
+                .where(
+                    ClassCubeTaskRow.id == task_id,
+                    ClassCubeTaskRow.enabled.is_(True),
+                    ClassCubeTaskRow.last_schedule_key != schedule_key,
+                )
+                .values(
+                    last_schedule_key=schedule_key,
+                    last_scan_at=now,
+                    updated_at=now,
+                )
+            )
+            return result.rowcount == 1
 
     def delete_tasks(self, task_ids, actor_user_id, is_admin):
         ids = list(dict.fromkeys(int(value) for value in task_ids))

@@ -53,6 +53,7 @@ class ClassCubeDatabase:
             ClassCubeBase.metadata.create_all(database_engine)
             if database_engine.dialect.name == "mysql":
                 self._migrate_claim_table(database_engine)
+                self._migrate_task_table(database_engine)
             session_factory = sessionmaker(
                 bind=database_engine,
                 autoflush=False,
@@ -121,6 +122,37 @@ class ClassCubeDatabase:
             with engine.begin() as connection:
                 for statement in statements:
                     connection.execute(text(statement))
+
+    @staticmethod
+    def _migrate_task_table(engine: Engine) -> None:
+        table = "class_cube_tasks"
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns(table)
+        }
+        definitions = {
+            "schedule_times_json": "TEXT NOT NULL",
+            "start_date": "DATE NULL",
+            "end_date": "DATE NULL",
+            "notify_wecom": "TINYINT(1) NOT NULL DEFAULT 1",
+            "last_schedule_key": "VARCHAR(32) NOT NULL DEFAULT ''",
+        }
+        statements = [
+            f"ALTER TABLE {table} ADD COLUMN {name} {definition}"
+            for name, definition in definitions.items()
+            if name not in columns
+        ]
+        with engine.begin() as connection:
+            for statement in statements:
+                connection.execute(text(statement))
+            if "schedule_times_json" not in columns:
+                connection.execute(
+                    text(
+                        "UPDATE class_cube_tasks "
+                        "SET schedule_times_json='[]' "
+                        "WHERE schedule_times_json IS NULL"
+                    )
+                )
 
     @contextmanager
     def session(self) -> Iterator[Session]:

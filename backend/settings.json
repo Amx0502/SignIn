@@ -3,5 +3,6 @@
   "refresh_times": [
     "07:30:00"
   ],
-  "webhook_url": ""
+  "webhook_url": "",
+  "class_cube_webhook_url": ""
 }

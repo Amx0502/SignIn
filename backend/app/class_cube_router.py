@@ -17,6 +17,7 @@ from .class_cube_models import (
     ClassCubeTaskCreate,
     ClassCubeTaskUpdate,
     ClassCubeTaskBatchDelete,
+    ClassCubeSettingsUpdate,
 )
 from .class_cube_repository import ClassCubeNotFound
 from .class_cube_service import (
@@ -88,6 +89,28 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
         prefix="/api/class-cube",
         tags=["class-cube"],
     )
+
+    @router.get("/settings")
+    def get_settings(
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request, _service(request).get_settings, actor
+        )
+
+    @router.put("/settings")
+    def update_settings(
+        payload: ClassCubeSettingsUpdate,
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request,
+            _service(request).update_settings,
+            payload.model_dump(),
+            actor,
+        )
 
     @router.post("/qr-sessions")
     def create_qr_session(

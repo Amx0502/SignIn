@@ -1,10 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -212,6 +213,17 @@ class ClassCubeTaskRow(ClassCubeBase):
     )
     password: Mapped[str] = mapped_column(
         String(255), nullable=False, default=""
+    )
+    schedule_times_json: Mapped[str] = mapped_column(
+        Text, nullable=False, default="[]"
+    )
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notify_wecom: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    last_schedule_key: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=""
     )
     last_scan_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True

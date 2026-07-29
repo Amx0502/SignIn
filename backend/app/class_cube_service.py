@@ -33,6 +33,13 @@ from .class_cube_repository import (
     ClassCubeNotFound,
     ClassCubeRepository,
 )
+from .class_cube_schedule import due_schedule_key, normalize_schedule_times
+from .class_cube_notifier import ClassCubeNotifier
+from .class_cube_settings import (
+    ClassCubeSettingsError,
+    load_class_cube_settings,
+    save_class_cube_settings,
+)
 
 
 class ClassCubeValidationError(ValueError):
@@ -218,11 +225,13 @@ class ClassCubeService:
         client: ClassCubeClient,
         logger,
         clock: Callable[[], float] | None = None,
+        notifier: ClassCubeNotifier | None = None,
     ):
         self.repository = repository
         self.client = client
         self.logger = logger
         self._clock = clock or time.monotonic
+        self.notifier = notifier or ClassCubeNotifier()
         self._qr_targets: dict[str, _QrTarget] = {}
         self._qr_lock = RLock()
         self._closed = False
@@ -679,6 +688,7 @@ class ClassCubeService:
     def create_task(self, payload, actor):
         actor_user_id, is_admin = self._actor_scope(actor)
         values = dict(payload)
+        values = self._validate_task_schedule(values)
         values["poll_interval_seconds"] = 30
         try:
             row = self.repository.save_task(
@@ -700,6 +710,7 @@ class ClassCubeService:
         elif supplied.get("password") is None:
             supplied.pop("password", None)
         values.update(supplied)
+        values = self._validate_task_schedule(values)
         values["poll_interval_seconds"] = 30
         try:
             row = self.repository.save_task(
@@ -721,12 +732,64 @@ class ClassCubeService:
         )
 
     def list_due_tasks(self):
-        return self.repository.list_tasks(
-            0, True, enabled=True, due_at=datetime.now()
-        )
+        now = datetime.now()
+        due = []
+        for task in self.repository.list_tasks(
+            0, True, enabled=True
+        ):
+            schedule_key = due_schedule_key(task, now)
+            if schedule_key:
+                due.append({**task, "_schedule_key": schedule_key})
+        return due
 
-    def reserve_task_scan(self, task_id):
-        return self.repository.claim_task_scan(task_id)
+    def reserve_task_scan(self, task_id, schedule_key=None):
+        if schedule_key:
+            return self.repository.claim_task_schedule(
+                task_id, schedule_key
+            )
+        return True
+
+    @staticmethod
+    def _validate_task_schedule(values):
+        normalized = normalize_schedule_times(
+            values.get("schedule_times", [])
+        )
+        if not normalized:
+            raise ClassCubeValidationError(
+                "请至少添加一个执行时间"
+            )
+        start = values.get("start_date")
+        end = values.get("end_date")
+        if start and end and start > end:
+            raise ClassCubeValidationError(
+                "开始日期不能晚于结束日期"
+            )
+        values["schedule_times"] = normalized
+        values["notify_wecom"] = bool(
+            values.get("notify_wecom", True)
+        )
+        return values
+
+    def get_settings(self, actor):
+        _, is_admin = self._actor_scope(actor)
+        try:
+            settings = load_class_cube_settings()
+        except ClassCubeSettingsError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
+        if not is_admin:
+            settings.pop("class_cube_webhook_url", None)
+        return settings
+
+    def update_settings(self, payload, actor):
+        _, is_admin = self._actor_scope(actor)
+        if not is_admin:
+            raise ClassCubeNotFound("班级魔方设置不存在")
+        try:
+            return save_class_cube_settings(
+                payload.get("class_cube_webhook_url", "")
+            )
+        except ClassCubeSettingsError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
 
     @staticmethod
     def _task_actor(task):
@@ -748,55 +811,102 @@ class ClassCubeService:
         )
         if account.get("status") != "active":
             return False
-        items = self.sync_items(task["course_id"], actor)
-        for item in items:
-            if item.get("status") != "active":
-                continue
-            current = self.repository.get_task(task_id, 0, True)
-            if not current.get("enabled"):
-                break
-            claim = self.repository.try_claim(
-                task_id,
-                item["id"],
-                item["remote_item_id"],
-                item["remote_module"],
+        course = self.repository.get_course(
+            task["course_id"], task["owner_user_id"], False
+        )
+        summary = {
+            "task_name": task.get("name", ""),
+            "account_name": (
+                account.get("name")
+                or account.get("remote_user_name")
+                or "-"
+            ),
+            "course_name": course.get("name", "-"),
+            "success": 0,
+            "failed": 0,
+            "details": [],
+        }
+        try:
+            items = self.sync_items(task["course_id"], actor)
+            for item in items:
+                if item.get("status") != "active":
+                    continue
+                current = self.repository.get_task(task_id, 0, True)
+                if not current.get("enabled"):
+                    break
+                claim = self.repository.try_claim(
+                    task_id,
+                    item["id"],
+                    item["remote_item_id"],
+                    item["remote_module"],
+                )
+                if not claim:
+                    continue
+                result = self.manual_checkin(
+                    item["id"],
+                    {
+                        "latitude": task.get("latitude"),
+                        "longitude": task.get("longitude"),
+                        "accuracy": task.get("accuracy"),
+                        "photo_path": task.get("photo_path") or "",
+                        "password": task.get("password") or "",
+                    },
+                    actor,
+                    before_submit=lambda: self._mark_automatic_submitting(
+                        claim
+                    ),
+                )
+                status = result["status"]
+                successful = status in {"success", "already_signed"}
+                summary["success" if successful else "failed"] += 1
+                summary["details"].append(
+                    f"{item.get('title', '签到项')}："
+                    f"{result.get('message') or status}"
+                )
+                state = {
+                    "success": "succeeded",
+                    "already_signed": "already_signed",
+                    "unknown_result": "unknown",
+                }.get(status, "retryable")
+                self.repository.finish_claim(
+                    claim["id"],
+                    task_id,
+                    item["id"],
+                    item["remote_item_id"],
+                    item["remote_module"],
+                    state,
+                    status,
+                    result.get("message", ""),
+                    item.get("mode", "unknown"),
+                    expected_lease_token=claim["lease_token"],
+                    started_at=claim["started_at"],
+                )
+            return True
+        except Exception as exc:
+            summary["failed"] += 1
+            summary["details"].append(
+                f"任务执行失败：{type(exc).__name__}"
             )
-            if not claim:
-                continue
-            result = self.manual_checkin(
-                item["id"],
-                {
-                    "latitude": task.get("latitude"),
-                    "longitude": task.get("longitude"),
-                    "accuracy": task.get("accuracy"),
-                    "photo_path": task.get("photo_path") or "",
-                    "password": task.get("password") or "",
-                },
-                actor,
-                before_submit=lambda: self._mark_automatic_submitting(
-                    claim
-                ),
+            raise
+        finally:
+            self._send_task_notification(task, summary)
+
+    def _send_task_notification(self, task, summary):
+        if not task.get("notify_wecom", True):
+            return
+        try:
+            webhook_url = load_class_cube_settings().get(
+                "class_cube_webhook_url", ""
             )
-            status = result["status"]
-            state = {
-                "success": "succeeded",
-                "already_signed": "already_signed",
-                "unknown_result": "unknown",
-            }.get(status, "retryable")
-            self.repository.finish_claim(
-                claim["id"],
-                task_id,
-                item["id"],
-                item["remote_item_id"],
-                item["remote_module"],
-                state,
-                status,
-                result.get("message", ""),
-                item.get("mode", "unknown"),
-                expected_lease_token=claim["lease_token"],
-                started_at=claim["started_at"],
+            if not webhook_url:
+                return
+            self.notifier.send_summary(webhook_url, summary)
+            self.logger.info("班级魔方企业微信通知发送成功")
+        except Exception as exc:
+            self.logger.error(
+                "班级魔方企业微信通知发送失败：%s",
+                type(exc).__name__,
             )
-        return True
 
     def _mark_automatic_submitting(self, claim):
         if not self.repository.mark_claim_submitting(

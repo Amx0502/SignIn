@@ -21,6 +21,10 @@ const TASK_FIELDS = new Set([
   'photo_path',
   'password',
   'clear_password',
+  'schedule_times',
+  'start_date',
+  'end_date',
+  'notify_wecom',
 ])
 
 function responseData(response, fallback = null) {

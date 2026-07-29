@@ -4,6 +4,8 @@ export function createClassCubeApi(instance = defaultInstance) {
   const root = '/class-cube'
 
   return {
+    getSettings: () => instance.get(`${root}/settings`),
+    updateSettings: data => instance.put(`${root}/settings`, data),
     createQrSession: (data = {}) =>
       instance.post(`${root}/qr-sessions`, data),
     pollQrSession: token =>

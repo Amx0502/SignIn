@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -43,6 +43,10 @@ class ClassCubeTaskCreate(BaseModel):
     accuracy: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     photo_path: str = Field(default="", max_length=512)
     password: str = Field(default="", max_length=255)
+    schedule_times: list[str] = Field(default_factory=list, max_length=24)
+    start_date: date | None = None
+    end_date: date | None = None
+    notify_wecom: bool = True
 
 
 class ClassCubeTaskUpdate(BaseModel):
@@ -56,10 +60,20 @@ class ClassCubeTaskUpdate(BaseModel):
     photo_path: str | None = Field(default=None, max_length=512)
     password: str | None = Field(default=None, max_length=255)
     clear_password: bool = False
+    schedule_times: list[str] | None = Field(
+        default=None, min_length=1, max_length=24
+    )
+    start_date: date | None = None
+    end_date: date | None = None
+    notify_wecom: bool | None = None
 
 
 class ClassCubeTaskBatchDelete(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class ClassCubeSettingsUpdate(BaseModel):
+    class_cube_webhook_url: str = Field(default="", max_length=2048)
 
 
 def task_view(task: dict[str, Any]) -> dict[str, Any]:
@@ -75,6 +89,10 @@ def task_view(task: dict[str, Any]) -> dict[str, Any]:
         "longitude": task.get("longitude"),
         "accuracy": task.get("accuracy"),
         "photo_path": task.get("photo_path", ""),
+        "schedule_times": task.get("schedule_times", []),
+        "start_date": _iso(task.get("start_date")),
+        "end_date": _iso(task.get("end_date")),
+        "notify_wecom": bool(task.get("notify_wecom", True)),
         "has_password": bool(task.get("password")),
         "last_scan_at": _iso(task.get("last_scan_at")),
         "created_at": _iso(task.get("created_at")),
