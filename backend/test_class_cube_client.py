@@ -328,6 +328,50 @@ class ClassCubeQrSessionTest(unittest.TestCase):
         with self.assertRaises(QrSessionNotFound):
             client.poll_qr_session(created.token, 7)
 
+    def test_poll_json_success_uses_student_uidlogin_to_obtain_cookie(self):
+        qr_session = FakeSession(
+            [
+                qr_page(),
+                qr_image(),
+                FakeResponse(
+                    json_data={
+                        "status": True,
+                        "url": "/weixin/uidlogin/student?ticket=login-ticket",
+                    },
+                ),
+            ]
+        )
+        login_session = FakeSession(
+            [
+                FakeResponse(
+                    status_code=302,
+                    cookies={
+                        "s": "temporary",
+                        "remember_student_abc": "cookie-token",
+                    },
+                ),
+            ]
+        )
+        sessions = iter([qr_session, login_session])
+        client = ClassCubeClient(
+            session_factory=lambda: next(sessions),
+            clock=lambda: 100.0,
+        )
+        created = client.create_qr_session(7)
+
+        result = client.poll_qr_session(created.token, 7)
+
+        self.assertEqual(result.status, "success")
+        self.assertEqual(
+            result.cookie,
+            "remember_student_abc=cookie-token",
+        )
+        self.assertEqual(
+            login_session.calls[0][1],
+            "https://bj.k8n.cn/student/uidlogin?ticket=login-ticket",
+        )
+        self.assertTrue(login_session.closed)
+
     def test_poll_timeout_is_retryable_error_without_cleanup(self):
         session = FakeSession(
             [

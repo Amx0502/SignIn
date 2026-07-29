@@ -437,35 +437,9 @@ class ClassCubeClient:
                 if isinstance(payload, dict) and "status" in payload:
                     status, redirect_url = self._parse_qr_check_payload(payload)
                     if status == "success" and redirect_url:
-                        self._validate_authenticated_url(redirect_url)
-                        login_response = qr_session.session.get(
-                            redirect_url,
-                            headers=self._request_headers(),
-                            timeout=REQUEST_TIMEOUT,
-                            allow_redirects=False,
+                        cookie = self._fetch_student_login_cookie(
+                            redirect_url
                         )
-                        login_response.raise_for_status()
-                        cookie = self._remember_student_cookie(
-                            qr_session.session,
-                            login_response,
-                        )
-                        if not cookie and self._is_uidlogin_redirect(redirect_url):
-                            parsed = urlparse(redirect_url)
-                            fallback_url = (
-                                "https://bj.k8n.cn/student/uidlogin?"
-                                f"{parsed.query}"
-                            )
-                            fallback_response = qr_session.session.get(
-                                fallback_url,
-                                headers=self._request_headers(),
-                                timeout=REQUEST_TIMEOUT,
-                                allow_redirects=False,
-                            )
-                            fallback_response.raise_for_status()
-                            cookie = self._remember_student_cookie(
-                                qr_session.session,
-                                fallback_response,
-                            )
                         result = QrSessionResult(
                             status="success" if cookie else "error",
                             cookie=cookie,
@@ -819,6 +793,70 @@ class ClassCubeClient:
         return "; ".join(
             f"{name}={value}" for name, value in sorted(cookies.items())
         )
+
+    @staticmethod
+    def _student_uidlogin_url(redirect_url: str) -> str:
+        value = str(redirect_url or "").strip()
+        query = urlparse(value).query
+        if not query and "?" in value:
+            query = value.split("?", 1)[1].split("#", 1)[0]
+        if not query or len(query) > 4096:
+            raise ClassCubeRequestError(
+                "QR login callback has no valid query"
+            )
+        return f"https://bj.k8n.cn/student/uidlogin?{query}"
+
+    @staticmethod
+    def _student_login_headers() -> dict[str, str]:
+        return {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/142.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "image/avif,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Referer": "https://login.b8n.cn/",
+            "Upgrade-Insecure-Requests": "1",
+        }
+
+    @staticmethod
+    def _student_login_cookie(session, response) -> str:
+        preferred = ClassCubeClient._remember_student_cookie(
+            session,
+            response,
+        )
+        if preferred:
+            return preferred
+        cookies: dict[str, str] = {}
+        for jar in (
+            getattr(session, "cookies", ()),
+            getattr(response, "cookies", ()),
+        ):
+            for cookie in jar:
+                if cookie.name != "s" and cookie.value:
+                    cookies[cookie.name] = cookie.value
+        if not cookies:
+            return ""
+        name = next(iter(cookies))
+        return f"{name}={cookies[name]}"
+
+    def _fetch_student_login_cookie(self, redirect_url: str) -> str:
+        session = self._session_factory()
+        try:
+            response = session.get(
+                self._student_uidlogin_url(redirect_url),
+                headers=self._student_login_headers(),
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=False,
+            )
+            response.raise_for_status()
+            return self._student_login_cookie(session, response)
+        finally:
+            session.close()
 
     def _cleanup_expired(
         self,

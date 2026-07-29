@@ -312,6 +312,10 @@ export function useClassCube(api = classCubeApi) {
           retryable: Boolean(status.retryable),
           syncWarning: status.sync_warning || '',
         }
+        if (qrSession.value.status === 'error' && qrSession.value.retryable) {
+          scheduleQrPoll(token, generation)
+          return
+        }
         if (TERMINAL_QR_STATES.has(qrSession.value.status)) {
           stopQrPolling()
           if (qrSession.value.status === 'success') {
@@ -330,7 +334,7 @@ export function useClassCube(api = classCubeApi) {
           retryable: true,
         }
         reportError(caught)
-        stopQrPolling()
+        scheduleQrPoll(token, generation)
       }
     }, QR_POLL_MS)
   }
