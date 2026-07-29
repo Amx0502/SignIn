@@ -4,7 +4,16 @@ export function parseCoordinates(value) {
     .split(/[\s,，|]+/)
     .filter(Boolean)
   if (parts.length !== 2) throw new Error('请输入纬度和经度')
-  const [latitude, longitude] = parts.map(Number)
+  let [latitude, longitude] = parts.map(Number)
+  if (
+    Number.isFinite(latitude)
+    && Math.abs(latitude) > 90
+    && Math.abs(latitude) <= 180
+    && Number.isFinite(longitude)
+    && Math.abs(longitude) <= 90
+  ) {
+    ;[longitude, latitude] = [latitude, longitude]
+  }
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
     throw new Error('纬度必须在 -90 到 90 之间')
   }
@@ -29,4 +38,3 @@ export function coordinateText(task) {
   if (task?.latitude == null || task?.longitude == null) return ''
   return `${task.latitude}, ${task.longitude}`
 }
-

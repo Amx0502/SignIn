@@ -20,10 +20,16 @@ test('parses BJMF coordinate separators', () => {
   }
 })
 
+test('automatically recognizes longitude before latitude', () => {
+  assert.deepEqual(parseCoordinates('119.21,26.03'), {
+    latitude: 26.03,
+    longitude: 119.21,
+  })
+})
+
 test('sorts and deduplicates execution times', () => {
   assert.deepEqual(
     normalizeScheduleTimes(['18:00:00', '08:00:00', '08:00:00']),
     ['08:00:00', '18:00:00'],
   )
 })
-

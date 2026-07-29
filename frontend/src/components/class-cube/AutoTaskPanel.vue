@@ -72,10 +72,10 @@
           </el-form-item>
           <el-form-item label="签到位置" class="wide">
             <div class="coordinate-row">
-              <el-input v-model="draft.coordinateInput" placeholder="例如 20.656756, 119.196135" />
+              <el-input v-model="draft.coordinateInput" placeholder="例如 119.21, 26.03 或 26.03, 119.21" />
               <el-button tag="a" href="https://www.lddgo.net/convert/position" target="_blank" rel="noopener noreferrer">拾取坐标</el-button>
             </div>
-            <small class="field-tip">支持空格、逗号、中文逗号或竖线分隔纬度和经度</small>
+            <small class="field-tip">支持“经度,纬度”和“纬度,经度”，可用空格、逗号、中文逗号或竖线分隔</small>
           </el-form-item>
           <el-form-item label="定位精度（米）"><el-input-number v-model="draft.accuracy" :min="0" :precision="1" :controls="false" /></el-form-item>
           <el-form-item label="预设密码">
