@@ -401,7 +401,7 @@ class ClassCubeClient:
         terminal = False
         try:
             response = qr_session.session.get(
-                QR_LOGIN_URL,
+                f"{QR_LOGIN_URL}?op=checklogin",
                 headers=self._request_headers(),
                 timeout=REQUEST_TIMEOUT,
                 allow_redirects=False,
@@ -430,20 +430,66 @@ class ClassCubeClient:
                     )
                 terminal = True
             else:
-                status = self._poll_status(response)
-                if status == "pending":
-                    result = QrSessionResult(status="pending")
+                try:
+                    payload = response.json()
+                except (TypeError, ValueError):
+                    payload = None
+                if isinstance(payload, dict) and "status" in payload:
+                    status, redirect_url = self._parse_qr_check_payload(payload)
+                    if status == "success" and redirect_url:
+                        self._validate_authenticated_url(redirect_url)
+                        login_response = qr_session.session.get(
+                            redirect_url,
+                            headers=self._request_headers(),
+                            timeout=REQUEST_TIMEOUT,
+                            allow_redirects=False,
+                        )
+                        login_response.raise_for_status()
+                        cookie = self._remember_student_cookie(
+                            qr_session.session,
+                            login_response,
+                        )
+                        if not cookie and self._is_uidlogin_redirect(redirect_url):
+                            parsed = urlparse(redirect_url)
+                            fallback_url = (
+                                "https://bj.k8n.cn/student/uidlogin?"
+                                f"{parsed.query}"
+                            )
+                            fallback_response = qr_session.session.get(
+                                fallback_url,
+                                headers=self._request_headers(),
+                                timeout=REQUEST_TIMEOUT,
+                                allow_redirects=False,
+                            )
+                            fallback_response.raise_for_status()
+                            cookie = self._remember_student_cookie(
+                                qr_session.session,
+                                fallback_response,
+                            )
+                        result = QrSessionResult(
+                            status="success" if cookie else "error",
+                            cookie=cookie,
+                            redirect_url=redirect_url,
+                        )
+                    else:
+                        cookie = self._remember_student_cookie(
+                            qr_session.session,
+                            response,
+                        )
+                        result = QrSessionResult(
+                            status=status if status != "success" or cookie else "error",
+                            cookie=cookie,
+                        )
+                    terminal = status != "pending"
                 else:
+                    status = self._poll_status(response)
                     cookie = self._remember_student_cookie(
                         qr_session.session,
                         response,
                     )
                     if status == "success" and not cookie:
                         status = "error"
-                    result = QrSessionResult(
-                        status=status,
-                        cookie=cookie,
-                    )
+                    result = QrSessionResult(status=status, cookie=cookie)
                     terminal = True
         except requests.HTTPError as exc:
             status_code = getattr(exc.response, "status_code", 0)
@@ -673,7 +719,13 @@ class ClassCubeClient:
 
     @staticmethod
     def _request_headers() -> dict[str, str]:
-        return {"User-Agent": WECHAT_USER_AGENT}
+        return {
+            "User-Agent": WECHAT_USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Referer": "https://wx.qq.com/",
+            "X-Requested-With": "XMLHttpRequest",
+        }
 
     @staticmethod
     def _raise_if_cookie_expired(response) -> None:
@@ -700,6 +752,21 @@ class ClassCubeClient:
             raise ClassCubeRequestError(
                 "authenticated URL is outside the allowed HTTPS hosts"
             )
+
+    @staticmethod
+    def _parse_qr_check_payload(payload) -> tuple[str, str]:
+        if not isinstance(payload, dict):
+            return "pending", ""
+        value = payload.get("status", payload.get("state", False))
+        if value is False or str(value).strip().lower() in {"", "0", "pending", "wait", "waiting"}:
+            return "pending", ""
+        if value is True or str(value).strip().lower() in {"1", "ok", "success", "complete", "completed"}:
+            return "success", str(payload.get("url") or "")
+        if str(value).strip().lower() in {"expired", "timeout"}:
+            return "expired", ""
+        if str(value).strip().lower() in {"error", "failed", "failure"}:
+            return "error", ""
+        return "pending", ""
 
     @staticmethod
     def _poll_status(response) -> str:

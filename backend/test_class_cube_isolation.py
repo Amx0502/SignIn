@@ -32,6 +32,13 @@ class _RetrySession:
 
 
 class ClassCubeIsolationTest(unittest.TestCase):
+    def test_bjmf_checklogin_payload_exposes_redirect_url(self):
+        status, redirect_url = ClassCubeClient._parse_qr_check_payload(
+            {"status": True, "url": "https://bjmf.k8n.cn/weixin/uidlogin/student?x=1"}
+        )
+        self.assertEqual(status, "success")
+        self.assertIn("uidlogin", redirect_url)
+
     def test_logs_are_split_by_product(self):
         paths = {
             route.path

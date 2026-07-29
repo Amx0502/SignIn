@@ -261,6 +261,19 @@ test('exposes an error QR session when session creation fails', async () => {
   assert.equal(state.qrRemainingSeconds.value, 0)
 })
 
+test('does not send an invalid zero account id when creating a QR session', async () => {
+  const payloads = []
+  const state = useClassCube(createComposableApi({
+    createQrSession: async payload => {
+      payloads.push(payload)
+      return { ok: true, data: { token: 'qr', expires_in_seconds: 120 } }
+    },
+  }))
+  await state.startQrLogin('0')
+  assert.deepEqual(payloads, [{}])
+  state.dispose()
+})
+
 test('rejects a deferred photo upload after its form identity is invalidated', async () => {
   let resolveUpload
   const upload = new Promise(resolve => { resolveUpload = resolve })

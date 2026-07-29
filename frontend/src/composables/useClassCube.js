@@ -340,7 +340,10 @@ export function useClassCube(api = classCubeApi) {
     error.value = ''
     const generation = qrGeneration
     try {
-      const payload = accountId ? { account_id: accountId } : {}
+      const numericAccountId = Number(accountId)
+      const payload = Number.isInteger(numericAccountId) && numericAccountId > 0
+        ? { account_id: numericAccountId }
+        : {}
       const created = responseData(await api.createQrSession(payload), {})
       if (disposed || generation !== qrGeneration) return null
       qrSession.value = normalizeQrSession(created)
