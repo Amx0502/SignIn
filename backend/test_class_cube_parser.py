@@ -265,6 +265,25 @@ class ClassCubeParserTest(unittest.TestCase):
 
         self.assertEqual(form.mode, "gps_photo")
 
+    def test_empty_res_field_does_not_turn_gps_into_photo_checkin(self):
+        html = """
+        <form action="/student/punchw/course/1/12"
+              method="post">
+          <input type="hidden" name="id" value="12">
+          <input name="lat">
+          <input name="lng">
+          <input name="acc">
+          <input type="hidden" name="res" value="">
+          <input name="gps_addr">
+        </form>
+        """
+
+        form = parse_checkin_form(
+            html, "https://bjmf.k8n.cn/item", self.item
+        )
+
+        self.assertEqual(form.mode, "gps")
+
     def test_parses_form_action_method_and_fields(self):
         html = """
         <form action="/student/punchs/course/1/12" method="POST">

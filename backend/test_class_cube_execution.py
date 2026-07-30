@@ -79,3 +79,34 @@ class ClassCubeExecutionTest(unittest.TestCase):
         result = service.execute_task(9, trigger="manual")
 
         self.assertEqual(result["status"], "running")
+
+    def test_reports_missing_parameters_instead_of_no_pending_items(self):
+        repository = FakeRepository()
+        repository.try_claim = lambda *args: {
+            "id": 3,
+            "lease_token": "lease",
+            "started_at": None,
+        }
+        repository.finish_claim = lambda *args, **kwargs: None
+        service = ClassCubeService(
+            repository,
+            FakeClient(),
+            logging.getLogger("execution-parameter-test"),
+        )
+        service.sync_items = lambda course_id, actor: [{
+            "id": 4,
+            "remote_item_id": "55",
+            "remote_module": "punchw",
+            "title": "定位签到",
+            "mode": "gps_photo",
+            "status": "active",
+        }]
+        service.manual_checkin = lambda *args, **kwargs: {
+            "status": "waiting_parameter",
+            "message": "请上传签到照片",
+        }
+
+        result = service.execute_task(9, trigger="manual")
+
+        self.assertEqual(result["status"], "waiting_parameter")
+        self.assertEqual(result["message"], "请上传签到照片")

@@ -26,6 +26,12 @@ test('class cube logs are separate from structured run records', async () => {
   assert.doesNotMatch(logs, /xxqd/)
 })
 
+test('immediate execution warns when task parameters are missing', async () => {
+  const panel = await source('../components/class-cube/AutoTaskPanel.vue')
+  assert.match(panel, /data\.status === 'waiting_parameter'/)
+  assert.match(panel, /ElMessage\.warning\(message\)/)
+})
+
 test('qr dialog exposes countdown and every session state', async () => {
   const dialog = await source('../components/class-cube/QrLoginDialog.vue')
   assert.match(dialog, /qrRemainingSeconds/)

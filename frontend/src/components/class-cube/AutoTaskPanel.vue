@@ -201,6 +201,7 @@ async function runNow(row) {
     const message = data.message || '任务执行完成'
     if (['failed', 'unknown_result'].includes(data.status)) ElMessage.error(message)
     else if (data.status === 'running') ElMessage.warning(message)
+    else if (data.status === 'waiting_parameter') ElMessage.warning(message)
     else if (['no_sign_in', 'skipped', 'already_signed'].includes(data.status)) ElMessage.info(message)
     else ElMessage.success(message)
     emit('refresh')

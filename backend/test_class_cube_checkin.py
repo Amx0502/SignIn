@@ -318,7 +318,7 @@ class ClassCubeCheckinFormContractTest(unittest.TestCase):
         self.assertEqual(form.upload_response_key, "data.resource")
         self.assertEqual(form.photo_resource_field, "res")
 
-    def test_gps_with_resource_field_stays_photo_mode_without_upload_contract(self):
+    def test_gps_with_empty_resource_field_stays_gps_without_upload_contract(self):
         form = parse_checkin_form(
             """
             <form action="/student/punch_gps/course/course-1/item-12"
@@ -332,7 +332,7 @@ class ClassCubeCheckinFormContractTest(unittest.TestCase):
             self.item,
         )
 
-        self.assertEqual(form.mode, "gps_photo")
+        self.assertEqual(form.mode, "gps")
         self.assertEqual(form.photo_resource_field, "res")
         self.assertEqual(form.file_field, "")
         self.assertEqual(form.upload_action, "")
@@ -370,6 +370,7 @@ class ClassCubeSubmissionFieldTest(unittest.TestCase):
               <input name="longitude">
               <input name="accuracy">
               <input name="address">
+              <input type="file" name="photo">
               <input type="hidden" name="resource_id" value="">
             </form>
             """,

@@ -318,7 +318,6 @@ def parse_checkin_form(
         has_gps_field
         and (
             file_field
-            or photo_resource_field
             or (
                 photo_resource_field
                 and upload_action

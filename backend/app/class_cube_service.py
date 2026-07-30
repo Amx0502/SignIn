@@ -668,13 +668,6 @@ class ClassCubeService:
                     course_id, bundles, actor_user_id, is_admin
                 )
             successful_sources += 1
-            self.logger.info(
-                "同步签到项成功：课程ID=%s，模块=%s，数量=%s",
-                course_id,
-                module,
-                len(bundles),
-            )
-
         if successful_sources == 0:
             raise ClassCubeRemoteError(
                 "班级魔方签到项同步失败，请稍后重试",
@@ -1003,6 +996,19 @@ class ClassCubeService:
             elif result["unknown"]:
                 result["status"] = "unknown_result"
                 result["message"] = "签到结果需要人工确认"
+            elif waiting_detail := next(
+                (
+                    detail
+                    for detail in result["details"]
+                    if detail["status"] == "waiting_parameter"
+                ),
+                None,
+            ):
+                result["status"] = "waiting_parameter"
+                result["message"] = (
+                    waiting_detail.get("message")
+                    or "签到任务缺少必要参数"
+                )
             elif result["success"]:
                 result["status"] = "success"
                 result["message"] = "签到执行成功"
