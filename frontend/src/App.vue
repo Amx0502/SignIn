@@ -28,7 +28,7 @@
         </el-menu-item>
         <el-sub-menu index="/checkin">
           <template #title>
-            <el-icon><img src="./img/xxqd.png" class="menu-custom-icon" alt="签到" /></el-icon>
+            <el-icon><img src="./img/xxqd.png" class="menu-custom-icon-xxqd" alt="签到" /></el-icon>
             <span>小小签到</span>
           </template>
           <el-menu-item index="/overview"><el-icon><Odometer /></el-icon><span>系统概览</span></el-menu-item>
@@ -39,7 +39,7 @@
         </el-sub-menu>
         <el-sub-menu index="/class-cube">
           <template #title>
-            <el-icon><img src="./img/bjmf.png" class="menu-custom-icon" alt="班级魔方" /></el-icon>
+            <el-icon><img src="./img/bjmf.png" class="menu-custom-icon-bjmf" alt="班级魔方" /></el-icon>
             <span>班级魔方</span>
           </template>
           <el-menu-item index="/class-cube/overview"><el-icon><Odometer /></el-icon><span>系统概览</span></el-menu-item>
@@ -206,7 +206,8 @@ onUnmounted(() => {
 .sidebar-menu :deep(.el-sub-menu__title:hover), .sidebar-menu :deep(.el-menu-item:hover) { background: rgba(96, 165, 250, 0.14); transform: translateX(3px); }
 .sidebar-menu :deep(.el-menu-item.is-active) { background: linear-gradient(90deg, rgba(37, 99, 235, 0.28), rgba(14, 165, 233, 0.12)); box-shadow: inset 3px 0 0 #60a5fa; color: #fff; font-weight: 700; }
 .sidebar-menu :deep(.el-sub-menu .el-menu) { background: rgba(255, 255, 255, 0.035); border-radius: 14px; padding: 4px; }
-.menu-custom-icon { width: 23px; height: 23px; object-fit: contain; display: block; }
+.menu-custom-icon-xxqd { width: 23px; height: 23px; object-fit: contain; display: block; }
+.menu-custom-icon-bjmf { width: 20px; height: 20px; object-fit: contain; display: block; }
 .logo-img { width: 48px; height: 48px; object-fit: contain; display: block; }
 .main-shell { min-width: 0; }
 .top-header { min-height: 76px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 28px; background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(226, 232, 240, 0.8); position: sticky; top: 0; z-index: 10; }
