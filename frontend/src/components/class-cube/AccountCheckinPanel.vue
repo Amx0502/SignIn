@@ -292,7 +292,7 @@ async function submitManual() {
 .glass-card { border: 1px solid rgb(191 219 254 / 58%); border-radius: 22px; background: rgb(255 255 255 / 82%); box-shadow: 0 18px 42px rgb(15 23 42 / 7%); backdrop-filter: blur(18px); }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.section-head strong,.section-head small { display: block; }.section-head strong { color: #172033; font-size: 16px; }.section-head small { margin-top: 4px; color: #64748b; font-size: 11px; }
 .account-list,.item-list { display: grid; gap: 9px; max-height: 480px; overflow: auto; }
-.account-row,.item-row { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 15px; background: #f8fafc; cursor: pointer; transition: .2s ease; }
+.account-row,.item-row { display: flex; align-items: center; gap: 10px; padding: 12px; margin-top: 5px; border: 1px solid #e2e8f0; border-radius: 15px; background: #f8fafc; cursor: pointer; transition: .2s ease; }
 .account-row:hover,.item-row:hover,.account-row.active,.item-row.active { border-color: #93c5fd; background: #eff6ff; transform: translateY(-1px); }
 .avatar,.mode-icon { display: grid; width: 39px; height: 39px; flex: none; place-items: center; color: #fff; border-radius: 13px; background: linear-gradient(135deg,#2563eb,#0ea5e9); font-weight: 800; }
 .account-main,.item-row>div { min-width: 0; flex: 1; }.account-main strong,.account-main small,.item-row strong,.item-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.account-main strong,.item-row strong { color:#1e293b;font-size:13px; }.account-main small,.item-row small { margin-top:4px;color:#64748b;font-size:11px; }
