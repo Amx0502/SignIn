@@ -32,6 +32,27 @@ test('immediate execution warns when task parameters are missing', async () => {
   assert.match(panel, /ElMessage\.warning\(message\)/)
 })
 
+test('class cube task editor uses horizontal sections and account ownership', async () => {
+  const panel = await source('../components/class-cube/AutoTaskPanel.vue')
+  assert.match(panel, /width="min\(960px, 94vw\)"/)
+  assert.match(panel, /class="editor-layout"/)
+  assert.equal((panel.match(/class="editor-section/g) || []).length, 3)
+  assert.match(panel, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/)
+  assert.match(panel, /@media\(max-width:900px\).*repeat\(2,minmax\(0,1fr\)\)/s)
+  assert.match(panel, /account\?\.owner_user_id \?\? null/)
+  assert.match(panel, /v-model="draft\.owner_user_id".*:disabled="true"/s)
+})
+
+test('readable class cube logs show business event labels', async () => {
+  const logs = await source('../views/ClassCubeLogs.vue')
+  assert.match(logs, /eventName\(item\.message\)/)
+  assert.match(logs, /任务开始/)
+  assert.match(logs, /签到扫描/)
+  assert.match(logs, /签到结果/)
+  assert.match(logs, /执行汇总/)
+  assert.match(logs, /企业微信/)
+})
+
 test('qr dialog exposes countdown and every session state', async () => {
   const dialog = await source('../components/class-cube/QrLoginDialog.vue')
   assert.match(dialog, /qrRemainingSeconds/)

@@ -9,6 +9,17 @@ class FakeClient:
         return None
 
 
+class RecordingLogger:
+    def __init__(self):
+        self.messages = []
+
+    def info(self, message, *args):
+        self.messages.append(message % args if args else message)
+
+    def error(self, message, *args):
+        self.messages.append(message % args if args else message)
+
+
 class FakeRepository:
     def __init__(self):
         self.task = {
@@ -82,6 +93,7 @@ class ClassCubeExecutionTest(unittest.TestCase):
 
     def test_reports_missing_parameters_instead_of_no_pending_items(self):
         repository = FakeRepository()
+        logger = RecordingLogger()
         repository.try_claim = lambda *args: {
             "id": 3,
             "lease_token": "lease",
@@ -91,7 +103,7 @@ class ClassCubeExecutionTest(unittest.TestCase):
         service = ClassCubeService(
             repository,
             FakeClient(),
-            logging.getLogger("execution-parameter-test"),
+            logger,
         )
         service.sync_items = lambda course_id, actor: [{
             "id": 4,
@@ -110,3 +122,9 @@ class ClassCubeExecutionTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "waiting_parameter")
         self.assertEqual(result["message"], "请上传签到照片")
+        combined = "\n".join(logger.messages)
+        self.assertIn("开始手动执行任务「立即执行测试」", combined)
+        self.assertIn("发现 1 个可执行签到项", combined)
+        self.assertIn("GPS+拍照签到", combined)
+        self.assertIn("缺少签到参数", combined)
+        self.assertIn("任务「立即执行测试」执行完成", combined)

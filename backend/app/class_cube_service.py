@@ -799,6 +799,34 @@ class ClassCubeService:
             "role": "user",
         }
 
+    @staticmethod
+    def _trigger_name(trigger):
+        return {
+            "manual": "手动执行",
+            "scheduled": "定时执行",
+        }.get(str(trigger), "自动执行")
+
+    @staticmethod
+    def _mode_name(mode):
+        return {
+            "qr": "二维码签到",
+            "gps": "GPS 签到",
+            "gps_photo": "GPS+拍照签到",
+            "password": "密码签到",
+        }.get(str(mode), "未知签到类型")
+
+    @staticmethod
+    def _status_name(status):
+        return {
+            "success": "签到成功",
+            "already_signed": "已完成，无需重复签到",
+            "waiting_parameter": "缺少签到参数",
+            "unknown_result": "结果待人工确认",
+            "not_started": "签到尚未开始",
+            "skipped": "无需提交",
+            "failed": "签到失败",
+        }.get(str(status), "执行完成")
+
     def execute_task(self, task_id, trigger="scheduled"):
         task_id = int(task_id)
         with self._execution_lock:
@@ -892,14 +920,15 @@ class ClassCubeService:
                 or "-"
             ),
             "course_name": course.get("name", "-"),
+            "trigger": trigger,
+            "started_at": started_at,
         }
         self.logger.info(
-            "任务开始：ID=%s，任务=%s，账号=%s，课程=%s，来源=%s",
-            task_id,
+            "开始%s任务「%s」；账号：%s；课程：%s",
+            self._trigger_name(trigger),
             task.get("name", ""),
             notification["account_name"],
             notification["course_name"],
-            trigger,
         )
         try:
             items = self.sync_items(task["course_id"], actor)
@@ -908,6 +937,10 @@ class ClassCubeService:
                 if item.get("status") == "active"
             ]
             result["scanned"] = len(active_items)
+            self.logger.info(
+                "签到项扫描完成：发现 %s 个可执行签到项",
+                len(active_items),
+            )
             if not active_items:
                 result["status"] = "no_sign_in"
                 result["message"] = "当前课程没有可执行签到项"
@@ -919,8 +952,8 @@ class ClassCubeService:
                     started_at,
                 )
                 self.logger.info(
-                    "任务结束：ID=%s，当前课程没有可执行签到项",
-                    task_id,
+                    "任务「%s」执行完成：当前课程没有可执行签到项",
+                    task.get("name", ""),
                 )
                 return result
             for item in active_items:
@@ -972,6 +1005,12 @@ class ClassCubeService:
                     "message": checkin_result.get("message", ""),
                 }
                 result["details"].append(detail)
+                self.logger.info(
+                    "签到项「%s」；类型：%s；结果：%s",
+                    detail["title"],
+                    self._mode_name(detail["mode"]),
+                    self._status_name(status),
+                )
                 state = {
                     "success": "succeeded",
                     "already_signed": "already_signed",
@@ -1019,13 +1058,14 @@ class ClassCubeService:
                 result["status"] = "skipped"
                 result["message"] = "当前没有需要提交的签到项"
             self.logger.info(
-                "任务结束：ID=%s，状态=%s，扫描=%s，成功=%s，已签到=%s，失败=%s",
-                task_id,
-                result["status"],
-                result["scanned"],
+                "任务「%s」执行完成：成功 %s 项，已完成 %s 项，"
+                "跳过 %s 项，失败 %s 项，待确认 %s 项",
+                task.get("name", ""),
                 result["success"],
                 result["already_signed"],
+                result["skipped"],
                 result["failed"],
+                result["unknown"],
             )
             return result
         except Exception as exc:
@@ -1048,8 +1088,8 @@ class ClassCubeService:
                 started_at,
             )
             self.logger.error(
-                "任务执行失败：ID=%s，异常=%s",
-                task_id,
+                "任务「%s」执行失败：%s",
+                task.get("name", ""),
                 type(exc).__name__,
             )
             return result
@@ -1070,12 +1110,20 @@ class ClassCubeService:
                 "class_cube_webhook_url", ""
             )
             if not webhook_url:
+                self.logger.info(
+                    "任务「%s」未发送企业微信通知：机器人未配置",
+                    task.get("name", ""),
+                )
                 return
             self.notifier.send_summary(webhook_url, summary)
-            self.logger.info("班级魔方企业微信通知发送成功")
+            self.logger.info(
+                "任务「%s」企业微信通知发送成功",
+                task.get("name", ""),
+            )
         except Exception as exc:
             self.logger.error(
-                "班级魔方企业微信通知发送失败：%s",
+                "任务「%s」企业微信通知发送失败：%s",
+                task.get("name", ""),
                 type(exc).__name__,
             )
 

@@ -25,8 +25,11 @@
           class="log-line"
           :class="`log-level-${item.level.toLowerCase()}`"
         >
-          <span class="log-time">{{ item.time }}</span>
-          <el-tag class="log-level" :type="levelType(item.level)" size="small" effect="plain">{{ item.level }}</el-tag>
+          <div class="log-meta">
+            <span class="log-time">{{ item.time }}</span>
+            <el-tag class="log-level" :type="levelType(item.level)" size="small" effect="plain">{{ levelName(item.level) }}</el-tag>
+            <el-tag class="log-event" :type="eventType(item.message)" size="small" effect="dark">{{ eventName(item.message) }}</el-tag>
+          </div>
           <span class="log-message">{{ item.message }}</span>
         </div>
       </div>
@@ -70,6 +73,27 @@ async function refreshLogs() {
 function levelType(level) {
   return { ERROR: 'danger', WARNING: 'warning', INFO: 'info', DEBUG: 'success' }[level] || 'info'
 }
+function levelName(level) {
+  return { ERROR: '错误', WARNING: '警告', INFO: '信息', DEBUG: '调试' }[level] || level
+}
+function eventName(message) {
+  if (message.startsWith('开始')) return '任务开始'
+  if (message.startsWith('签到项扫描')) return '签到扫描'
+  if (message.startsWith('签到项「')) return '签到结果'
+  if (message.includes('执行完成')) return '执行汇总'
+  if (message.includes('企业微信')) return '企业微信'
+  return '系统事件'
+}
+function eventType(message) {
+  const event = eventName(message)
+  return {
+    任务开始: 'primary',
+    签到扫描: 'info',
+    签到结果: 'success',
+    执行汇总: 'warning',
+    企业微信: 'primary',
+  }[event] || 'info'
+}
 function scrollToBottom() {
   if (logsRef.value) logsRef.value.scrollTop = logsRef.value.scrollHeight
 }
@@ -77,5 +101,5 @@ onMounted(refreshLogs)
 </script>
 
 <style scoped>
-.card-header{display:flex;align-items:center;justify-content:space-between;gap:12px}.logs-container{max-height:70vh;overflow-y:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.7;padding:12px;background:#0f172a;border-radius:8px;color:#e2e8f0}.logs-empty{text-align:center;color:#64748b;padding:40px 0}.log-line{display:flex;align-items:flex-start;gap:10px;padding:4px 0;border-bottom:1px solid rgb(148 163 184 / 8%);word-break:break-all}.log-time{flex-shrink:0;width:170px;color:#94a3b8;white-space:nowrap}.log-level{flex-shrink:0;width:70px;text-align:center;font-weight:600}.log-message{flex:1;color:#e2e8f0}.log-level-error .log-message{color:#fca5a5}.log-level-warning .log-message{color:#fcd34d}@media(max-width:768px){.logs-container{font-size:12px;max-height:50vh}.log-line{flex-direction:column;gap:4px}.log-time{width:auto;white-space:normal;font-size:11px}.log-level{width:auto}.card-header{align-items:flex-start;flex-direction:column}.card-header .el-space{flex-wrap:wrap}}@media(max-width:480px){.logs-container{font-size:11px}.card-header .el-select{width:100%!important}}
+.card-header{display:flex;align-items:center;justify-content:space-between;gap:12px}.logs-container{display:grid;gap:9px;max-height:70vh;overflow-y:auto;padding:14px;background:linear-gradient(145deg,#0b1220,#101b31);border:1px solid rgb(96 165 250 / 18%);border-radius:16px;color:#e2e8f0}.logs-empty{text-align:center;color:#64748b;padding:40px 0}.log-line{display:grid;grid-template-columns:285px minmax(0,1fr);align-items:start;gap:14px;padding:11px 13px;border:1px solid rgb(148 163 184 / 11%);border-radius:11px;background:rgb(15 23 42 / 78%);box-shadow:0 6px 18px rgb(0 0 0 / 8%);word-break:break-word}.log-meta{display:flex;align-items:center;gap:7px;min-width:0}.log-time{color:#93c5fd;white-space:nowrap;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.log-level,.log-event{flex-shrink:0}.log-message{color:#e5edf9;font-size:13px;line-height:1.65}.log-level-error{border-color:rgb(248 113 113 / 24%)}.log-level-error .log-message{color:#fecaca}.log-level-warning .log-message{color:#fde68a}@media(max-width:900px){.log-line{grid-template-columns:1fr;gap:7px}}@media(max-width:768px){.logs-container{max-height:55vh;padding:10px}.log-line{padding:10px}.log-meta{flex-wrap:wrap}.card-header{align-items:flex-start;flex-direction:column}.card-header .el-space{flex-wrap:wrap}}@media(max-width:480px){.log-message{font-size:12px}.card-header .el-select{width:100%!important}}
 </style>
