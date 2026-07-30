@@ -197,13 +197,25 @@ def parse_checkin_items(
                 mode_hint="qr",
             )
 
+        password_item_id = _password_item_id(tag)
+        if password_item_id:
+            add_item(
+                password_item_id,
+                title=title,
+                mode_hint="password",
+            )
+
         gps_item_id = _gps_item_id(tag)
         if gps_item_id:
             add_item(
                 gps_item_id,
                 title=title,
                 remote_module="punch_gps",
-                mode_hint="gps",
+                mode_hint=(
+                    "gps_photo"
+                    if _tag_has_photo_marker(tag)
+                    else "gps"
+                ),
             )
 
         if tag.name == "a" and tag.get("href"):
@@ -314,10 +326,23 @@ def parse_checkin_form(
             upload_file_field = declared_upload_file
             upload_response_key = declared_response_key
 
-    if (
+    has_photo_marker = (
+        isinstance(form, Tag)
+        and _tag_has_photo_marker(form)
+    )
+    if password_field or item.mode_hint == "password":
+        mode = "password"
+        password_field = password_field or "pwd"
+    elif item.mode_hint == "qr" or (
+        item.mode_hint == "unknown"
+        and _has_qr_marker(soup, html)
+    ):
+        mode = "qr"
+    elif item.mode_hint == "gps_photo" or (
         has_gps_field
         and (
-            file_field
+            has_photo_marker
+            or file_field
             or (
                 photo_resource_field
                 and upload_action
@@ -327,12 +352,8 @@ def parse_checkin_form(
         )
     ):
         mode = "gps_photo"
-    elif password_field:
-        mode = "password"
-    elif has_gps_field:
+    elif item.mode_hint == "gps" or has_gps_field:
         mode = "gps"
-    elif _has_qr_marker(soup, html):
-        mode = "qr"
     else:
         mode = "unknown"
 
@@ -340,9 +361,17 @@ def parse_checkin_form(
     method = "get"
     submit_capable = isinstance(form, Tag)
     if isinstance(form, Tag):
-        action = urljoin(
-            response_url,
-            _attribute_text(form.get("action")) or response_url,
+        declared_action = _attribute_text(
+            form.get("action")
+        ).strip()
+        action = (
+            urljoin(response_url, declared_action)
+            if declared_action
+            else _canonical_submit_url(
+                response_url,
+                "punchs",
+                item,
+            )
         )
         method = (
             _attribute_text(form.get("method")).strip()
@@ -359,11 +388,23 @@ def parse_checkin_form(
             method = "post"
             submit_capable = True
             item_id_field = "id"
-            if mode == "gps":
+            hidden_fields.update(
+                {
+                    "lat": "",
+                    "lng": "",
+                    "acc": "",
+                    "res": "",
+                    "gps_addr": "",
+                }
+            )
+            photo_resource_field = "res"
+            if mode in {"gps", "gps_photo"}:
                 latitude_field = "lat"
                 longitude_field = "lng"
                 accuracy_field = "acc"
                 gps_address_field = "gps_addr"
+            if mode == "password":
+                password_field = "pwd"
 
     if not submit_capable:
         method = "get"
@@ -394,11 +435,25 @@ def _synthetic_contract(
     response_url: str,
     item: ParsedItem,
 ) -> tuple[str, str] | None:
+    if item.mode_hint in {
+        "gps",
+        "gps_photo",
+        "qr",
+        "password",
+    }:
+        return (
+            _canonical_submit_url(
+                response_url,
+                "punchs",
+                item,
+            ),
+            item.mode_hint,
+        )
     if _has_exact_gps_marker(soup, item):
         return (
             _canonical_submit_url(
                 response_url,
-                "punch_gps",
+                "punchs",
                 item,
             ),
             "gps",
@@ -442,16 +497,20 @@ def _select_checkin_form(
     response_url: str,
     item: ParsedItem,
 ) -> Tag | None:
-    container = soup.find(id=f"punchcard_{item.remote_item_id}")
-    if isinstance(container, Tag):
-        if container.name == "form" and _is_post_form(container):
-            return container
-        nested_form = container.find("form")
-        if (
-            isinstance(nested_form, Tag)
-            and _is_post_form(nested_form)
-        ):
-            return nested_form
+    for container_id in (
+        f"punchcard_{item.remote_item_id}",
+        f"punch_pwd_frm_{item.remote_item_id}",
+    ):
+        container = soup.find(id=container_id)
+        if isinstance(container, Tag):
+            if container.name == "form" and _is_post_form(container):
+                return container
+            nested_form = container.find("form")
+            if (
+                isinstance(nested_form, Tag)
+                and _is_post_form(nested_form)
+            ):
+                return nested_form
 
     forms = [
         form
@@ -558,6 +617,20 @@ def _punchcard_item_id(tag: Tag) -> str:
     return ""
 
 
+def _password_item_id(tag: Tag) -> str:
+    for attribute in ("id", "data-target", "data-id", "href"):
+        value = _attribute_text(tag.get(attribute))
+        match = re.search(
+            r"(?:^|[#\s])punch_pwd_frm_"
+            r"([A-Za-z0-9_.-]+)(?:$|[\s])",
+            value,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1)
+    return ""
+
+
 def _gps_item_id(tag: Tag) -> str:
     for value in tag.attrs.values():
         match = re.search(
@@ -598,11 +671,33 @@ def _item_mode_hint(tag: Tag, module: str) -> str:
     explicit_mode = _attribute_text(tag.get("data-mode"))
     if explicit_mode:
         return explicit_mode
+    if _password_item_id(tag):
+        return "password"
     if _gps_item_id(tag):
-        return "gps"
+        return (
+            "gps_photo"
+            if _tag_has_photo_marker(tag)
+            else "gps"
+        )
     if _punchcard_item_id(tag):
         return "qr"
     return _module_mode_hint(module)
+
+
+def _tag_has_photo_marker(tag: Tag) -> bool:
+    if tag.find("input", attrs={"type": "file"}):
+        return True
+    if (
+        _attribute_text(tag.get("data-mode")).strip().lower()
+        == "gps_photo"
+        or bool(
+            _attribute_text(
+                tag.get("data-upload-action")
+            ).strip()
+        )
+    ):
+        return True
+    return "拍照" in tag.get_text(" ", strip=True)
 
 
 def _direct_item_title(soup: BeautifulSoup) -> str:
