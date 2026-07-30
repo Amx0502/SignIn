@@ -267,12 +267,6 @@ class ClassCubeClient:
             if str(key).strip().lower()
             not in PASSWORD_FIELD_ALIASES
         }
-        if (
-            form.photo_resource_field
-            and not payload.get(form.photo_resource_field)
-            and not fields.get(form.photo_resource_field)
-        ):
-            payload.pop(form.photo_resource_field, None)
         payload.update(fields)
         photo_file = None
         try:

@@ -189,7 +189,10 @@ def build_submission_fields(
     if (
         form.mode == "gps_photo"
         and form.photo_resource_field
-        and remote_photo_value
+        and (
+            remote_photo_value
+            or form.photo_resource_field not in form.hidden_fields
+        )
     ):
         fields[form.photo_resource_field] = remote_photo_value
     return fields
@@ -861,8 +864,12 @@ class ClassCubeService:
         return {
             "longitude": coordinate(task.get("longitude")),
             "latitude": coordinate(task.get("latitude")),
-            "image_count": 1 if task.get("photo_path") else 0,
-            "password": str(task.get("password") or ""),
+            "image_count": 0,
+            "password": (
+                "configured"
+                if task.get("password")
+                else ""
+            ),
         }
 
     @staticmethod
@@ -877,7 +884,7 @@ class ClassCubeService:
         )
         password = parameters.get("password")
         if password:
-            parts.append(f"密码：{password}")
+            parts.append("密码：已配置")
         return parts
 
     def execute_task(self, task_id, trigger="scheduled"):
@@ -1033,7 +1040,6 @@ class ClassCubeService:
                         "latitude": task.get("latitude"),
                         "longitude": task.get("longitude"),
                         "accuracy": task.get("accuracy"),
-                        "photo_path": task.get("photo_path") or "",
                         "password": task.get("password") or "",
                     },
                     actor,
@@ -1340,8 +1346,12 @@ class ClassCubeService:
         return {
             "latitude": payload.get("latitude"),
             "longitude": payload.get("longitude"),
-            "image_count": 1 if payload.get("photo_path") else 0,
-            "password": str(payload.get("password") or ""),
+            "image_count": 0,
+            "password": (
+                "configured"
+                if payload.get("password")
+                else ""
+            ),
         }
 
     def _manual_summary(
@@ -1543,8 +1553,6 @@ class ClassCubeService:
             password=str(payload.get("password") or ""),
         )
 
-        photo_path = None
-        remote_photo_value = ""
         submit_started = False
 
         def mark_submitting():
@@ -1552,73 +1560,12 @@ class ClassCubeService:
             if not submit_started and before_submit is not None:
                 before_submit()
                 submit_started = True
-        if form.mode == "gps_photo":
-            supplied_path = str(payload.get("photo_path") or "")
-            if not supplied_path:
-                return self._checkin_view(
-                    "waiting_parameter",
-                    "请上传签到照片",
-                )
-            try:
-                owned_photo = self._owned_photo_path(
-                    supplied_path,
-                    int(account["owner_user_id"]),
-                )
-            except ClassCubeValidationError as exc:
-                return self._checkin_view(
-                    "waiting_parameter",
-                    str(exc),
-                )
-            if form.file_field:
-                photo_path = owned_photo
-            elif (
-                form.photo_resource_field
-                and form.upload_action
-                and form.upload_method == "post"
-                and form.upload_file_field
-                and form.upload_response_key
-            ):
-                photo_path = owned_photo
-                try:
-                    mark_submitting()
-                    remote_photo_value = self.client.upload_photo(
-                        account["cookie"],
-                        form,
-                        photo_path,
-                    )
-                except ClassCubeCookieExpired:
-                    self._mark_account_expired(
-                        account["id"],
-                        actor_user_id,
-                        is_admin,
-                    )
-                    return self._checkin_view(
-                        "failed",
-                        "班级魔方登录已失效，请重新扫码",
-                    )
-                except (
-                    ClassCubeSubmissionUnknown,
-                    ClassCubeRequestError,
-                    OSError,
-                ) as exc:
-                    self._log_remote_failure("上传签到照片", exc)
-                    return self._checkin_view(
-                        "waiting_parameter",
-                        "签到照片上传失败，请稍后重试",
-                    )
-                photo_path = None
-            else:
-                return self._checkin_view(
-                    "waiting_parameter",
-                    "无法识别远端照片上传方式",
-                )
 
         try:
             fields = build_submission_fields(
                 form,
                 parameters,
                 remote_item_id=str(item["remote_item_id"]),
-                remote_photo_value=remote_photo_value,
             )
         except ClassCubeValidationError as exc:
             return self._checkin_view(
@@ -1632,7 +1579,6 @@ class ClassCubeService:
                 account["cookie"],
                 form,
                 fields,
-                photo_path=photo_path,
             )
         except ClassCubeCookieExpired:
             self._mark_account_expired(
