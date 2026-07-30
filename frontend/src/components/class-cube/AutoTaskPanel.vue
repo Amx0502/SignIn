@@ -90,7 +90,7 @@
             </el-form-item>
             <el-form-item label="定位精度（米）"><el-input-number v-model="draft.accuracy" :min="0" :precision="1" :controls="false" /></el-form-item>
             <el-form-item label="预设密码">
-              <el-input v-model="draft.password" type="password" show-password autocomplete="new-password" :placeholder="editingId && draft.has_password ? '已保存，留空保持不变' : '密码签到使用'" />
+              <el-input v-model="draft.password" type="text" autocomplete="new-password" :placeholder="editingId && draft.has_password ? '已保存，留空保持不变' : '密码签到使用'" />
               <el-checkbox v-if="editingId && draft.has_password" v-model="draft.clear_password">清除已保存密码</el-checkbox>
             </el-form-item>
           </section>
