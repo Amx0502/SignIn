@@ -137,7 +137,7 @@ body::before {
 .el-form-item { margin-bottom: 20px; }
 .el-input__wrapper, .el-textarea__inner, .el-input-number, .el-select__wrapper { border-radius: 12px !important; box-shadow: 0 0 0 1px var(--line) inset !important; }
 .el-input__wrapper:hover, .el-textarea__inner:hover, .el-select__wrapper:hover { box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.35) inset !important; }
-.el-button { border-radius: 12px !important; font-weight: 650; transition: transform 0.2s ease, box-shadow 0.2s ease !important; }
+.el-button { border-radius: 12px !important; font-weight: 650; transition: transform 0.2s ease, box-shadow 0.2s ease !important; text-decoration: none;}
 .el-button:hover { transform: translateY(-1px); }
 .el-button--primary { box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18); }
 
