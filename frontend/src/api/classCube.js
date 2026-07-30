@@ -48,7 +48,9 @@ export function createClassCubeApi(instance = defaultInstance) {
     batchDeleteTasks: ids =>
       instance.post(`${root}/tasks/batch-delete`, { ids }),
     runTask: taskId =>
-      instance.post(`${root}/tasks/${taskId}/run`),
+      instance.post(`${root}/tasks/${taskId}/run`, null, {
+        timeout: 60_000,
+      }),
     retryClaim: claimId =>
       instance.post(`${root}/claims/${claimId}/retry`),
 

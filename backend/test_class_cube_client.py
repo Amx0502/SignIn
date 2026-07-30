@@ -732,6 +732,64 @@ class ClassCubeQrSessionTest(unittest.TestCase):
 
 
 class ClassCubeRemoteRequestTest(unittest.TestCase):
+    def test_fetch_items_warms_session_then_uses_bjmf_list_url(self):
+        session = FakeSession(
+            [
+                FakeResponse(
+                    text="<html>profile</html>",
+                    url="https://bjmf.k8n.cn/student/my",
+                ),
+                FakeResponse(
+                    text="<html>profile</html>",
+                    url="https://bjmf.k8n.cn/student/my",
+                ),
+                FakeResponse(
+                    text="<html>no items</html>",
+                    url=(
+                        "https://bjmf.k8n.cn/student/course/"
+                        "123/punchs"
+                    ),
+                ),
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+
+        client.fetch_items("cookie=value", "123", "punchs")
+
+        self.assertEqual(
+            [call[1] for call in session.calls],
+            [
+                "https://bjmf.k8n.cn/student/my",
+                "https://bjmf.k8n.cn/student/course/123/punchs",
+            ],
+        )
+
+    def test_fetch_courses_warms_session_then_reads_student_page(self):
+        session = FakeSession(
+            [
+                FakeResponse(
+                    text="<html>profile</html>",
+                    url="https://bjmf.k8n.cn/student/my",
+                ),
+                FakeResponse(
+                    text='<a href="/student/course/101">Math</a>',
+                    url="https://bjmf.k8n.cn/student",
+                ),
+            ]
+        )
+        client = ClassCubeClient(session_factory=lambda: session)
+
+        courses = client.fetch_courses("cookie=value")
+
+        self.assertEqual(courses[0].remote_course_id, "101")
+        self.assertEqual(
+            [call[1] for call in session.calls],
+            [
+                "https://bjmf.k8n.cn/student/my",
+                "https://bjmf.k8n.cn/student",
+            ],
+        )
+
     def test_fetch_student_name_uses_authenticated_profile_page(self):
         profile_url = "https://bjmf.k8n.cn/student/my"
         session = FakeSession(
@@ -864,11 +922,15 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
         session = FakeSession(
             [
                 FakeResponse(
+                    text="<html>profile</html>",
+                    url="https://bjmf.k8n.cn/student/my",
+                ),
+                FakeResponse(
                     text=(
                         '<a href="/student/course/101" '
                         'data-class-code="MATH-A">Math</a>'
                     ),
-                    url="https://bjmf.k8n.cn/student/courses",
+                    url="https://bjmf.k8n.cn/student",
                 )
             ]
         )
@@ -883,12 +945,12 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
             [ParsedCourse("101", "Math", "MATH-A")],
         )
         self.assertTrue(session.closed)
-        self.assertEqual(len(session.calls), 1)
-        method, url, kwargs = session.calls[0]
+        self.assertEqual(len(session.calls), 2)
+        method, url, kwargs = session.calls[1]
         self.assertEqual(method, "GET")
         self.assertEqual(
             url,
-            "https://bjmf.k8n.cn/student/courses",
+            "https://bjmf.k8n.cn/student",
         )
         self.assertNotIn("Cookie", kwargs["headers"])
         self.assertEqual(
@@ -913,6 +975,7 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
     def test_fetch_courses_has_finite_get_retries(self):
         session = FakeSession(
             [
+                FakeResponse(text="<html>profile</html>"),
                 requests.Timeout("first"),
                 requests.ConnectionError("second"),
                 FakeResponse(
@@ -925,12 +988,13 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
         courses = client.fetch_courses("cookie=value")
 
         self.assertEqual(courses, [ParsedCourse("101", "Math")])
-        self.assertEqual(len(session.calls), 3)
+        self.assertEqual(len(session.calls), 4)
         self.assertTrue(session.closed)
 
     def test_fetch_courses_stops_after_three_failed_get_attempts(self):
         session = FakeSession(
             [
+                FakeResponse(text="<html>profile</html>"),
                 requests.Timeout("first"),
                 requests.ConnectionError("second"),
                 requests.Timeout("third"),
@@ -942,14 +1006,18 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
         with self.assertRaises(ClassCubeRequestError):
             client.fetch_courses("cookie=value")
 
-        self.assertEqual(len(session.calls), 3)
+        self.assertEqual(len(session.calls), 4)
         self.assertTrue(session.closed)
 
     def test_fetch_items_returns_items_with_their_parsed_forms(self):
-        list_url = "https://bjmf.k8n.cn/student/punchs/course/1"
-        detail_url = f"{list_url}/12"
+        list_url = "https://bjmf.k8n.cn/student/course/1/punchs"
+        detail_url = "https://bjmf.k8n.cn/student/punchs/course/1/12"
         session = FakeSession(
             [
+                FakeResponse(
+                    text="<html>profile</html>",
+                    url="https://bjmf.k8n.cn/student/my",
+                ),
                 FakeResponse(
                     text=(
                         '<section id="punchcard_21">'
@@ -1025,7 +1093,11 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
         self.assertTrue(session.closed)
         self.assertEqual(
             [(method, url) for method, url, _ in session.calls],
-            [("GET", list_url), ("GET", detail_url)],
+            [
+                ("GET", "https://bjmf.k8n.cn/student/my"),
+                ("GET", list_url),
+                ("GET", detail_url),
+            ],
         )
         for _, _, kwargs in session.calls:
             self.assertNotIn("Cookie", kwargs["headers"])
@@ -1043,9 +1115,13 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
         )
 
     def test_fetch_items_supports_daka_as_an_explicit_list_source(self):
-        list_url = "https://bjmf.k8n.cn/student/daka/course/1"
+        list_url = "https://bjmf.k8n.cn/student/course/1/daka"
         session = FakeSession(
             [
+                FakeResponse(
+                    text="<html>profile</html>",
+                    url="https://bjmf.k8n.cn/student/my",
+                ),
                 FakeResponse(
                     text=(
                         '<form id="punchcard_88" '
@@ -1071,7 +1147,10 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
         self.assertEqual(bundles[0].item.remote_item_id, "88")
         self.assertEqual(
             [(method, url) for method, url, _ in session.calls],
-            [("GET", list_url)],
+            [
+                ("GET", "https://bjmf.k8n.cn/student/my"),
+                ("GET", list_url),
+            ],
         )
 
     def test_fetch_items_rejects_unapproved_list_module_before_request(self):
@@ -1184,12 +1263,16 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
         self.assertTrue(session.closed)
 
     def test_fetch_items_rejects_untrusted_detail_url_before_request(self):
-        list_url = "https://bjmf.k8n.cn/student/punchs/course/1"
+        list_url = "https://bjmf.k8n.cn/student/course/1/punchs"
         malicious_url = (
             "https://evil.example/student/punchs/course/1/12"
         )
         session = FakeSession(
             [
+                FakeResponse(
+                    text="<html>profile</html>",
+                    url="https://bjmf.k8n.cn/student/my",
+                ),
                 FakeResponse(
                     text=(
                         f'<a href="{malicious_url}">'
@@ -1211,9 +1294,9 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
                 "1",
             )
 
-        self.assertEqual(len(session.calls), 1)
-        self.assertEqual(session.calls[0][1], list_url)
-        self.assertNotIn("Cookie", session.calls[0][2]["headers"])
+        self.assertEqual(len(session.calls), 2)
+        self.assertEqual(session.calls[1][1], list_url)
+        self.assertNotIn("Cookie", session.calls[1][2]["headers"])
         self.assertTrue(session.closed)
 
     def test_submit_form_rejects_untrusted_action_before_request(self):
@@ -1253,10 +1336,14 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
                 self.assertEqual(session.calls, [])
 
     def test_fetch_courses_rejects_untrusted_redirect_before_next_get(self):
-        first_url = "https://bjmf.k8n.cn/student/courses"
-        malicious_url = "https://evil.k8n.cn/student/courses"
+        first_url = "https://bjmf.k8n.cn/student"
+        malicious_url = "https://evil.k8n.cn/student"
         session = FakeSession(
             [
+                FakeResponse(
+                    text="<html>profile</html>",
+                    url="https://bjmf.k8n.cn/student/my",
+                ),
                 FakeResponse(
                     status_code=302,
                     headers={"Location": malicious_url},
@@ -1275,18 +1362,22 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
                 "remember_student_abc=cookie-token"
             )
 
-        self.assertEqual(len(session.calls), 1)
-        method, url, kwargs = session.calls[0]
+        self.assertEqual(len(session.calls), 2)
+        method, url, kwargs = session.calls[1]
         self.assertEqual((method, url), ("GET", first_url))
         self.assertFalse(kwargs["allow_redirects"])
         self.assertNotIn("Cookie", kwargs["headers"])
         self.assertTrue(session.closed)
 
     def test_fetch_courses_follows_redirect_between_allowed_hosts(self):
-        first_url = "https://bjmf.k8n.cn/student/courses"
-        second_url = "https://bj.k8n.cn/student/courses"
+        first_url = "https://bjmf.k8n.cn/student"
+        second_url = "https://bj.k8n.cn/student"
         session = FakeSession(
             [
+                FakeResponse(
+                    text="<html>profile</html>",
+                    url="https://bjmf.k8n.cn/student/my",
+                ),
                 FakeResponse(
                     status_code=302,
                     headers={"Location": second_url},
@@ -1305,7 +1396,11 @@ class ClassCubeRemoteRequestTest(unittest.TestCase):
         self.assertEqual(courses, [ParsedCourse("101", "Math")])
         self.assertEqual(
             [(method, url) for method, url, _ in session.calls],
-            [("GET", first_url), ("GET", second_url)],
+            [
+                ("GET", "https://bjmf.k8n.cn/student/my"),
+                ("GET", first_url),
+                ("GET", second_url),
+            ],
         )
         for _, _, kwargs in session.calls:
             self.assertFalse(kwargs["allow_redirects"])

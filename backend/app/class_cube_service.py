@@ -234,6 +234,8 @@ class ClassCubeService:
         self.notifier = notifier or ClassCubeNotifier()
         self._qr_targets: dict[str, _QrTarget] = {}
         self._qr_lock = RLock()
+        self._execution_lock = RLock()
+        self._running_task_ids: set[int] = set()
         self._closed = False
 
     def _pop_expired_targets(
@@ -666,6 +668,12 @@ class ClassCubeService:
                     course_id, bundles, actor_user_id, is_admin
                 )
             successful_sources += 1
+            self.logger.info(
+                "同步签到项成功：课程ID=%s，模块=%s，数量=%s",
+                course_id,
+                module,
+                len(bundles),
+            )
 
         if successful_sources == 0:
             raise ClassCubeRemoteError(
@@ -798,41 +806,136 @@ class ClassCubeService:
             "role": "user",
         }
 
-    def run_scheduled_task(self, task_id):
+    def execute_task(self, task_id, trigger="scheduled"):
+        task_id = int(task_id)
+        with self._execution_lock:
+            if task_id in self._running_task_ids:
+                return {
+                    "task_id": task_id,
+                    "status": "running",
+                    "message": "该任务正在执行",
+                    "scanned": 0,
+                    "success": 0,
+                    "already_signed": 0,
+                    "skipped": 0,
+                    "failed": 0,
+                    "unknown": 0,
+                    "details": [],
+                }
+            self._running_task_ids.add(task_id)
+        started_at = datetime.now()
         try:
             task = self.repository.get_task(task_id, 0, True)
         except ClassCubeNotFound:
-            return False
-        if not task.get("enabled"):
-            return False
+            with self._execution_lock:
+                self._running_task_ids.discard(task_id)
+            raise
+        if trigger == "scheduled" and not task.get("enabled"):
+            with self._execution_lock:
+                self._running_task_ids.discard(task_id)
+            return {
+                "task_id": task_id,
+                "task_name": task.get("name", ""),
+                "status": "disabled",
+                "message": "任务已停用",
+                "scanned": 0,
+                "success": 0,
+                "already_signed": 0,
+                "skipped": 1,
+                "failed": 0,
+                "unknown": 0,
+                "details": [],
+            }
         actor = self._task_actor(task)
-        account = self.repository.get_account(
-            task["account_id"], task["owner_user_id"], False
-        )
+        try:
+            account = self.repository.get_account(
+                task["account_id"], task["owner_user_id"], False
+            )
+            course = self.repository.get_course(
+                task["course_id"], task["owner_user_id"], False
+            )
+        except Exception:
+            with self._execution_lock:
+                self._running_task_ids.discard(task_id)
+            raise
         if account.get("status") != "active":
-            return False
-        course = self.repository.get_course(
-            task["course_id"], task["owner_user_id"], False
-        )
-        summary = {
+            result = {
+                "task_id": task_id,
+                "task_name": task.get("name", ""),
+                "status": "failed",
+                "message": "班级魔方登录已失效，请重新扫码",
+                "scanned": 0,
+                "success": 0,
+                "already_signed": 0,
+                "skipped": 0,
+                "failed": 1,
+                "unknown": 0,
+                "details": [],
+            }
+            self.repository.record_task_run(
+                task_id, "failed", result["message"], result, started_at
+            )
+            with self._execution_lock:
+                self._running_task_ids.discard(task_id)
+            return result
+        result = {
+            "task_id": task_id,
             "task_name": task.get("name", ""),
+            "status": "pending",
+            "message": "",
+            "scanned": 0,
+            "success": 0,
+            "already_signed": 0,
+            "skipped": 0,
+            "failed": 0,
+            "unknown": 0,
+            "details": [],
+        }
+        notification = {
+            **result,
             "account_name": (
                 account.get("name")
                 or account.get("remote_user_name")
                 or "-"
             ),
             "course_name": course.get("name", "-"),
-            "success": 0,
-            "failed": 0,
-            "details": [],
         }
+        self.logger.info(
+            "任务开始：ID=%s，任务=%s，账号=%s，课程=%s，来源=%s",
+            task_id,
+            task.get("name", ""),
+            notification["account_name"],
+            notification["course_name"],
+            trigger,
+        )
         try:
             items = self.sync_items(task["course_id"], actor)
-            for item in items:
-                if item.get("status") != "active":
-                    continue
+            active_items = [
+                item for item in items
+                if item.get("status") == "active"
+            ]
+            result["scanned"] = len(active_items)
+            if not active_items:
+                result["status"] = "no_sign_in"
+                result["message"] = "当前课程没有可执行签到项"
+                self.repository.record_task_run(
+                    task_id,
+                    "no_sign_in",
+                    result["message"],
+                    result,
+                    started_at,
+                )
+                self.logger.info(
+                    "任务结束：ID=%s，当前课程没有可执行签到项",
+                    task_id,
+                )
+                return result
+            for item in active_items:
                 current = self.repository.get_task(task_id, 0, True)
-                if not current.get("enabled"):
+                if (
+                    trigger == "scheduled"
+                    and not current.get("enabled")
+                ):
                     break
                 claim = self.repository.try_claim(
                     task_id,
@@ -841,8 +944,9 @@ class ClassCubeService:
                     item["remote_module"],
                 )
                 if not claim:
+                    result["skipped"] += 1
                     continue
-                result = self.manual_checkin(
+                checkin_result = self.manual_checkin(
                     item["id"],
                     {
                         "latitude": task.get("latitude"),
@@ -856,13 +960,25 @@ class ClassCubeService:
                         claim
                     ),
                 )
-                status = result["status"]
-                successful = status in {"success", "already_signed"}
-                summary["success" if successful else "failed"] += 1
-                summary["details"].append(
-                    f"{item.get('title', '签到项')}："
-                    f"{result.get('message') or status}"
-                )
+                status = checkin_result["status"]
+                if status == "success":
+                    result["success"] += 1
+                elif status == "already_signed":
+                    result["already_signed"] += 1
+                elif status == "unknown_result":
+                    result["unknown"] += 1
+                elif status in {"waiting_parameter", "not_started"}:
+                    result["skipped"] += 1
+                else:
+                    result["failed"] += 1
+                detail = {
+                    "item_id": item["id"],
+                    "title": item.get("title", "签到项"),
+                    "mode": item.get("mode", "unknown"),
+                    "status": status,
+                    "message": checkin_result.get("message", ""),
+                }
+                result["details"].append(detail)
                 state = {
                     "success": "succeeded",
                     "already_signed": "already_signed",
@@ -876,20 +992,69 @@ class ClassCubeService:
                     item["remote_module"],
                     state,
                     status,
-                    result.get("message", ""),
+                    checkin_result.get("message", ""),
                     item.get("mode", "unknown"),
                     expected_lease_token=claim["lease_token"],
                     started_at=claim["started_at"],
                 )
-            return True
-        except Exception as exc:
-            summary["failed"] += 1
-            summary["details"].append(
-                f"任务执行失败：{type(exc).__name__}"
+            if result["failed"]:
+                result["status"] = "failed"
+                result["message"] = "部分或全部签到执行失败"
+            elif result["unknown"]:
+                result["status"] = "unknown_result"
+                result["message"] = "签到结果需要人工确认"
+            elif result["success"]:
+                result["status"] = "success"
+                result["message"] = "签到执行成功"
+            elif result["already_signed"]:
+                result["status"] = "already_signed"
+                result["message"] = "签到已经完成"
+            else:
+                result["status"] = "skipped"
+                result["message"] = "当前没有需要提交的签到项"
+            self.logger.info(
+                "任务结束：ID=%s，状态=%s，扫描=%s，成功=%s，已签到=%s，失败=%s",
+                task_id,
+                result["status"],
+                result["scanned"],
+                result["success"],
+                result["already_signed"],
+                result["failed"],
             )
-            raise
+            return result
+        except Exception as exc:
+            result["status"] = "failed"
+            result["message"] = "班级魔方任务执行失败"
+            result["failed"] += 1
+            result["details"].append(
+                {
+                    "title": "任务执行",
+                    "mode": "task",
+                    "status": "failed",
+                    "message": type(exc).__name__,
+                }
+            )
+            self.repository.record_task_run(
+                task_id,
+                "failed",
+                result["message"],
+                result,
+                started_at,
+            )
+            self.logger.error(
+                "任务执行失败：ID=%s，异常=%s",
+                task_id,
+                type(exc).__name__,
+            )
+            return result
         finally:
-            self._send_task_notification(task, summary)
+            notification.update(result)
+            self._send_task_notification(task, notification)
+            with self._execution_lock:
+                self._running_task_ids.discard(task_id)
+
+    def run_scheduled_task(self, task_id):
+        return self.execute_task(task_id, trigger="scheduled")
 
     def _send_task_notification(self, task, summary):
         if not task.get("notify_wecom", True):

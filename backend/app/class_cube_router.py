@@ -337,20 +337,22 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
         actor=Depends(auth_dependency),
     ):
         service = _service(request)
+        actor_user_id, is_admin = service._actor_scope(actor)
         try:
-            actor_user_id, is_admin = service._actor_scope(actor)
             service.repository.get_task(
                 task_id, actor_user_id, is_admin
             )
-            accepted = request.app.state.class_cube_scheduler.submit(
-                task_id
-            )
-            return _success({"accepted": accepted})
         except ClassCubeNotFound as exc:
             return JSONResponse(
                 status_code=404,
                 content={"ok": False, "error": str(exc)},
             )
+        return _invoke(
+            request,
+            service.execute_task,
+            task_id,
+            trigger="manual",
+        )
 
     @router.get("/runs")
     def list_runs(

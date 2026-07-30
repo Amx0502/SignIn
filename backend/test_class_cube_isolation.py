@@ -60,7 +60,10 @@ class ClassCubeIsolationTest(unittest.TestCase):
         store = ClassCubeLogStore()
         logger = create_class_cube_logger(store)
         logger.info("班级魔方测试")
-        self.assertEqual(store.snapshot(), ["班级魔方测试"])
+        self.assertRegex(
+            store.snapshot()[0],
+            r"^\d{4}-\d{2}-\d{2} .*\[INFO\] 班级魔方测试$",
+        )
 
     def test_qr_creation_retries_temporary_remote_failure(self):
         session = _RetrySession()

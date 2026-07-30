@@ -265,10 +265,10 @@ class ClassCubeTaskRunRow(ClassCubeBase):
         nullable=False,
         index=True,
     )
-    checkin_item_id: Mapped[int] = mapped_column(
+    checkin_item_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("class_cube_checkin_items.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     remote_item_id: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -286,7 +286,7 @@ class ClassCubeTaskRunRow(ClassCubeBase):
     )
 
     task: Mapped[ClassCubeTaskRow] = relationship(back_populates="runs")
-    checkin_item: Mapped[ClassCubeCheckinItemRow] = relationship(
+    checkin_item: Mapped[ClassCubeCheckinItemRow | None] = relationship(
         back_populates="task_runs"
     )
     item_claims: Mapped[list["ClassCubeTaskItemClaimRow"]] = relationship(

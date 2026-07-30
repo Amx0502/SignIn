@@ -15,9 +15,15 @@ class ClassCubeNotifier:
         url = validate_wecom_webhook(webhook_url)
         if not url:
             return
-        details = "\n".join(
-            f"> {line}" for line in summary.get("details", [])
-        )
+        detail_lines = []
+        for detail in summary.get("details", []):
+            if isinstance(detail, dict):
+                title = detail.get("title") or "签到项"
+                message = detail.get("message") or detail.get("status") or "-"
+                detail_lines.append(f"{title}：{message}")
+            else:
+                detail_lines.append(str(detail))
+        details = "\n".join(f"> {line}" for line in detail_lines)
         content = (
             f"### 班级魔方签到结果\n"
             f"- 任务：{summary.get('task_name', '-')}\n"
@@ -45,4 +51,3 @@ class ClassCubeNotifier:
             ) from exc
         if not isinstance(payload, dict) or payload.get("errcode") != 0:
             raise ClassCubeNotificationError("企业微信通知发送失败")
-

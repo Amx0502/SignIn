@@ -48,7 +48,13 @@
       <el-table-column label="操作" width="230" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="success" @click="runNow(row)">立即执行</el-button>
+          <el-button
+            link
+            type="success"
+            :loading="runningTaskId === row.id"
+            :disabled="runningTaskId !== null && runningTaskId !== row.id"
+            @click="runNow(row)"
+          >立即执行</el-button>
           <el-button link type="danger" @click="removeOne(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -137,6 +143,7 @@ const tableRef = ref(null)
 const editorVisible = ref(false)
 const editingId = ref(null)
 const saving = ref(false)
+const runningTaskId = ref(null)
 const photoFiles = ref([])
 const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', password: '', has_password: false, clear_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
 const draft = reactive(emptyDraft())
@@ -187,7 +194,21 @@ async function toggleTask(row, enabled) {
   try { await props.saveTaskAction({ enabled }, row.id); ElMessage.success(enabled ? '任务已启用' : '任务已停用'); emit('refresh') } catch (error) { ElMessage.error(error.message || '更新失败') }
 }
 async function runNow(row) {
-  try { const data = await props.runTaskAction(row.id); ElMessage.success(data.accepted ? '任务已加入执行队列' : '任务正在运行，请稍后查看记录'); emit('refresh') } catch (error) { ElMessage.error(error.message || '执行失败') }
+  if (runningTaskId.value !== null) return
+  runningTaskId.value = row.id
+  try {
+    const data = await props.runTaskAction(row.id)
+    const message = data.message || '任务执行完成'
+    if (['failed', 'unknown_result'].includes(data.status)) ElMessage.error(message)
+    else if (data.status === 'running') ElMessage.warning(message)
+    else if (['no_sign_in', 'skipped', 'already_signed'].includes(data.status)) ElMessage.info(message)
+    else ElMessage.success(message)
+    emit('refresh')
+  } catch (error) {
+    ElMessage.error(error.message || '执行失败')
+  } finally {
+    runningTaskId.value = null
+  }
 }
 async function removeOne(row) {
   try { await ElMessageBox.confirm(`确认删除任务「${row.name}」？`, '删除任务', { type: 'warning' }); await props.removeTasksAction([row.id]); ElMessage.success('任务已删除') } catch (error) { if (!['cancel', 'close'].includes(error)) ElMessage.error(error.message || '删除失败') }

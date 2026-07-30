@@ -26,12 +26,15 @@ from app.class_cube_parser import (
 
 
 QR_LOGIN_URL = "https://bjmf.k8n.cn/weixin/qrlogin/student"
-COURSES_URL = "https://bjmf.k8n.cn/student/courses"
+COURSES_URL = "https://bjmf.k8n.cn/student"
 STUDENT_PROFILE_URL = "https://bjmf.k8n.cn/student/my"
-CHECKIN_LIST_URL = "https://bjmf.k8n.cn/student/punchs/course/{course_id}"
 CHECKIN_LIST_URLS = {
-    "punchs": CHECKIN_LIST_URL,
-    "daka": "https://bjmf.k8n.cn/student/daka/course/{course_id}",
+    "punchs": (
+        "https://bjmf.k8n.cn/student/course/{course_id}/punchs"
+    ),
+    "daka": (
+        "https://bjmf.k8n.cn/student/course/{course_id}/daka"
+    ),
 }
 QR_TTL_SECONDS = 120
 CONNECT_TIMEOUT = 5
@@ -170,6 +173,7 @@ class ClassCubeClient:
     def fetch_courses(self, cookie: str) -> list[ParsedCourse]:
         session = self._short_lived_session(cookie)
         try:
+            self._warm_student_session(session)
             response = self._get_with_retries(
                 session,
                 COURSES_URL,
@@ -204,6 +208,7 @@ class ClassCubeClient:
                 raise ValueError(
                     "check-in list module must be punchs or daka"
                 )
+            self._warm_student_session(session)
             list_url = CHECKIN_LIST_URLS[module].format(
                 course_id=quote(course_id, safe=""),
             )
@@ -857,6 +862,13 @@ class ClassCubeClient:
             return self._student_login_cookie(session, response)
         finally:
             session.close()
+
+    def _warm_student_session(self, session) -> None:
+        response = self._get_with_retries(
+            session,
+            STUDENT_PROFILE_URL,
+        )
+        self._raise_if_cookie_expired(response)
 
     def _cleanup_expired(
         self,

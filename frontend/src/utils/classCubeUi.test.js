@@ -6,9 +6,9 @@ async function source(relativePath) {
   return readFile(new URL(relativePath, import.meta.url), 'utf8')
 }
 
-test('class cube exposes four independent second-level pages', async () => {
+test('class cube exposes five independent second-level pages', async () => {
   const router = await source('../router/index.js')
-  for (const path of ['/class-cube/overview', '/class-cube/accounts', '/class-cube/tasks', '/class-cube/runs']) {
+  for (const path of ['/class-cube/overview', '/class-cube/accounts', '/class-cube/tasks', '/class-cube/runs', '/class-cube/logs']) {
     assert.match(router, new RegExp(`path:\\s*['"]${path}['"]`))
   }
   assert.match(router, /parentTitle:\s*['"]班级魔方['"]/)
@@ -16,6 +16,14 @@ test('class cube exposes four independent second-level pages', async () => {
   assert.match(await source('../views/ClassCubeAccounts.vue'), /QrLoginDialog/)
   assert.match(await source('../views/ClassCubeTasks.vue'), /AutoTaskPanel/)
   assert.match(await source('../views/ClassCubeRuns.vue'), /RunHistoryPanel/)
+  assert.match(await source('../views/ClassCubeLogs.vue'), /classCubeApi\.listLogs/)
+})
+
+test('class cube logs are separate from structured run records', async () => {
+  const runs = await source('../views/ClassCubeRuns.vue')
+  assert.doesNotMatch(runs, /loadLogs|cube-logs|setInterval/)
+  const logs = await source('../views/ClassCubeLogs.vue')
+  assert.doesNotMatch(logs, /xxqd/)
 })
 
 test('qr dialog exposes countdown and every session state', async () => {

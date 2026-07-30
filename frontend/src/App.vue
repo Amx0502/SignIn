@@ -43,6 +43,7 @@
           <el-menu-item index="/class-cube/accounts"><el-icon><User /></el-icon><span>账号管理</span></el-menu-item>
           <el-menu-item index="/class-cube/tasks"><el-icon><Timer /></el-icon><span>自动任务</span></el-menu-item>
           <el-menu-item index="/class-cube/runs"><el-icon><Document /></el-icon><span>运行记录</span></el-menu-item>
+          <el-menu-item index="/class-cube/logs"><el-icon><Document /></el-icon><span>魔方日志</span></el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>

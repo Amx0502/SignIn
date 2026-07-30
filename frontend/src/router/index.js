@@ -9,6 +9,7 @@ import ClassCubeOverview from '../views/ClassCubeOverview.vue'
 import ClassCubeAccounts from '../views/ClassCubeAccounts.vue'
 import ClassCubeTasks from '../views/ClassCubeTasks.vue'
 import ClassCubeRuns from '../views/ClassCubeRuns.vue'
+import ClassCubeLogs from '../views/ClassCubeLogs.vue'
 import UserManagement from '../views/UserManagement.vue'
 import ChangePassword from '../views/ChangePassword.vue'
 
@@ -28,7 +29,8 @@ const routes = [
   { path: '/class-cube/overview', name: 'ClassCubeOverview', component: ClassCubeOverview, meta: { title: '系统概览', parentTitle: '班级魔方', requiresAuth: true } },
   { path: '/class-cube/accounts', name: 'ClassCubeAccounts', component: ClassCubeAccounts, meta: { title: '账号管理', parentTitle: '班级魔方', requiresAuth: true } },
   { path: '/class-cube/tasks', name: 'ClassCubeTasks', component: ClassCubeTasks, meta: { title: '自动任务', parentTitle: '班级魔方', requiresAuth: true } },
-  { path: '/class-cube/runs', name: 'ClassCubeRuns', component: ClassCubeRuns, meta: { title: '运行记录', parentTitle: '班级魔方', requiresAuth: true } }
+  { path: '/class-cube/runs', name: 'ClassCubeRuns', component: ClassCubeRuns, meta: { title: '运行记录', parentTitle: '班级魔方', requiresAuth: true } },
+  { path: '/class-cube/logs', name: 'ClassCubeLogs', component: ClassCubeLogs, meta: { title: '魔方日志', parentTitle: '班级魔方', requiresAuth: true } }
 ]
 
 const router = createRouter({

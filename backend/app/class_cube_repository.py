@@ -942,6 +942,31 @@ class ClassCubeRepository:
             row.updated_at = datetime.now()
             return True
 
+    def record_task_run(
+        self,
+        task_id,
+        status,
+        message,
+        response_summary,
+        started_at,
+    ):
+        now = datetime.now()
+        with self.database.session() as session:
+            run = ClassCubeTaskRunRow(
+                task_id=task_id,
+                checkin_item_id=None,
+                remote_item_id="",
+                mode="task",
+                status=str(status)[:32],
+                message=" ".join(str(message).split())[:500],
+                response_summary=dict(response_summary or {}),
+                started_at=started_at or now,
+                finished_at=now,
+            )
+            session.add(run)
+            session.flush()
+            return self._run_record(run)
+
     def list_runs(
         self, actor_user_id, is_admin, owner_user_id=None,
         account_id=None, course_id=None, task_id=None, status=None,

@@ -54,6 +54,7 @@ class ClassCubeDatabase:
             if database_engine.dialect.name == "mysql":
                 self._migrate_claim_table(database_engine)
                 self._migrate_task_table(database_engine)
+                self._migrate_task_run_table(database_engine)
             session_factory = sessionmaker(
                 bind=database_engine,
                 autoflush=False,
@@ -151,6 +152,23 @@ class ClassCubeDatabase:
                         "UPDATE class_cube_tasks "
                         "SET schedule_times_json='[]' "
                         "WHERE schedule_times_json IS NULL"
+                    )
+                )
+
+    @staticmethod
+    def _migrate_task_run_table(engine: Engine) -> None:
+        table = "class_cube_task_runs"
+        columns = {
+            column["name"]: column
+            for column in inspect(engine).get_columns(table)
+        }
+        checkin_item = columns.get("checkin_item_id", {})
+        if checkin_item and not checkin_item.get("nullable", False):
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE class_cube_task_runs "
+                        "MODIFY COLUMN checkin_item_id BIGINT NULL"
                     )
                 )
 
