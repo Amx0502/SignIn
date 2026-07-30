@@ -259,6 +259,12 @@ export function useClassCube(api = classCubeApi) {
     return loadTasks()
   }
 
+  async function deleteAccounts(ids) {
+    if (!ids.length) return 0
+    const response = await api.batchDeleteAccounts(ids)
+    return responseData(response, 0)
+  }
+
   async function refreshBackground() {
     try {
       await Promise.all([loadTasks(), loadRuns()])
@@ -437,6 +443,7 @@ export function useClassCube(api = classCubeApi) {
     syncItems,
     saveTask,
     removeTasks,
+    deleteAccounts,
     refreshBackground,
     startBackgroundPolling,
     stopBackgroundPolling,

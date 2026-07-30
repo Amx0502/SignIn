@@ -17,6 +17,8 @@ export function createClassCubeApi(instance = defaultInstance) {
       instance.put(`${root}/accounts/${accountId}`, data),
     deleteAccount: accountId =>
       instance.delete(`${root}/accounts/${accountId}`),
+    batchDeleteAccounts: ids =>
+      instance.post(`${root}/accounts/batch-delete`, { ids }),
     syncCourses: accountId =>
       instance.post(`${root}/accounts/${accountId}/courses/sync`),
     listCourses: accountId =>
