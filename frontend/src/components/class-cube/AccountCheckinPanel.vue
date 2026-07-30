@@ -117,7 +117,10 @@
           <el-form label-position="top">
             <div v-if="['gps', 'gps_photo'].includes(selectedItem.mode)" class="location-grid">
               <el-form-item label="签到位置">
-                <el-input v-model="form.coordinateInput" clearable placeholder="例如 119.21, 26.03" />
+                <div class="coordinate-row">
+                  <el-input v-model="form.coordinateInput" clearable placeholder="例如 119.21, 26.03" />
+                  <el-button tag="a" href="https://www.lddgo.net/convert/position" target="_blank" rel="noopener noreferrer">拾取</el-button>
+                </div>
                 <p class="field-tip">自动识别经纬度顺序及空格、逗号、竖线等常见分隔符</p>
               </el-form-item>
               <el-form-item label="定位精度（米）">
@@ -327,7 +330,7 @@ async function submitManual() {
 .selector-row { display:flex;align-items:center;gap:12px;margin-bottom:14px }.selector-row .el-select { flex:1 }.course-code,.option-code { color:#64748b;font-size:11px }.option-code { float:right;margin-left:20px }
 .manual-form { margin-top:18px;padding:18px;border:1px solid #bfdbfe;border-radius:18px;background:linear-gradient(145deg,#f8fbff,#eff6ff) }
 .manual-form__head { display:flex;justify-content:space-between;gap:12px;margin-bottom:16px }.manual-form__head>div { display:flex;align-items:center;gap:9px }.manual-form__head small { color:#64748b;font-size:11px }.mode-chip { padding:5px 9px;color:#1d4ed8;border-radius:9px;background:#dbeafe;font-size:11px;font-weight:700 }
-.location-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px }.location-grid .el-input-number,.location-grid .el-input { width:100% }.field-tip { margin:7px 0 0;color:#64748b;font-size:11px }
+.location-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px }.location-grid .el-input-number,.location-grid .el-input { width:100% }.coordinate-row { display:flex;align-items:center;gap:8px;width:100%;min-width:0 }.coordinate-row .el-input { flex:1;min-width:0 }.field-tip { margin:7px 0 0;color:#64748b;font-size:11px }
 .manual-actions { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:4px }
 .result-content { display:grid;justify-items:center;padding:16px 10px;text-align:center }.result-icon { display:grid;width:70px;height:70px;place-items:center;color:#fff;border-radius:24px;background:linear-gradient(135deg,#2563eb,#0ea5e9);font-size:38px;box-shadow:0 18px 35px rgb(37 99 235 / 24%) }.result-content.is-success .result-icon,.result-content.is-already_signed .result-icon { background:linear-gradient(135deg,#059669,#10b981) }.result-content.is-failed .result-icon { background:linear-gradient(135deg,#dc2626,#f87171) }.result-content small { margin-top:17px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.14em }.result-content h2 { margin:6px 0;color:#172033 }.result-content p { max-width:390px;margin:0 0 14px;color:#64748b;line-height:1.7 }
 @media(max-width:1024px){.workspace-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.stats-grid{grid-template-columns:1fr 1fr;gap:8px}.stats-grid article{min-height:76px;padding:12px}.section-head,.manual-form__head,.selector-row,.manual-actions{align-items:stretch;flex-direction:column}.account-head-actions{display:grid;grid-template-columns:1fr}.location-grid{grid-template-columns:1fr}.section-head .el-button,.manual-actions .el-button{width:100%}}
