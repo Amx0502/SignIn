@@ -1,5 +1,6 @@
 import logging
 import unittest
+from unittest.mock import patch
 
 from app.class_cube_service import ClassCubeService
 
@@ -20,6 +21,14 @@ class RecordingLogger:
         self.messages.append(message % args if args else message)
 
 
+class RecordingNotifier:
+    def __init__(self):
+        self.summaries = []
+
+    def send_summary(self, webhook_url, summary):
+        self.summaries.append((webhook_url, summary))
+
+
 class FakeRepository:
     def __init__(self):
         self.task = {
@@ -30,6 +39,11 @@ class FakeRepository:
             "name": "立即执行测试",
             "enabled": False,
             "notify_wecom": False,
+            "longitude": 119.38,
+            "latitude": 26.09,
+            "accuracy": 20,
+            "photo_path": "/uploads/class-cube/task.jpg",
+            "password": "123456",
         }
         self.runs = []
 
@@ -94,6 +108,8 @@ class ClassCubeExecutionTest(unittest.TestCase):
     def test_reports_missing_parameters_instead_of_no_pending_items(self):
         repository = FakeRepository()
         logger = RecordingLogger()
+        notifier = RecordingNotifier()
+        repository.task["notify_wecom"] = True
         repository.try_claim = lambda *args: {
             "id": 3,
             "lease_token": "lease",
@@ -104,6 +120,7 @@ class ClassCubeExecutionTest(unittest.TestCase):
             repository,
             FakeClient(),
             logger,
+            notifier=notifier,
         )
         service.sync_items = lambda course_id, actor: [{
             "id": 4,
@@ -118,7 +135,16 @@ class ClassCubeExecutionTest(unittest.TestCase):
             "message": "请上传签到照片",
         }
 
-        result = service.execute_task(9, trigger="manual")
+        with patch(
+            "app.class_cube_service.load_class_cube_settings",
+            return_value={
+                "class_cube_webhook_url": (
+                    "https://qyapi.weixin.qq.com/cgi-bin/webhook/"
+                    "send?key=private-webhook-key"
+                )
+            },
+        ):
+            result = service.execute_task(9, trigger="manual")
 
         self.assertEqual(result["status"], "waiting_parameter")
         self.assertEqual(result["message"], "请上传签到照片")
@@ -127,4 +153,18 @@ class ClassCubeExecutionTest(unittest.TestCase):
         self.assertIn("发现 1 个可执行签到项", combined)
         self.assertIn("GPS+拍照签到", combined)
         self.assertIn("缺少签到参数", combined)
+        self.assertIn("坐标：119.3800000, 26.0900000", combined)
+        self.assertIn("图片：1张", combined)
+        self.assertIn("密码：123456", combined)
         self.assertIn("任务「立即执行测试」执行完成", combined)
+        self.assertNotIn("cookie=value", combined)
+        self.assertNotIn("private-webhook-key", combined)
+        parameters = notifier.summaries[0][1]["parameters"]
+        self.assertEqual(parameters["longitude"], "119.3800000")
+        self.assertEqual(parameters["latitude"], "26.0900000")
+        self.assertEqual(parameters["image_count"], 1)
+        self.assertEqual(parameters["password"], "123456")
+        self.assertRegex(
+            notifier.summaries[0][1]["details"][0]["executed_at"],
+            r"^\d{2}:\d{2}:\d{2}$",
+        )

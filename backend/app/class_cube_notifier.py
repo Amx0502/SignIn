@@ -30,6 +30,15 @@ class ClassCubeNotifier:
         "no_sign_in": "当前没有签到项",
         "failed": "签到失败",
     }
+    STATUS_ICONS = {
+        "success": "✅",
+        "already_signed": "✅",
+        "waiting_parameter": "⏭️",
+        "skipped": "⏭️",
+        "no_sign_in": "ℹ️",
+        "unknown_result": "⚠️",
+        "failed": "❌",
+    }
 
     def __init__(self, http=None):
         self.http = http or requests
@@ -37,24 +46,39 @@ class ClassCubeNotifier:
     @staticmethod
     def _time_text(value) -> str:
         if isinstance(value, datetime):
-            return value.strftime("%Y-%m-%d %H:%M:%S")
-        return str(value or datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            return value.strftime("%Y-%m-%d %H:%M")
+        text = str(value or datetime.now().strftime("%Y-%m-%d %H:%M"))
+        return text[:16]
 
-    @classmethod
-    def _title(cls, summary: dict) -> str:
-        status = str(summary.get("status") or "")
-        if status == "success":
-            return "✅ 班级魔方签到成功"
-        if status in {"already_signed", "skipped", "no_sign_in"}:
-            return "ℹ️ 班级魔方签到检查完成"
-        if status == "unknown_result":
-            return "⚠️ 班级魔方签到结果待确认"
-        return "❌ 班级魔方签到执行异常"
+    @staticmethod
+    def _detail_time(detail: dict, summary: dict) -> str:
+        value = detail.get("executed_at") or summary.get("started_at")
+        if isinstance(value, datetime):
+            return value.strftime("%H:%M:%S")
+        text = str(value or datetime.now().strftime("%H:%M:%S"))
+        return text[-8:] if len(text) >= 8 else text
+
+    @staticmethod
+    def _parameter_lines(parameters: dict) -> list[str]:
+        lines = []
+        longitude = parameters.get("longitude")
+        latitude = parameters.get("latitude")
+        if longitude not in (None, "") and latitude not in (None, ""):
+            lines.append(f"（📍位置：{longitude}, {latitude}）")
+        lines.append(
+            f"（🖼️图片：{int(parameters.get('image_count') or 0)}张）"
+        )
+        password = parameters.get("password")
+        if password not in (None, ""):
+            lines.append(f"（🔑密码：{password}）")
+        return lines
 
     def send_summary(self, webhook_url: str, summary: dict) -> None:
         url = validate_wecom_webhook(webhook_url)
         if not url:
             return
+        parameters = summary.get("parameters") or {}
+        parameter_lines = self._parameter_lines(parameters)
         detail_lines = []
         for detail in summary.get("details", []):
             if isinstance(detail, dict):
@@ -67,8 +91,20 @@ class ClassCubeNotifier:
                     str(detail.get("status") or ""),
                     str(detail.get("message") or "执行完成"),
                 )
+                icon = self.STATUS_ICONS.get(
+                    str(detail.get("status") or ""),
+                    "ℹ️",
+                )
+                executed_at = self._detail_time(detail, summary)
+                account_name = summary.get("account_name", "-")
                 detail_lines.append(
-                    f"- **{title}**｜{mode}｜{status}"
+                    f"- {icon} {account_name} [{executed_at}]：{title}"
+                )
+                detail_lines.extend(
+                    f"  {line}" for line in parameter_lines
+                )
+                detail_lines.append(
+                    f"  （类型：{mode}；结果：{status}）"
                 )
             else:
                 detail_lines.append(f"- {detail}")
@@ -78,21 +114,22 @@ class ClassCubeNotifier:
             "自动任务",
         )
         content = (
-            f"## {self._title(summary)}\n\n"
-            f"**执行时间**：{self._time_text(summary.get('started_at'))}\n\n"
-            f"**触发方式**：{trigger}\n\n"
-            f"**任务**：{summary.get('task_name', '-')}\n\n"
-            f"**账号**：{summary.get('account_name', '-')}\n\n"
-            f"**课程**：{summary.get('course_name', '-')}\n\n"
-            f"**执行汇总**：扫描 {summary.get('scanned', 0)} 项｜"
-            f"成功 {summary.get('success', 0)} 项｜"
-            f"已完成 {summary.get('already_signed', 0)} 项｜"
-            f"跳过 {summary.get('skipped', 0)} 项｜"
-            f"失败 {summary.get('failed', 0)} 项｜"
-            f"待确认 {summary.get('unknown', 0)} 项"
+            "## 📊 班级魔方通知汇总\n\n"
+            f"时间：{self._time_text(summary.get('started_at'))}\n\n"
+            f"任务：{summary.get('task_name', '-')}\n\n"
+            f"课程：{summary.get('course_name', '-')}\n\n"
+            f"触发：{trigger}\n\n"
+            f"成功：{summary.get('success', 0)} 个｜"
+            f"已完成：{summary.get('already_signed', 0)} 个｜"
+            f"失败：{summary.get('failed', 0)} 个"
         )
         if details:
-            content = f"{content}\n\n### 签到明细\n{details}"
+            content = f"{content}\n\n{details}"
+        elif parameter_lines:
+            content = (
+                f"{content}\n\n任务参数：\n"
+                + "\n".join(parameter_lines)
+            )
         try:
             response = self.http.post(
                 url,

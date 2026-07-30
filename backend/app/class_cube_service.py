@@ -827,6 +827,35 @@ class ClassCubeService:
             "failed": "签到失败",
         }.get(str(status), "执行完成")
 
+    @staticmethod
+    def _task_parameters(task):
+        def coordinate(value):
+            if value in (None, ""):
+                return None
+            return format(float(value), ".7f")
+
+        return {
+            "longitude": coordinate(task.get("longitude")),
+            "latitude": coordinate(task.get("latitude")),
+            "image_count": 1 if task.get("photo_path") else 0,
+            "password": str(task.get("password") or ""),
+        }
+
+    @staticmethod
+    def _parameter_log_parts(parameters):
+        parts = []
+        longitude = parameters.get("longitude")
+        latitude = parameters.get("latitude")
+        if longitude is not None and latitude is not None:
+            parts.append(f"坐标：{longitude}, {latitude}")
+        parts.append(
+            f"图片：{int(parameters.get('image_count') or 0)}张"
+        )
+        password = parameters.get("password")
+        if password:
+            parts.append(f"密码：{password}")
+        return parts
+
     def execute_task(self, task_id, trigger="scheduled"):
         task_id = int(task_id)
         with self._execution_lock:
@@ -912,6 +941,7 @@ class ClassCubeService:
             "unknown": 0,
             "details": [],
         }
+        task_parameters = self._task_parameters(task)
         notification = {
             **result,
             "account_name": (
@@ -922,6 +952,7 @@ class ClassCubeService:
             "course_name": course.get("name", "-"),
             "trigger": trigger,
             "started_at": started_at,
+            "parameters": task_parameters,
         }
         self.logger.info(
             "开始%s任务「%s」；账号：%s；课程：%s",
@@ -1003,12 +1034,17 @@ class ClassCubeService:
                     "mode": item.get("mode", "unknown"),
                     "status": status,
                     "message": checkin_result.get("message", ""),
+                    "executed_at": datetime.now().strftime("%H:%M:%S"),
                 }
                 result["details"].append(detail)
+                parameter_text = "；".join(
+                    self._parameter_log_parts(task_parameters)
+                )
                 self.logger.info(
-                    "签到项「%s」；类型：%s；结果：%s",
+                    "签到项「%s」；类型：%s；%s；结果：%s",
                     detail["title"],
                     self._mode_name(detail["mode"]),
+                    parameter_text,
                     self._status_name(status),
                 )
                 state = {
