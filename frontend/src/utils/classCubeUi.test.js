@@ -43,10 +43,12 @@ test('class cube task editor uses horizontal sections and account ownership', as
   assert.match(panel, /v-model="draft\.owner_user_id".*:disabled="true"/s)
 })
 
-test('class cube execution strategy controls stay inside their section', async () => {
+test('class cube execution strategy controls fill the available width', async () => {
   const panel = await source('../components/class-cube/AutoTaskPanel.vue')
-  assert.match(panel, /\.schedule-row\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/)
-  assert.match(panel, /\.schedule-row \.el-date-editor\{width:100%!important;min-width:0/)
+  assert.match(panel, /\.schedule-row\{[^}]*grid-template-columns:minmax\(0,1fr\) auto/)
+  assert.match(panel, /\.schedule-row\{[^}]*gap:12px/)
+  assert.match(panel, /\.schedule-row :deep\(\.el-date-editor\.el-input\)\{width:100%!important;min-width:0/)
+  assert.match(panel, /\.date-range :deep\(\.el-date-editor\.el-input\)\{width:100%!important;min-width:0/)
   assert.match(panel, /\.date-range\{[^}]*grid-template-columns:minmax\(0,1fr\)/)
   assert.match(panel, /:deep\(\.el-form-item__content\)\{min-width:0/)
   assert.doesNotMatch(panel, /\.date-range\{grid-template-columns:1fr 1fr\}/)
