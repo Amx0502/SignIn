@@ -12,7 +12,19 @@
         <template #header>
           <div class="section-head">
             <div><strong>班级魔方账号</strong><small>扫码登录并管理课程凭据</small></div>
-            <el-button type="primary" :icon="Plus" @click="emit('qr-login', null)">扫码添加</el-button>
+            <div class="account-head-actions">
+              <el-button
+                type="danger"
+                plain
+                :icon="Delete"
+                :disabled="!selectedAccountIds.size || batchDeleting"
+                :loading="batchDeleting"
+                @click="batchDeleteSelected"
+              >
+                批量删除<span v-if="selectedAccountIds.size">（{{ selectedAccountIds.size }}）</span>
+              </el-button>
+              <el-button type="primary" :icon="Plus" @click="emit('qr-login', null)">扫码添加</el-button>
+            </div>
           </div>
         </template>
         <el-empty v-if="!accounts.length" description="暂无账号，请先扫码登录" :image-size="78" />
@@ -24,6 +36,12 @@
             :class="{ active: account.id === selectedAccountId }"
             @click="emit('select-account', account.id)"
           >
+            <el-checkbox
+              :model-value="selectedAccountIds.has(account.id)"
+              :aria-label="`选择账号 ${account.name || account.remote_user_name || account.id}`"
+              @click.stop
+              @change="checked => toggleAccountSelection(account.id, checked)"
+            />
             <span class="avatar">{{ (account.remote_user_name || account.name || '班').slice(0, 1) }}</span>
             <div class="account-main">
               <strong>{{ account.name || account.remote_user_name || `账号 ${account.id}` }}</strong>
@@ -142,7 +160,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
   Aim, Camera, Cellphone, CircleCheck, CircleCheckFilled, CircleCloseFilled,
-  Key, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, User, WarningFilled,
+  Delete, Key, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TaskImageUpload from '../TaskImageUpload.vue'
@@ -163,10 +181,13 @@ const props = defineProps({
   itemsLoading: { type: Boolean, default: false },
   uploadPhotoAction: { type: Function, required: true },
   manualCheckinAction: { type: Function, required: true },
+  batchDeleteAccountsAction: { type: Function, required: true },
 })
 const emit = defineEmits(['qr-login', 'select-account', 'select-course', 'select-item', 'sync-courses', 'sync-items', 'rename-account', 'delete-account'])
 const syncing = ref(false)
 const checkingIn = ref(false)
+const batchDeleting = ref(false)
+const selectedAccountIds = ref(new Set())
 const resultVisible = ref(false)
 const result = ref(null)
 const photoFiles = ref([])
@@ -206,6 +227,16 @@ watch(
   resetManualState,
 )
 
+watch(
+  () => props.accounts.map(account => account.id),
+  accountIds => {
+    const available = new Set(accountIds)
+    selectedAccountIds.value = new Set(
+      [...selectedAccountIds.value].filter(id => available.has(id)),
+    )
+  },
+)
+
 const activeItems = computed(() => props.items.filter(item => item.status === 'active').length)
 const enabledTasks = computed(() => props.tasks.filter(task => task.enabled).length)
 const modes = {
@@ -240,6 +271,35 @@ async function accountCommand(command, account) {
       await ElMessageBox.confirm(`删除账号「${account.name || account.remote_user_name}」及其课程和任务？`, '删除账号', { type: 'warning' })
       emit('delete-account', account.id)
     } catch {}
+  }
+}
+
+function toggleAccountSelection(accountId, selected) {
+  const next = new Set(selectedAccountIds.value)
+  if (selected) next.add(accountId)
+  else next.delete(accountId)
+  selectedAccountIds.value = next
+}
+
+async function batchDeleteSelected() {
+  const ids = [...selectedAccountIds.value]
+  if (!ids.length || batchDeleting.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${ids.length} 个账号吗？关联课程、签到项和任务将一并删除。`,
+      '批量删除账号',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+
+  batchDeleting.value = true
+  try {
+    const deleted = await props.batchDeleteAccountsAction(ids)
+    if (deleted) selectedAccountIds.value = new Set()
+  } finally {
+    batchDeleting.value = false
   }
 }
 
@@ -296,11 +356,16 @@ async function submitManual() {
 .stat-icon { display: grid; width: 46px; height: 46px; flex: none; place-items: center; border-radius: 15px; font-size: 21px; }
 .stat-icon.blue { color: #2563eb; background: #dbeafe; }.stat-icon.cyan { color: #0891b2; background: #cffafe; }.stat-icon.green { color: #059669; background: #d1fae5; }.stat-icon.violet { color: #7c3aed; background: #ede9fe; }
 .stats-grid strong, .stats-grid small { display: block; }.stats-grid strong { color: #0f172a; font-size: 25px; line-height: 1; }.stats-grid small { margin-top: 7px; color: #64748b; font-size: 12px; }
-.workspace-grid { display: grid; grid-template-columns: minmax(270px, .72fr) minmax(0, 1.5fr); gap: 18px; align-items: start; }
+.workspace-grid { display: grid; grid-template-columns: minmax(330px, .85fr) minmax(0, 1.5fr); gap: 18px; align-items: start; }
 .glass-card { border: 1px solid rgb(191 219 254 / 58%); border-radius: 22px; background: rgb(255 255 255 / 82%); box-shadow: 0 18px 42px rgb(15 23 42 / 7%); backdrop-filter: blur(18px); }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.section-head strong,.section-head small { display: block; }.section-head strong { color: #172033; font-size: 16px; }.section-head small { margin-top: 4px; color: #64748b; font-size: 11px; }
-.account-list,.item-list { display: grid; gap: 9px; max-height: 480px; overflow: auto; }
-.account-row,.item-row { display: flex; align-items: center; gap: 10px; padding: 12px; margin-top: 5px; border: 1px solid #e2e8f0; border-radius: 15px; background: #f8fafc; cursor: pointer; transition: .2s ease; }
+.account-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.account-list,.item-list { display: grid; gap: 9px; max-height: 480px; overflow-y: auto; overflow-x: hidden; }
+.account-row,.item-row { align-items: center; padding: 12px; margin-top: 5px; border: 1px solid #e2e8f0; border-radius: 15px; background: #f8fafc; cursor: pointer; transition: .2s ease; }
+.account-row { display: grid; grid-template-columns: auto 39px minmax(0, 1fr) auto auto; gap: 8px; }
+.item-row { display: flex; gap: 10px; }
+.account-row > .el-checkbox,.account-row > .el-tag,.account-row > .el-dropdown { min-width: 0; flex: none; }
+.account-row > .el-tag { justify-self: end; }
 .account-row:hover,.item-row:hover,.account-row.active,.item-row.active { border-color: #93c5fd; background: #eff6ff; transform: translateY(-1px); }
 .avatar,.mode-icon { display: grid; width: 39px; height: 39px; flex: none; place-items: center; color: #fff; border-radius: 13px; background: linear-gradient(135deg,#2563eb,#0ea5e9); font-weight: 800; }
 .account-main,.item-row>div { min-width: 0; flex: 1; }.account-main strong,.account-main small,.item-row strong,.item-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.account-main strong,.item-row strong { color:#1e293b;font-size:13px; }.account-main small,.item-row small { margin-top:4px;color:#64748b;font-size:11px; }
@@ -311,5 +376,5 @@ async function submitManual() {
 .location-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px }.location-grid .el-input-number,.location-grid .el-input { width:100% }.field-tip { margin:7px 0 0;color:#64748b;font-size:11px }
 .manual-actions { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:4px }
 .result-content { display:grid;justify-items:center;padding:16px 10px;text-align:center }.result-icon { display:grid;width:70px;height:70px;place-items:center;color:#fff;border-radius:24px;background:linear-gradient(135deg,#2563eb,#0ea5e9);font-size:38px;box-shadow:0 18px 35px rgb(37 99 235 / 24%) }.result-content.is-success .result-icon,.result-content.is-already_signed .result-icon { background:linear-gradient(135deg,#059669,#10b981) }.result-content.is-failed .result-icon { background:linear-gradient(135deg,#dc2626,#f87171) }.result-content small { margin-top:17px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.14em }.result-content h2 { margin:6px 0;color:#172033 }.result-content p { max-width:390px;margin:0 0 14px;color:#64748b;line-height:1.7 }
-@media(max-width:1024px){.workspace-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.stats-grid{grid-template-columns:1fr 1fr;gap:8px}.stats-grid article{min-height:76px;padding:12px}.section-head,.manual-form__head,.selector-row,.manual-actions{align-items:stretch;flex-direction:column}.location-grid{grid-template-columns:1fr}.section-head .el-button,.manual-actions .el-button{width:100%}}
+@media(max-width:1024px){.workspace-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.stats-grid{grid-template-columns:1fr 1fr;gap:8px}.stats-grid article{min-height:76px;padding:12px}.section-head,.manual-form__head,.selector-row,.manual-actions{align-items:stretch;flex-direction:column}.account-head-actions{display:grid;grid-template-columns:1fr}.location-grid{grid-template-columns:1fr}.section-head .el-button,.manual-actions .el-button{width:100%}}
 </style>

@@ -23,8 +23,7 @@
         <el-form-item label="机器人 Webhook">
           <el-input
             v-model="settings.class_cube_webhook_url"
-            type="password"
-            show-password
+            type="text"
             placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
           />
         </el-form-item>
