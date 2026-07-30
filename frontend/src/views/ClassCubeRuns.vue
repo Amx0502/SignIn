@@ -1,17 +1,14 @@
 <template>
   <div class="cube-subpage">
-    <el-card>
-      <template #header>运行记录</template>
-      <RunHistoryPanel
-        :runs="runs"
-        :tasks="tasks"
-        :accounts="accounts"
-        :courses="courses"
-        :is-admin="isAdmin"
-        :load-runs-action="loadRuns"
-        :retry-claim-action="retryClaim"
-      />
-    </el-card>
+    <RunHistoryPanel
+      :runs="runs"
+      :tasks="tasks"
+      :accounts="accounts"
+      :courses="courses"
+      :is-admin="isAdmin"
+      :load-runs-action="loadRuns"
+      :retry-claim-action="retryClaim"
+    />
   </div>
 </template>
 

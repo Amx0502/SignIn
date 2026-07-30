@@ -1,4 +1,22 @@
-<template><div class="cube-subpage"><el-card><template #header>自动任务</template><AutoTaskPanel :tasks="tasks" :accounts="accounts" :courses="courses" :selected-task-ids="selectedTaskIds" :is-admin="isAdmin" :courses-loading="coursesLoading" :save-task-action="saveTask" :remove-tasks-action="removeTasks" :run-task-action="runTask" :upload-photo-action="uploadPhoto" @update:selected-task-ids="value => selectedTaskIds = value" @select-account="selectAccount" @refresh="refreshBackground" /></el-card></div></template>
+<template>
+  <div class="cube-subpage">
+    <AutoTaskPanel
+      :tasks="tasks"
+      :accounts="accounts"
+      :courses="courses"
+      :selected-task-ids="selectedTaskIds"
+      :is-admin="isAdmin"
+      :courses-loading="coursesLoading"
+      :save-task-action="saveTask"
+      :remove-tasks-action="removeTasks"
+      :run-task-action="runTask"
+      :upload-photo-action="uploadPhoto"
+      @update:selected-task-ids="value => selectedTaskIds = value"
+      @select-account="selectAccount"
+      @refresh="refreshBackground"
+    />
+  </div>
+</template>
 <script setup>
 import { computed, onMounted } from 'vue'
 import AutoTaskPanel from '../components/class-cube/AutoTaskPanel.vue'
