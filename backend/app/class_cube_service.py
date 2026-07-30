@@ -562,6 +562,30 @@ class ClassCubeService:
         self._cancel_targets(cancelled_targets)
         return True
 
+    def batch_delete_accounts(
+        self,
+        account_ids: list[int],
+        actor: dict[str, Any],
+    ) -> int:
+        normalized_ids = sorted(set(account_ids))
+        actor_user_id, is_admin = self._actor_scope(actor)
+        with self._qr_lock:
+            deleted = self.repository.delete_accounts(
+                normalized_ids,
+                actor_user_id,
+                is_admin,
+            )
+            deleted_ids = set(normalized_ids)
+            cancelled_targets = {
+                token: target
+                for token, target in self._qr_targets.items()
+                if target.account_id in deleted_ids
+            }
+            for token in cancelled_targets:
+                self._qr_targets.pop(token, None)
+        self._cancel_targets(cancelled_targets)
+        return deleted
+
     def close(self) -> None:
         with self._qr_lock:
             if self._closed:

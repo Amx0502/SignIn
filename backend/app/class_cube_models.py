@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,13 @@ class QrSessionCreate(BaseModel):
 
 class ClassCubeAccountUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+
+
+class ClassCubeAccountBatchDelete(BaseModel):
+    ids: list[Annotated[int, Field(gt=0)]] = Field(
+        min_length=1,
+        max_length=200,
+    )
 
 
 class ManualCheckinRequest(BaseModel):

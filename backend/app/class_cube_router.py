@@ -11,6 +11,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 
 from .class_cube_models import (
+    ClassCubeAccountBatchDelete,
     ClassCubeAccountUpdate,
     ManualCheckinRequest,
     QrSessionCreate,
@@ -187,6 +188,19 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
             request,
             _service(request).delete_account,
             account_id,
+            actor,
+        )
+
+    @router.post("/accounts/batch-delete")
+    def batch_delete_accounts(
+        payload: ClassCubeAccountBatchDelete,
+        request: Request,
+        actor=Depends(auth_dependency),
+    ):
+        return _invoke(
+            request,
+            _service(request).batch_delete_accounts,
+            payload.ids,
             actor,
         )
 

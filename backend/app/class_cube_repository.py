@@ -340,6 +340,29 @@ class ClassCubeRepository:
                 raise ClassCubeNotFound("班级魔方账号不存在")
             session.delete(row)
 
+    def delete_accounts(
+        self,
+        account_ids: Iterable[int],
+        actor_user_id: int,
+        is_admin: bool,
+    ) -> int:
+        normalized_ids = sorted(set(account_ids))
+        with self.database.session() as session:
+            query = select(ClassCubeAccountRow).where(
+                ClassCubeAccountRow.id.in_(normalized_ids)
+            )
+            if not is_admin:
+                query = query.where(
+                    ClassCubeAccountRow.owner_user_id == actor_user_id
+                )
+            rows = session.scalars(query).all()
+            if len(rows) != len(normalized_ids):
+                raise ClassCubeNotFound("班级魔方账号不存在")
+            for row in rows:
+                session.delete(row)
+            session.flush()
+            return len(rows)
+
     def get_course(
         self,
         course_id: int,
