@@ -1,4 +1,5 @@
 from datetime import datetime
+import math
 
 import requests
 
@@ -36,7 +37,7 @@ class ClassCubeNotifier:
         "waiting_parameter": "⏭️",
         "skipped": "⏭️",
         "no_sign_in": "ℹ️",
-        "unknown_result": "⚠️",
+        "unknown_result": "❌",
         "failed": "❌",
     }
 
@@ -59,15 +60,29 @@ class ClassCubeNotifier:
         return text[-8:] if len(text) >= 8 else text
 
     @staticmethod
+    def _coordinate_text(value) -> str | None:
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not math.isfinite(number):
+            return None
+        return f"{number:.2f}"
+
+    @staticmethod
     def _parameter_lines(parameters: dict) -> list[str]:
         lines = []
-        longitude = parameters.get("longitude")
-        latitude = parameters.get("latitude")
-        if longitude not in (None, "") and latitude not in (None, ""):
-            lines.append(f"（📍位置：{longitude}, {latitude}）")
-        lines.append(
-            f"（🖼️图片：{int(parameters.get('image_count') or 0)}张）"
+        longitude = ClassCubeNotifier._coordinate_text(
+            parameters.get("longitude")
         )
+        latitude = ClassCubeNotifier._coordinate_text(
+            parameters.get("latitude")
+        )
+        if longitude is not None and latitude is not None:
+            lines.append(f"（📍位置：{longitude}, {latitude}）")
+        image_count = int(parameters.get("image_count") or 0)
+        if image_count > 0:
+            lines.append(f"（🖼️图片：{image_count}张）")
         password = parameters.get("password")
         if password not in (None, ""):
             lines.append(f"（🔑密码：{password}）")
@@ -82,7 +97,6 @@ class ClassCubeNotifier:
         detail_lines = []
         for detail in summary.get("details", []):
             if isinstance(detail, dict):
-                title = detail.get("title") or "签到项"
                 mode = self.MODE_NAMES.get(
                     str(detail.get("mode") or ""),
                     "未知类型",
@@ -98,7 +112,7 @@ class ClassCubeNotifier:
                 executed_at = self._detail_time(detail, summary)
                 account_name = summary.get("account_name", "-")
                 detail_lines.append(
-                    f"- {icon} {account_name} [{executed_at}]：{title}"
+                    f"- {icon} {account_name} [{executed_at}]"
                 )
                 detail_lines.extend(
                     f"  {line}" for line in parameter_lines
@@ -113,15 +127,18 @@ class ClassCubeNotifier:
             str(summary.get("trigger") or ""),
             "自动任务",
         )
+        success_count = int(summary.get("success", 0) or 0) + int(
+            summary.get("already_signed", 0) or 0
+        )
+        failed_count = int(summary.get("failed", 0) or 0) + int(
+            summary.get("unknown", 0) or 0
+        )
         content = (
             "## 📊 班级魔方通知汇总\n\n"
             f"时间：{self._time_text(summary.get('started_at'))}\n\n"
-            f"任务：{summary.get('task_name', '-')}\n\n"
             f"课程：{summary.get('course_name', '-')}\n\n"
             f"触发：{trigger}\n\n"
-            f"成功：{summary.get('success', 0)} 个｜"
-            f"已完成：{summary.get('already_signed', 0)} 个｜"
-            f"失败：{summary.get('failed', 0)} 个"
+            f"成功：{success_count} 个｜失败：{failed_count} 个"
         )
         if details:
             content = f"{content}\n\n{details}"

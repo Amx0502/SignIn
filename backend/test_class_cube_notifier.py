@@ -44,10 +44,10 @@ class ClassCubeNotifierTest(unittest.TestCase):
                 "started_at": "2026-07-30 10:50:00",
                 "scanned": 2,
                 "success": 1,
-                "failed": 0,
+                "failed": 1,
                 "already_signed": 1,
                 "skipped": 0,
-                "unknown": 0,
+                "unknown": 1,
                 "parameters": {
                     "longitude": "119.3800000",
                     "latitude": "26.0900000",
@@ -79,16 +79,19 @@ class ClassCubeNotifierTest(unittest.TestCase):
         content = http.posts[0][1]["json"]["markdown"]["content"]
         self.assertIn("📊 班级魔方通知汇总", content)
         self.assertIn("时间：2026-07-30 10:50", content)
-        self.assertIn("任务：高数", content)
         self.assertIn("课程：高等数学", content)
         self.assertIn("手动立即执行", content)
-        self.assertIn("成功：1 个｜已完成：1 个｜失败：0 个", content)
-        self.assertIn("张三 [10:55:50]：课堂定位", content)
-        self.assertIn("📍位置：119.3800000, 26.0900000", content)
+        self.assertIn("成功：2 个｜失败：2 个", content)
+        self.assertIn("张三 [10:55:50]", content)
+        self.assertIn("📍位置：119.38, 26.09", content)
         self.assertIn("🖼️图片：1张", content)
         self.assertIn("🔑密码：123456", content)
         self.assertIn("类型：GPS 签到", content)
         self.assertIn("已完成，无需重复签到", content)
+        self.assertNotIn("任务：高数", content)
+        self.assertNotIn("课堂定位", content)
+        self.assertNotIn("课前签到", content)
+        self.assertNotIn("已完成：", content)
         self.assertNotIn("already_signed", content)
 
     def test_omits_unconfigured_coordinates_and_password(self):
@@ -108,8 +111,26 @@ class ClassCubeNotifierTest(unittest.TestCase):
 
         content = http.posts[0][1]["json"]["markdown"]["content"]
         self.assertNotIn("📍位置", content)
-        self.assertIn("🖼️图片：0张", content)
+        self.assertNotIn("🖼️图片", content)
         self.assertNotIn("🔑密码", content)
+
+    def test_omits_invalid_coordinates_without_failing_notification(self):
+        http = FakeHttp({"errcode": 0})
+        ClassCubeNotifier(http).send_summary(
+            WEBHOOK,
+            {
+                "parameters": {
+                    "longitude": "invalid",
+                    "latitude": "26.09",
+                    "image_count": 0,
+                    "password": "",
+                },
+                "details": [],
+            },
+        )
+
+        content = http.posts[0][1]["json"]["markdown"]["content"]
+        self.assertNotIn("📍位置", content)
 
     def test_rejects_remote_error(self):
         with self.assertRaises(ClassCubeNotificationError):
