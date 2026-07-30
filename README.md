@@ -77,15 +77,6 @@ python run.py
 
 后端默认监听 `http://0.0.0.0:8765`。
 
-## 后端测试
-
-测试会创建名称为 `xxqd_test_<随机值>` 的临时数据库，并在测试结束时仅删除本次创建的临时库，不修改正式数据库 `xxqd`。
-
-```powershell
-cd backend
-python -m pytest tests -v
-```
-
 ## 前端开发与构建
 
 ```powershell

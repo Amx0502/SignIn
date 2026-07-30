@@ -21,3 +21,5 @@ backend/accounts.json
 backend/users.json
 backend/sessions.json
 docs/
+backend/test_*.py
+frontend/src/**/*.test.js
