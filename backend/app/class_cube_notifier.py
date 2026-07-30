@@ -14,6 +14,7 @@ class ClassCubeNotifier:
     TRIGGER_NAMES = {
         "manual": "手动立即执行",
         "scheduled": "定时自动执行",
+        "course_manual": "课程签到中心手动执行",
     }
     MODE_NAMES = {
         "qr": "二维码签到",

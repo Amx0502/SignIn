@@ -15,6 +15,7 @@ class ClassCubeAccountUpdate(BaseModel):
 
 
 class ManualCheckinRequest(BaseModel):
+    notify_wecom: bool = False
     latitude: float | None = Field(
         default=None,
         allow_inf_nan=False,

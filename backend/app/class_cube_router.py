@@ -251,7 +251,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     ):
         return _invoke(
             request,
-            _service(request).manual_checkin,
+            _service(request).tracked_manual_checkin,
             item_id,
             payload.model_dump(),
             actor,

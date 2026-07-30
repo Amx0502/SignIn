@@ -1,7 +1,7 @@
 <template>
   <el-card class="run-panel" shadow="never">
     <template #header>
-      <div class="panel-head"><div><strong>自动任务运行记录</strong><small>所有结果均来自服务端严格状态判定</small></div><el-button :icon="Refresh" @click="applyFilters">刷新记录</el-button></div>
+      <div class="panel-head"><div><strong>签到运行记录</strong><small>包含自动任务与课程签到中心的严格结果记录</small></div><el-button :icon="Refresh" @click="applyFilters">刷新记录</el-button></div>
     </template>
     <div class="filters">
       <el-input-number v-if="isAdmin" v-model="filters.owner_user_id" :min="1" :controls="false" placeholder="后台用户 ID" aria-label="后台用户 ID" />
@@ -16,7 +16,7 @@
       <article v-for="run in runs" :key="run.id" class="run-row">
         <span class="run-mark" :class="run.status"><el-icon><component :is="statusMeta(run.status).icon" /></el-icon></span>
         <div class="run-main">
-          <div><strong>{{ taskName(run.task_id) }}</strong><el-tag :type="statusMeta(run.status).type" size="small">{{ statusMeta(run.status).label }}</el-tag></div>
+          <div><strong>{{ taskName(run) }}</strong><el-tag :type="statusMeta(run.status).type" size="small">{{ statusMeta(run.status).label }}</el-tag></div>
           <p>{{ run.message || statusMeta(run.status).tip }}</p>
           <small>{{ formatTime(run.started_at) }} · {{ modeName(run.mode) }} · 签到项 {{ run.remote_item_id }}</small>
         </div>
@@ -48,7 +48,7 @@ const statuses = {
 }
 const filters = reactive({ owner_user_id:null, account_id:null, course_id:null, task_id:null, status:'' })
 function statusMeta(status){return statuses[status]||statuses.failed}
-function taskName(id){return props.tasks.find(row=>row.id===id)?.name||`任务 ${id}`}
+function taskName(run){if(run.source==='course_manual')return '课程手动签到';return props.tasks.find(row=>row.id===run.task_id)?.name||`任务 ${run.task_id}`}
 function modeName(mode){return {qr:'二维码签到',gps:'GPS 签到',gps_photo:'GPS+拍照签到',password:'密码签到'}[mode]||mode||'未知类型'}
 function formatTime(value){return value?new Date(value).toLocaleString('zh-CN',{hour12:false}):'—'}
 function filterPayload(){return Object.fromEntries(Object.entries(filters).filter(([key,value])=>value!==null&&value!==''&&(props.isAdmin||key!=='owner_user_id')))}

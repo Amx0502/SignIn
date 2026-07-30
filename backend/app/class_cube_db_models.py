@@ -259,11 +259,23 @@ class ClassCubeTaskRunRow(ClassCubeBase):
         primary_key=True,
         autoincrement=True,
     )
-    task_id: Mapped[int] = mapped_column(
+    task_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("class_cube_tasks.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
+    )
+    source: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="task", index=True
+    )
+    owner_user_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True
+    )
+    account_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True
+    )
+    course_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True
     )
     checkin_item_id: Mapped[int | None] = mapped_column(
         BigInteger,
@@ -285,7 +297,9 @@ class ClassCubeTaskRunRow(ClassCubeBase):
         DateTime, nullable=True
     )
 
-    task: Mapped[ClassCubeTaskRow] = relationship(back_populates="runs")
+    task: Mapped[ClassCubeTaskRow | None] = relationship(
+        back_populates="runs"
+    )
     checkin_item: Mapped[ClassCubeCheckinItemRow | None] = relationship(
         back_populates="task_runs"
     )

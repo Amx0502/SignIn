@@ -158,10 +158,100 @@ class ClassCubeDatabase:
     @staticmethod
     def _migrate_task_run_table(engine: Engine) -> None:
         table = "class_cube_task_runs"
+        inspector = inspect(engine)
         columns = {
             column["name"]: column
-            for column in inspect(engine).get_columns(table)
+            for column in inspector.get_columns(table)
         }
+        definitions = {
+            "source": "VARCHAR(32) NOT NULL DEFAULT 'task'",
+            "owner_user_id": "BIGINT NULL",
+            "account_id": "BIGINT NULL",
+            "course_id": "BIGINT NULL",
+        }
+        foreign_keys = inspector.get_foreign_keys(table)
+        task_foreign_key = next(
+            (
+                foreign_key
+                for foreign_key in foreign_keys
+                if foreign_key.get("constrained_columns") == ["task_id"]
+            ),
+            None,
+        )
+        quote = engine.dialect.identifier_preparer.quote
+
+        with engine.begin() as connection:
+            for name, definition in definitions.items():
+                if name not in columns:
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE {table} ADD COLUMN "
+                            f"{name} {definition}"
+                        )
+                    )
+            connection.execute(
+                text(
+                    "UPDATE class_cube_task_runs AS runs "
+                    "JOIN class_cube_tasks AS tasks "
+                    "ON tasks.id = runs.task_id "
+                    "SET runs.owner_user_id = tasks.owner_user_id, "
+                    "runs.account_id = tasks.account_id, "
+                    "runs.course_id = tasks.course_id, "
+                    "runs.source = 'task' "
+                    "WHERE runs.owner_user_id IS NULL "
+                    "OR runs.account_id IS NULL "
+                    "OR runs.course_id IS NULL"
+                )
+            )
+            missing_scope = connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM class_cube_task_runs "
+                    "WHERE owner_user_id IS NULL "
+                    "OR account_id IS NULL OR course_id IS NULL"
+                )
+            ).scalar_one()
+            if missing_scope:
+                raise RuntimeError(
+                    "班级魔方运行记录作用域字段回填失败"
+                )
+            for name in ("owner_user_id", "account_id", "course_id"):
+                column = columns.get(name)
+                if column is None or column.get("nullable", True):
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE {table} MODIFY COLUMN "
+                            f"{name} BIGINT NOT NULL"
+                        )
+                    )
+
+            task_id = columns.get("task_id", {})
+            if task_id and not task_id.get("nullable", False):
+                constraint_name = (
+                    task_foreign_key or {}
+                ).get("name")
+                if constraint_name:
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE {table} DROP FOREIGN KEY "
+                            f"{quote(constraint_name)}"
+                        )
+                    )
+                connection.execute(
+                    text(
+                        f"ALTER TABLE {table} "
+                        "MODIFY COLUMN task_id BIGINT NULL"
+                    )
+                )
+                if constraint_name:
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE {table} ADD CONSTRAINT "
+                            f"{quote(constraint_name)} FOREIGN KEY "
+                            "(task_id) REFERENCES class_cube_tasks(id) "
+                            "ON DELETE CASCADE"
+                        )
+                    )
+
         checkin_item = columns.get("checkin_item_id", {})
         if checkin_item and not checkin_item.get("nullable", False):
             with engine.begin() as connection:
@@ -171,6 +261,26 @@ class ClassCubeDatabase:
                         "MODIFY COLUMN checkin_item_id BIGINT NULL"
                     )
                 )
+
+        existing_indexes = {
+            index["name"]
+            for index in inspect(engine).get_indexes(table)
+        }
+        index_columns = {
+            "ix_class_cube_task_runs_source": "source",
+            "ix_class_cube_task_runs_owner_user_id": "owner_user_id",
+            "ix_class_cube_task_runs_account_id": "account_id",
+            "ix_class_cube_task_runs_course_id": "course_id",
+        }
+        with engine.begin() as connection:
+            for index_name, column_name in index_columns.items():
+                if index_name not in existing_indexes:
+                    connection.execute(
+                        text(
+                            f"CREATE INDEX {quote(index_name)} "
+                            f"ON {table} ({column_name})"
+                        )
+                    )
 
     @contextmanager
     def session(self) -> Iterator[Session]:

@@ -101,6 +101,18 @@ class ClassCubeRepository:
         }
 
     @staticmethod
+    def _task_run_scope(session, task_id):
+        task = session.get(ClassCubeTaskRow, task_id)
+        if task is None:
+            raise ClassCubeNotFound("班级魔方任务不存在")
+        return {
+            "source": "task",
+            "owner_user_id": task.owner_user_id,
+            "account_id": task.account_id,
+            "course_id": task.course_id,
+        }
+
+    @staticmethod
     def _scoped_account_query(
         account_id: int,
         actor_user_id: int,
@@ -818,8 +830,12 @@ class ClassCubeRepository:
                         ClassCubeCheckinItemRow,
                         row.checkin_item_id,
                     )
+                    run_scope = self._task_run_scope(
+                        session, row.task_id
+                    )
                     run = ClassCubeTaskRunRow(
                         task_id=row.task_id,
+                        **run_scope,
                         checkin_item_id=row.checkin_item_id,
                         remote_item_id=row.remote_item_id,
                         mode=(
@@ -901,8 +917,10 @@ class ClassCubeRepository:
             )
             if claim is None:
                 raise ClassCubeNotFound("签到声明不存在")
+            run_scope = self._task_run_scope(session, task_id)
             run = ClassCubeTaskRunRow(
                 task_id=task_id,
+                **run_scope,
                 checkin_item_id=item_id,
                 remote_item_id=remote_item_id,
                 mode=mode,
@@ -952,11 +970,48 @@ class ClassCubeRepository:
     ):
         now = datetime.now()
         with self.database.session() as session:
+            run_scope = self._task_run_scope(session, task_id)
             run = ClassCubeTaskRunRow(
                 task_id=task_id,
+                **run_scope,
                 checkin_item_id=None,
                 remote_item_id="",
                 mode="task",
+                status=str(status)[:32],
+                message=" ".join(str(message).split())[:500],
+                response_summary=dict(response_summary or {}),
+                started_at=started_at or now,
+                finished_at=now,
+            )
+            session.add(run)
+            session.flush()
+            return self._run_record(run)
+
+    def record_manual_run(
+        self,
+        *,
+        owner_user_id,
+        account_id,
+        course_id,
+        checkin_item_id,
+        remote_item_id,
+        mode,
+        status,
+        message,
+        response_summary,
+        started_at,
+    ):
+        now = datetime.now()
+        with self.database.session() as session:
+            run = ClassCubeTaskRunRow(
+                task_id=None,
+                source="course_manual",
+                owner_user_id=owner_user_id,
+                account_id=account_id,
+                course_id=course_id,
+                checkin_item_id=checkin_item_id,
+                remote_item_id=str(remote_item_id)[:128],
+                mode=str(mode)[:32],
                 status=str(status)[:32],
                 message=" ".join(str(message).split())[:500],
                 response_summary=dict(response_summary or {}),
@@ -973,22 +1028,23 @@ class ClassCubeRepository:
         limit=100, offset=0
     ):
         with self.database.session() as session:
-            query = (
-                select(ClassCubeTaskRunRow)
-                .join(ClassCubeTaskRow)
-            )
+            query = select(ClassCubeTaskRunRow)
             if is_admin and owner_user_id is not None:
                 query = query.where(
-                    ClassCubeTaskRow.owner_user_id == owner_user_id
+                    ClassCubeTaskRunRow.owner_user_id == owner_user_id
                 )
             elif not is_admin:
                 query = query.where(
-                    ClassCubeTaskRow.owner_user_id == actor_user_id
+                    ClassCubeTaskRunRow.owner_user_id == actor_user_id
                 )
             if account_id is not None:
-                query = query.where(ClassCubeTaskRow.account_id == account_id)
+                query = query.where(
+                    ClassCubeTaskRunRow.account_id == account_id
+                )
             if course_id is not None:
-                query = query.where(ClassCubeTaskRow.course_id == course_id)
+                query = query.where(
+                    ClassCubeTaskRunRow.course_id == course_id
+                )
             if task_id is not None:
                 query = query.where(ClassCubeTaskRunRow.task_id == task_id)
             if status:

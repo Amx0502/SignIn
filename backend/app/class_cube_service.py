@@ -1286,13 +1286,7 @@ class ClassCubeService:
             is_admin,
         )
 
-    def manual_checkin(
-        self,
-        item_id: int,
-        payload: dict[str, Any],
-        actor: dict[str, Any],
-        before_submit: Callable[[], None] | None = None,
-    ) -> dict[str, str]:
+    def _manual_checkin_context(self, item_id, actor):
         actor_user_id, is_admin = self._actor_scope(actor)
         item = self.repository.get_item(
             item_id,
@@ -1309,6 +1303,194 @@ class ClassCubeService:
             actor_user_id,
             is_admin,
         )
+        return {
+            "actor_user_id": actor_user_id,
+            "is_admin": is_admin,
+            "item": item,
+            "course": course,
+            "account": account,
+        }
+
+    @staticmethod
+    def _manual_parameters(payload):
+        return {
+            "latitude": payload.get("latitude"),
+            "longitude": payload.get("longitude"),
+            "image_count": 1 if payload.get("photo_path") else 0,
+            "password": str(payload.get("password") or ""),
+        }
+
+    def _manual_summary(
+        self,
+        context,
+        result,
+        payload,
+        started_at,
+    ):
+        item = context["item"]
+        course = context["course"]
+        account = context["account"]
+        status = result.get("status", "failed")
+        return {
+            "status": status,
+            "message": result.get("message", ""),
+            "success": 1 if status == "success" else 0,
+            "already_signed": 1 if status == "already_signed" else 0,
+            "failed": (
+                0 if status in {"success", "already_signed"} else 1
+            ),
+            "unknown": 0,
+            "details": [
+                {
+                    "item_id": item["id"],
+                    "title": item.get("title", "签到项"),
+                    "mode": item.get("mode", "unknown"),
+                    "status": status,
+                    "message": result.get("message", ""),
+                    "executed_at": datetime.now().strftime("%H:%M:%S"),
+                }
+            ],
+            "account_name": (
+                account.get("name")
+                or account.get("remote_user_name")
+                or "-"
+            ),
+            "course_name": course.get("name", "-"),
+            "trigger": "course_manual",
+            "started_at": started_at.isoformat(),
+            "parameters": self._manual_parameters(payload),
+        }
+
+    def _record_manual_run(self, context, summary, started_at):
+        item = context["item"]
+        course = context["course"]
+        account = context["account"]
+        self.repository.record_manual_run(
+            owner_user_id=int(account["owner_user_id"]),
+            account_id=int(account["id"]),
+            course_id=int(course["id"]),
+            checkin_item_id=int(item["id"]),
+            remote_item_id=item.get("remote_item_id", ""),
+            mode=item.get("mode", "unknown"),
+            status=summary.get("status", "failed"),
+            message=summary.get("message", ""),
+            response_summary=summary,
+            started_at=started_at,
+        )
+
+    def _send_manual_notification(self, summary):
+        try:
+            webhook_url = load_class_cube_settings().get(
+                "class_cube_webhook_url", ""
+            )
+            if not webhook_url:
+                self.logger.info(
+                    "课程手动签到未发送企业微信通知：机器人未配置"
+                )
+                return
+            self.notifier.send_summary(webhook_url, summary)
+            self.logger.info(
+                "课程手动签到企业微信通知发送成功"
+            )
+        except Exception as exc:
+            self.logger.error(
+                "课程手动签到企业微信通知发送失败：%s",
+                type(exc).__name__,
+            )
+
+    def tracked_manual_checkin(self, item_id, payload, actor):
+        started_at = datetime.now()
+        context = self._manual_checkin_context(item_id, actor)
+        item = context["item"]
+        course = context["course"]
+        account = context["account"]
+        parameters = self._manual_parameters(payload)
+        parameter_text = "；".join(
+            self._parameter_log_parts(parameters)
+        )
+        self.logger.info(
+            "开始课程手动签到；账号：%s；课程：%s；"
+            "签到项：%s；类型：%s；%s",
+            (
+                account.get("name")
+                or account.get("remote_user_name")
+                or "-"
+            ),
+            course.get("name", "-"),
+            item.get("title", "签到项"),
+            self._mode_name(item.get("mode", "unknown")),
+            parameter_text,
+        )
+        try:
+            result = self.manual_checkin(
+                item_id,
+                payload,
+                actor,
+                context=context,
+            )
+        except Exception as exc:
+            failed_result = self._checkin_view(
+                "failed",
+                "课程手动签到执行失败",
+            )
+            summary = self._manual_summary(
+                context,
+                failed_result,
+                payload,
+                started_at,
+            )
+            self._record_manual_run(context, summary, started_at)
+            self.logger.error(
+                "课程手动签到失败；账号：%s；签到项：%s；异常：%s",
+                (
+                    account.get("name")
+                    or account.get("remote_user_name")
+                    or "-"
+                ),
+                item.get("title", "签到项"),
+                type(exc).__name__,
+            )
+            if payload.get("notify_wecom", False):
+                self._send_manual_notification(summary)
+            raise
+
+        summary = self._manual_summary(
+            context,
+            result,
+            payload,
+            started_at,
+        )
+        self._record_manual_run(context, summary, started_at)
+        self.logger.info(
+            "课程手动签到完成；账号：%s；签到项：%s；结果：%s",
+            (
+                account.get("name")
+                or account.get("remote_user_name")
+                or "-"
+            ),
+            item.get("title", "签到项"),
+            self._status_name(result.get("status")),
+        )
+        if payload.get("notify_wecom", False):
+            self._send_manual_notification(summary)
+        return result
+
+    def manual_checkin(
+        self,
+        item_id: int,
+        payload: dict[str, Any],
+        actor: dict[str, Any],
+        before_submit: Callable[[], None] | None = None,
+        *,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
+        if context is None:
+            context = self._manual_checkin_context(item_id, actor)
+        actor_user_id = context["actor_user_id"]
+        is_admin = context["is_admin"]
+        item = context["item"]
+        course = context["course"]
+        account = context["account"]
         if account.get("status") != "active":
             return self._checkin_view(
                 "failed",
