@@ -124,17 +124,15 @@
                 <el-input-number v-model="form.accuracy" :min="0" :precision="1" :controls="false" />
               </el-form-item>
             </div>
-            <el-form-item v-if="selectedItem.mode === 'gps_photo'" label="签到照片">
-              <TaskImageUpload :file-list="photoFiles" :limit="1" :http-request="uploadPhoto" :on-remove="removePhoto" />
-              <p class="field-tip">支持 JPEG、PNG、WEBP，预览使用服务端返回的完整 URL。</p>
-            </el-form-item>
+            <el-alert v-if="selectedItem.mode === 'gps_photo'" title="兼容模式将自动附带 res，无需上传本地照片。" type="info" :closable="false" show-icon />
             <el-form-item v-if="selectedItem.mode === 'password'" label="签到密码">
               <el-input v-model="form.password" type="password" show-password maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
             </el-form-item>
             <el-alert v-if="selectedItem.mode === 'qr'" title="二维码签到无需额外参数，将按远程签到页的明确表单提交。" type="info" :closable="false" show-icon />
+            <el-alert v-if="selectedItem.mode === 'unknown'" title="暂时无法识别签到类型，请重新同步签到项后再试。" type="warning" :closable="false" show-icon />
             <div class="manual-actions">
               <el-checkbox v-model="form.notify_wecom">发送企业微信通知</el-checkbox>
-              <el-button type="primary" size="large" :loading="checkingIn" @click="submitManual">
+              <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown'" @click="submitManual">
                 <el-icon><Position /></el-icon>执行{{ modeMeta(selectedItem.mode).label }}
               </el-button>
             </div>
@@ -163,8 +161,6 @@ import {
   Delete, Key, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import TaskImageUpload from '../TaskImageUpload.vue'
-import { createUploadGenerationGuard } from '../../utils/classCube.js'
 import { parseCoordinates } from '../../utils/classCubeTaskForm.js'
 
 const props = defineProps({
@@ -179,7 +175,6 @@ const props = defineProps({
   selectedItem: { type: Object, default: null },
   coursesLoading: { type: Boolean, default: false },
   itemsLoading: { type: Boolean, default: false },
-  uploadPhotoAction: { type: Function, required: true },
   manualCheckinAction: { type: Function, required: true },
   batchDeleteAccountsAction: { type: Function, required: true },
 })
@@ -190,29 +185,15 @@ const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
 const resultVisible = ref(false)
 const result = ref(null)
-const photoFiles = ref([])
-const form = reactive({ coordinateInput: '', accuracy: 20, photo_path: '', password: '', notify_wecom: false })
-const uploadGuard = createUploadGenerationGuard()
-
-function uploadIdentity() {
-  return [
-    props.selectedAccountId,
-    props.selectedCourseId,
-    props.selectedItemId,
-    props.selectedItem?.mode,
-  ].join(':')
-}
+const form = reactive({ coordinateInput: '', accuracy: 20, password: '', notify_wecom: false })
 
 function resetManualState() {
-  uploadGuard.invalidate()
   Object.assign(form, {
     coordinateInput: '',
     accuracy: 20,
-    photo_path: '',
     password: '',
     notify_wecom: false,
   })
-  photoFiles.value = []
   result.value = null
   resultVisible.value = false
 }
@@ -249,7 +230,7 @@ const modes = {
 const results = {
   success: { label: '签到成功', eyebrow: 'CHECK-IN COMPLETED', tip: '远程平台已明确确认签到成功', icon: CircleCheckFilled, type: 'success' },
   already_signed: { label: '已经签到', eyebrow: 'ALREADY COMPLETED', tip: '远程平台确认该签到已完成', icon: CircleCheckFilled, type: 'success' },
-  waiting_parameter: { label: '等待补充参数', eyebrow: 'ACTION REQUIRED', tip: '请补充签到需要的位置、照片或密码', icon: WarningFilled, type: 'warning' },
+  waiting_parameter: { label: '等待补充参数', eyebrow: 'ACTION REQUIRED', tip: '请补充签到需要的位置或密码', icon: WarningFilled, type: 'warning' },
   unknown_result: { label: '结果未知', eyebrow: 'RESULT UNKNOWN', tip: '提交结果无法确认，为避免重复签到不会自动重试', icon: WarningFilled, type: 'warning' },
   failed: { label: '签到失败', eyebrow: 'CHECK-IN FAILED', tip: '远程平台未确认签到成功', icon: CircleCloseFilled, type: 'danger' },
   skipped: { label: '已跳过', eyebrow: 'CHECK-IN SKIPPED', tip: '本次签到未发起提交', icon: Lock, type: 'info' },
@@ -303,32 +284,6 @@ async function batchDeleteSelected() {
   }
 }
 
-async function uploadPhoto(options) {
-  const identity = uploadIdentity()
-  const ticket = uploadGuard.begin(identity)
-  try {
-    const uploaded = await props.uploadPhotoAction(options.file, props.selectedAccountId)
-    if (!uploadGuard.isCurrent(ticket, uploadIdentity())) {
-      options.onSuccess(uploaded)
-      return
-    }
-    const path = uploaded.path || uploaded.photo_path
-    photoFiles.value = [{ uid: `${Date.now()}`, name: options.file.name, path, url: uploaded.url, status: 'success' }]
-    form.photo_path = path
-    options.onSuccess(uploaded)
-    ElMessage.success('照片上传成功')
-  } catch (error) {
-    options.onError(error)
-    if (!uploadGuard.isCurrent(ticket, uploadIdentity())) return
-    ElMessage.error(error.message || '照片上传失败')
-  }
-}
-function removePhoto() {
-  uploadGuard.invalidate()
-  photoFiles.value = []
-  form.photo_path = ''
-}
-
 async function submitManual() {
   checkingIn.value = true
   try {
@@ -336,7 +291,6 @@ async function submitManual() {
     if (['gps', 'gps_photo'].includes(props.selectedItem.mode)) {
       Object.assign(payload, parseCoordinates(form.coordinateInput), { accuracy: form.accuracy })
     }
-    if (props.selectedItem.mode === 'gps_photo') payload.photo_path = form.photo_path
     if (props.selectedItem.mode === 'password') payload.password = form.password
     result.value = await props.manualCheckinAction(props.selectedItem.id, payload)
     resultVisible.value = true

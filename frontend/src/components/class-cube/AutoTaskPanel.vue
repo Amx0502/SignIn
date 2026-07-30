@@ -33,9 +33,8 @@
         <template #default="{ row }">
           <el-space wrap>
             <el-tag v-if="row.latitude != null && row.longitude != null" size="small" type="primary">位置</el-tag>
-            <el-tag v-if="row.photo_path" size="small" type="warning">照片</el-tag>
             <el-tag v-if="row.has_password" size="small" type="info">密码</el-tag>
-            <span v-if="row.latitude == null && !row.photo_path && !row.has_password" class="muted">无</span>
+            <span v-if="row.latitude == null && !row.has_password" class="muted">无</span>
           </el-space>
         </template>
       </el-table-column>
@@ -94,9 +93,6 @@
               <el-input v-model="draft.password" type="password" show-password autocomplete="new-password" :placeholder="editingId && draft.has_password ? '已保存，留空保持不变' : '密码签到使用'" />
               <el-checkbox v-if="editingId && draft.has_password" v-model="draft.clear_password">清除已保存密码</el-checkbox>
             </el-form-item>
-            <el-form-item label="默认签到照片">
-              <TaskImageUpload :file-list="photoFiles" :limit="1" :http-request="uploadPhoto" :on-remove="removePhoto" />
-            </el-form-item>
           </section>
 
           <section class="editor-section">
@@ -135,7 +131,6 @@
 import { reactive, ref } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import TaskImageUpload from '../TaskImageUpload.vue'
 import { coordinateText, normalizeScheduleTimes, parseCoordinates } from '../../utils/classCubeTaskForm.js'
 
 const props = defineProps({
@@ -148,7 +143,6 @@ const props = defineProps({
   saveTaskAction: { type: Function, required: true },
   removeTasksAction: { type: Function, required: true },
   runTaskAction: { type: Function, required: true },
-  uploadPhotoAction: { type: Function, required: true },
 })
 const emit = defineEmits(['update:selected-task-ids', 'select-account', 'refresh'])
 const tableRef = ref(null)
@@ -156,7 +150,6 @@ const editorVisible = ref(false)
 const editingId = ref(null)
 const saving = ref(false)
 const runningTaskId = ref(null)
-const photoFiles = ref([])
 const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', password: '', has_password: false, clear_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
 const draft = reactive(emptyDraft())
 
@@ -170,7 +163,6 @@ function resetDraft(values = {}) {
     schedule_times: values.schedule_times?.length ? [...values.schedule_times] : ['08:00:00'],
     notify_wecom: values.notify_wecom !== false,
   })
-  photoFiles.value = draft.photo_path ? [{ uid: `saved-${values.id}`, name: String(draft.photo_path).split('/').pop(), path: draft.photo_path, url: `/uploads/${draft.photo_path}`, status: 'success' }] : []
 }
 function openCreate() { editingId.value = null; resetDraft(); editorVisible.value = true }
 function openEdit(row) { editingId.value = row.id; resetDraft(row); emit('select-account', row.account_id); editorVisible.value = true }
@@ -181,15 +173,6 @@ function accountChanged(id) {
   emit('select-account', id)
 }
 
-async function uploadPhoto(options) {
-  try {
-    const uploaded = await props.uploadPhotoAction(options.file, draft.account_id)
-    draft.photo_path = uploaded.path || uploaded.photo_path
-    photoFiles.value = [{ uid: `${Date.now()}`, name: options.file.name, path: draft.photo_path, url: uploaded.url, status: 'success' }]
-    options.onSuccess(uploaded)
-  } catch (error) { options.onError(error); ElMessage.error(error.message || '上传失败') }
-}
-function removePhoto() { photoFiles.value = []; draft.photo_path = '' }
 async function save() {
   if (!draft.name.trim() || !draft.account_id || !draft.course_id) return ElMessage.warning('请填写任务名称并选择账号和课程')
   try {
