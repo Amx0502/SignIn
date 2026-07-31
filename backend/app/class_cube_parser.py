@@ -369,7 +369,7 @@ def parse_checkin_form(
             if declared_action
             else _canonical_submit_url(
                 response_url,
-                "punchs",
+                _submit_module(item),
                 item,
             )
         )
@@ -444,7 +444,7 @@ def _synthetic_contract(
         return (
             _canonical_submit_url(
                 response_url,
-                "punchs",
+                _submit_module(item),
                 item,
             ),
             item.mode_hint,
@@ -477,7 +477,7 @@ def _canonical_submit_url(
 ) -> str:
     normalized_module = module.lower()
     if not re.fullmatch(
-        r"(?:punch\w+|daka)",
+        r"(?:punch\w*|daka)",
         normalized_module,
         re.ASCII,
     ):
@@ -490,6 +490,12 @@ def _canonical_submit_url(
             f"{quote(str(item.remote_item_id), safe='')}"
         ),
     )
+
+
+def _submit_module(item: ParsedItem) -> str:
+    if item.mode_hint == "password":
+        return "punch"
+    return item.remote_module or "punchs"
 
 
 def _select_checkin_form(
@@ -650,7 +656,7 @@ def _checkin_route(
 ) -> tuple[str, str] | None:
     path = unquote(urlparse(url).path)
     match = re.fullmatch(
-        r"/student/(punch\w+|daka)/course/([^/]+)/([^/]+)/?",
+        r"/student/(punch\w*|daka)/course/([^/]+)/([^/]+)/?",
         path,
         re.IGNORECASE | re.ASCII,
     )
@@ -661,6 +667,8 @@ def _checkin_route(
 
 def _module_mode_hint(module: str) -> str:
     lowered_module = module.lower()
+    if lowered_module == "punch":
+        return "password"
     if "gps" in lowered_module:
         return "gps"
     if "punchcard" in lowered_module:
@@ -900,7 +908,7 @@ def _structured_status(soup: BeautifulSoup) -> str:
 
 def _result_node_status(soup: BeautifulSoup) -> str:
     for node in soup.select(
-        "#title, .punch-success-info, .punch-status"
+        "#title, .weui-msg__title, .punch-success-info, .punch-status"
     ):
         status = _status_from_text(node.get_text(" ", strip=True))
         if status:
@@ -909,6 +917,8 @@ def _result_node_status(soup: BeautifulSoup) -> str:
 
 
 def _status_from_text(message: str) -> str:
+    if "密码错误" in message:
+        return "password_error"
     if "尚未开始" in message or "未开始" in message:
         return "not_started"
     if (

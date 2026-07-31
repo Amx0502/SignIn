@@ -1626,6 +1626,11 @@ class ClassCubeService:
                 "already_signed",
                 "该签到项已经完成",
             )
+        if result.status == "password_error":
+            return self._checkin_view(
+                "failed",
+                "签到密码错误",
+            )
         if result.status == "unknown_result":
             return self._checkin_view(
                 "unknown_result",

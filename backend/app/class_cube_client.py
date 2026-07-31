@@ -290,7 +290,7 @@ class ClassCubeClient:
                     }
                 request_kwargs = {
                     "data": payload,
-                    "headers": self._request_headers(),
+                    "headers": self._request_headers(form.action),
                     "timeout": REQUEST_TIMEOUT,
                 }
                 if files is not None:
@@ -691,14 +691,21 @@ class ClassCubeClient:
                 file_value[1].seek(0)
 
     @staticmethod
-    def _request_headers() -> dict[str, str]:
-        return {
+    def _request_headers(referer_url: str = "") -> dict[str, str]:
+        headers = {
             "User-Agent": WECHAT_USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Referer": "https://wx.qq.com/",
             "X-Requested-With": "XMLHttpRequest",
         }
+        parsed_referer = urlparse(referer_url)
+        if parsed_referer.scheme and parsed_referer.netloc:
+            headers["Origin"] = (
+                f"{parsed_referer.scheme}://{parsed_referer.netloc}"
+            )
+            headers["Referer"] = referer_url
+        return headers
 
     @staticmethod
     def _raise_if_cookie_expired(response) -> None:

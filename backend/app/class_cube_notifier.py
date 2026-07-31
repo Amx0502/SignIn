@@ -86,7 +86,7 @@ class ClassCubeNotifier:
             lines.append(f"（🖼️图片：{image_count}张）")
         password = parameters.get("password")
         if password not in (None, ""):
-            lines.append(f"（🔑密码：{password}）")
+            lines.append("（🔑密码：已配置）")
         return lines
 
     def send_summary(self, webhook_url: str, summary: dict) -> None:
