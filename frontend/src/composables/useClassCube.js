@@ -5,6 +5,7 @@ import {
   normalizeQrSession,
   reconcileSelection,
 } from '../utils/classCube.js'
+import { latestSyncedDayItems } from '../utils/classCubeItems.js'
 
 const TERMINAL_QR_STATES = new Set(['success', 'expired', 'error'])
 const BACKGROUND_REFRESH_MS = 30_000
@@ -157,7 +158,9 @@ export function useClassCube(api = classCubeApi) {
     try {
       const fresh = responseData(await api.listItems(courseId), [])
       if (generation !== itemRequestGeneration || courseId !== selectedCourseId.value) return []
-      items.value = Array.isArray(fresh) ? fresh : []
+      items.value = latestSyncedDayItems(
+        Array.isArray(fresh) ? fresh : [],
+      )
       const stable = reconcileSelection(items.value, selectedItemId.value)
       selectedItemId.value = stable?.id ?? items.value[0]?.id ?? null
       return items.value
