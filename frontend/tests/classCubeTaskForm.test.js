@@ -44,3 +44,25 @@ test('task editor shows saved password without clear-password controls', async (
   assert.doesNotMatch(source, /clear_password/)
   assert.doesNotMatch(source, /留空保持不变/)
 })
+
+
+test('course checkin form stacks by its own narrow container', async () => {
+  const source = await readFile(
+    new URL(
+      '../src/components/class-cube/AccountCheckinPanel.vue',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+
+  assert.match(source, /\.checkin-card\s*\{[^}]*container-type:inline-size/)
+  assert.match(source, /@container\s*\(max-width:480px\)/)
+  assert.match(
+    source,
+    /@container[\s\S]*?\.location-grid\s*\{[^}]*grid-template-columns:minmax\(0,1fr\)/,
+  )
+  assert.match(
+    source,
+    /@container[\s\S]*?\.manual-actions\s*\{[^}]*flex-direction:column/,
+  )
+})
