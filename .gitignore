@@ -1,5 +1,3 @@
-node_modules/
-dist/
 __pycache__/
 *.pyc
 *.pyo
@@ -17,9 +15,6 @@ frontend/dist/
 *.log
 .DS_Store
 .worktrees/
-backend/accounts.json
-backend/users.json
-backend/sessions.json
 docs/
 backend/test_*.py
 frontend/src/**/*.test.js
