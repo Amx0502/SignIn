@@ -140,6 +140,7 @@ def parse_checkin_items(
     normalized_module = module.strip("/")
     items: list[ParsedItem] = []
     positions: dict[str, int] = {}
+    inline_form_items: set[str] = set()
 
     def add_item(
         remote_item_id: str,
@@ -181,11 +182,14 @@ def parse_checkin_items(
             or current.mode_hint == "unknown"
         ):
             resolved_mode = mode_hint
+        resolved_detail_url = current.detail_url or detail_url
+        if remote_item_id in inline_form_items:
+            resolved_detail_url = ""
         items[index] = replace(
             current,
             title=current.title or title,
             remote_module=resolved_module,
-            detail_url=current.detail_url or detail_url,
+            detail_url=resolved_detail_url,
             mode_hint=resolved_mode,
         )
 
@@ -237,6 +241,23 @@ def parse_checkin_items(
                     title=title,
                     remote_module=route_module,
                     detail_url=urljoin(response_url, href),
+                    mode_hint=_item_mode_hint(tag, route_module),
+                )
+
+        if (
+            tag.name == "form"
+            and tag.get("action")
+            and _is_post_form(tag)
+        ):
+            action = _attribute_text(tag.get("action"))
+            route = _checkin_route(action, course_id)
+            if route:
+                route_module, remote_item_id = route
+                inline_form_items.add(remote_item_id)
+                add_item(
+                    remote_item_id,
+                    title=_inline_form_title(tag),
+                    remote_module=route_module,
                     mode_hint=_item_mode_hint(tag, route_module),
                 )
 
@@ -634,6 +655,19 @@ def _item_title(tag: Tag) -> str:
     return _attribute_text(
         tag.get("data-title")
     ) or tag.get_text(" ", strip=True)
+
+
+def _inline_form_title(form: Tag) -> str:
+    card = form.find_parent(class_="punch-card")
+    if isinstance(card, Tag):
+        metadata = card.select_one(".punch-meta")
+        if isinstance(metadata, Tag):
+            label = metadata.find("span")
+            if isinstance(label, Tag):
+                title = label.get_text(" ", strip=True)
+                if title:
+                    return title
+    return _item_title(form)
 
 
 def _punchcard_item_id(tag: Tag) -> str:
