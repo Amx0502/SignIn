@@ -405,7 +405,7 @@ class AppState:
         success_count = sum(1 for _, _, success, _ in records if success)
         fail_count = len(records) - success_count
         
-        content = f"## 📊 签到通知汇总\n\n"
+        content = f"## 📊 小小签到通知汇总\n\n"
         content += f"**时间**: {cache_key}\n"
         content += f"**成功**: {success_count} 个 | **失败**: {fail_count} 个\n\n"
         
