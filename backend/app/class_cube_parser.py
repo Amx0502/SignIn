@@ -634,7 +634,8 @@ def _password_item_id(tag: Tag) -> str:
 def _gps_item_id(tag: Tag) -> str:
     for value in tag.attrs.values():
         match = re.search(
-            r"\bpunch_gps\s*\(\s*['\"]?([^,'\"\s)]+)",
+            r"\bpunch_gps(?:_photo)?\s*"
+            r"\(\s*['\"]?([^,'\"\s)]+)",
             _attribute_text(value),
             re.IGNORECASE,
         )
@@ -679,16 +680,32 @@ def _item_mode_hint(tag: Tag, module: str) -> str:
             if _tag_has_photo_marker(tag)
             else "gps"
         )
-    if _punchcard_item_id(tag):
+    if _punchcard_item_id(tag) or _tag_has_qr_marker(tag):
         return "qr"
     return _module_mode_hint(module)
+
+
+def _tag_has_qr_marker(tag: Tag) -> bool:
+    attribute_text = " ".join(
+        _attribute_text(value)
+        for value in tag.attrs.values()
+    )
+    if re.search(r"\bscanqr\s*\(", attribute_text, re.IGNORECASE):
+        return True
+    text = tag.get_text(" ", strip=True)
+    return "扫码" in text or "二维码" in text
 
 
 def _tag_has_photo_marker(tag: Tag) -> bool:
     if tag.find("input", attrs={"type": "file"}):
         return True
+    attribute_text = " ".join(
+        _attribute_text(value)
+        for value in tag.attrs.values()
+    ).lower()
     if (
-        _attribute_text(tag.get("data-mode")).strip().lower()
+        "punch_gps_photo" in attribute_text
+        or _attribute_text(tag.get("data-mode")).strip().lower()
         == "gps_photo"
         or bool(
             _attribute_text(
@@ -824,7 +841,9 @@ def _has_exact_punchcard_marker(
 
 
 def _has_qr_marker(soup: BeautifulSoup, html: str) -> bool:
-    if "punchcard_" in html.lower() or "二维码" in html:
+    if "punchcard_" in html.lower():
+        return True
+    if any(_tag_has_qr_marker(tag) for tag in soup.find_all(True)):
         return True
     return bool(
         soup.find(

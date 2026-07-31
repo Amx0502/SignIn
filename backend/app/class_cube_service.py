@@ -48,6 +48,10 @@ class ClassCubeValidationError(ValueError):
 
 CLASS_CUBE_PHOTO_MAX_BYTES = 10 * 1024 * 1024
 CLASS_CUBE_PHOTO_CHUNK_BYTES = 64 * 1024
+AUTOCHECK_GPS_PHOTO_RES = (
+    "s46grRvFJukcJc3CFnqHcKQLxAvxJYJ-"
+    "Uh8bsD1YcXiVMN-MoqkVmZPDzpUhTMyf"
+)
 _PHOTO_CONTENT_TYPES = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -186,15 +190,17 @@ def build_submission_fields(
         if form.gps_address_field:
             fields[form.gps_address_field] = ""
 
-    if (
-        form.mode == "gps_photo"
-        and form.photo_resource_field
-        and (
-            remote_photo_value
-            or form.photo_resource_field not in form.hidden_fields
-        )
-    ):
-        fields[form.photo_resource_field] = remote_photo_value
+    if form.mode == "gps_photo" and form.photo_resource_field:
+        remote_value = str(
+            form.hidden_fields.get(form.photo_resource_field) or ""
+        ).strip()
+        supplied_value = str(remote_photo_value or "").strip()
+        if supplied_value:
+            fields[form.photo_resource_field] = supplied_value
+        elif not remote_value:
+            fields[form.photo_resource_field] = (
+                AUTOCHECK_GPS_PHOTO_RES
+            )
     return fields
 
 
