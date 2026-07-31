@@ -97,6 +97,7 @@ def task_view(task: dict[str, Any]) -> dict[str, Any]:
         "longitude": task.get("longitude"),
         "accuracy": task.get("accuracy"),
         "photo_path": task.get("photo_path", ""),
+        "password": task.get("password", ""),
         "schedule_times": task.get("schedule_times", []),
         "start_date": _iso(task.get("start_date")),
         "end_date": _iso(task.get("end_date")),

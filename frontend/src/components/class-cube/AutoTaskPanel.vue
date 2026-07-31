@@ -90,8 +90,7 @@
             </el-form-item>
             <el-form-item label="定位精度（米）"><el-input-number v-model="draft.accuracy" :min="0" :precision="1" :controls="false" /></el-form-item>
             <el-form-item label="预设密码">
-              <el-input v-model="draft.password" type="text" autocomplete="new-password" :placeholder="editingId && draft.has_password ? '已保存，留空保持不变' : '密码签到使用'" />
-              <el-checkbox v-if="editingId && draft.has_password" v-model="draft.clear_password">清除已保存密码</el-checkbox>
+              <el-input v-model="draft.password" type="text" autocomplete="new-password" placeholder="密码签到使用" />
             </el-form-item>
           </section>
 
@@ -150,7 +149,7 @@ const editorVisible = ref(false)
 const editingId = ref(null)
 const saving = ref(false)
 const runningTaskId = ref(null)
-const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', password: '', has_password: false, clear_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
+const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', password: '', has_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
 const draft = reactive(emptyDraft())
 
 function accountName(id) { const row = props.accounts.find(item => item.id === id); return row?.name || row?.remote_user_name || `账号 ${id}` }

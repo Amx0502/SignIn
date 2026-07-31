@@ -6,51 +6,16 @@ import {
   reconcileSelection,
 } from '../utils/classCube.js'
 import { latestSyncedDayItems } from '../utils/classCubeItems.js'
+import { taskRequest } from '../utils/classCubeTaskForm.js'
 
 const TERMINAL_QR_STATES = new Set(['success', 'expired', 'error'])
 const BACKGROUND_REFRESH_MS = 30_000
 const QR_POLL_MS = 1_000
-const TASK_FIELDS = new Set([
-  'owner_user_id',
-  'account_id',
-  'course_id',
-  'name',
-  'enabled',
-  'latitude',
-  'longitude',
-  'accuracy',
-  'photo_path',
-  'password',
-  'clear_password',
-  'schedule_times',
-  'start_date',
-  'end_date',
-  'notify_wecom',
-])
-
 function responseData(response, fallback = null) {
   if (response?.ok === false) {
     throw new Error(response.error || '班级魔方请求失败')
   }
   return response?.data ?? fallback
-}
-
-function taskRequest(payload, isEdit) {
-  const request = Object.fromEntries(
-    Object.entries(payload || {}).filter(([key]) => TASK_FIELDS.has(key)),
-  )
-  if (isEdit) {
-    delete request.owner_user_id
-    if (request.clear_password) {
-      delete request.password
-    } else if (!request.password) {
-      delete request.password
-      delete request.clear_password
-    }
-  } else {
-    delete request.clear_password
-  }
-  return request
 }
 
 export function normalizeClassCubeError(error) {

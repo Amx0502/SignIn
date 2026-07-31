@@ -1,3 +1,28 @@
+const TASK_FIELDS = new Set([
+  'owner_user_id',
+  'account_id',
+  'course_id',
+  'name',
+  'enabled',
+  'latitude',
+  'longitude',
+  'accuracy',
+  'photo_path',
+  'password',
+  'schedule_times',
+  'start_date',
+  'end_date',
+  'notify_wecom',
+])
+
+export function taskRequest(payload, isEdit) {
+  const request = Object.fromEntries(
+    Object.entries(payload || {}).filter(([key]) => TASK_FIELDS.has(key)),
+  )
+  if (isEdit) delete request.owner_user_id
+  return request
+}
+
 export function parseCoordinates(value) {
   const parts = String(value ?? '')
     .trim()

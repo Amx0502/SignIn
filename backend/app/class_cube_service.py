@@ -1374,6 +1374,25 @@ class ClassCubeService:
             "account": account,
         }
 
+    def _refresh_manual_context(self, item_id, actor, context):
+        self.sync_items(context["course"]["id"], actor)
+        return self._manual_checkin_context(item_id, actor)
+
+    def _confirm_unknown_submission(self, context, actor) -> bool:
+        item = context["item"]
+        try:
+            items = self.sync_items(context["course"]["id"], actor)
+        except ClassCubeRemoteError:
+            return False
+        return any(
+            str(candidate.get("remote_item_id") or "")
+            == str(item.get("remote_item_id") or "")
+            and str(candidate.get("remote_module") or "")
+            == str(item.get("remote_module") or "")
+            and candidate.get("status") == "closed"
+            for candidate in items
+        )
+
     @staticmethod
     def _manual_parameters(payload):
         return {
@@ -1553,6 +1572,12 @@ class ClassCubeService:
     ) -> dict[str, str]:
         if context is None:
             context = self._manual_checkin_context(item_id, actor)
+        if before_submit is None:
+            context = self._refresh_manual_context(
+                item_id,
+                actor,
+                context,
+            )
         actor_user_id = context["actor_user_id"]
         is_admin = context["is_admin"]
         item = context["item"]
@@ -1624,6 +1649,11 @@ class ClassCubeService:
                 "班级魔方登录已失效，请重新扫码",
             )
         except ClassCubeSubmissionUnknown as exc:
+            if self._confirm_unknown_submission(context, actor):
+                return self._checkin_view(
+                    "success",
+                    "签到成功",
+                )
             self._log_remote_failure("提交签到", exc)
             return self._checkin_view(
                 "unknown_result",
@@ -1659,6 +1689,11 @@ class ClassCubeService:
                 "签到密码错误",
             )
         if result.status == "unknown_result":
+            if self._confirm_unknown_submission(context, actor):
+                return self._checkin_view(
+                    "success",
+                    "签到成功",
+                )
             return self._checkin_view(
                 "unknown_result",
                 "签到请求已发送，但暂时无法确认结果",
