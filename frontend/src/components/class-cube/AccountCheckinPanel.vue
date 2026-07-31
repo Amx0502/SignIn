@@ -129,7 +129,7 @@
             </div>
             <el-alert v-if="selectedItem.mode === 'gps_photo'" title="兼容模式将自动附带 res，无需上传本地照片。" type="info" :closable="false" show-icon />
             <el-form-item v-if="selectedItem.mode === 'password'" label="签到密码">
-              <el-input v-model="form.password" type="password" show-password maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
+              <el-input v-model="form.password" type="text" maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
             </el-form-item>
             <el-alert v-if="selectedItem.mode === 'qr'" title="二维码签到无需额外参数，将按远程签到页的明确表单提交。" type="info" :closable="false" show-icon />
             <el-alert v-if="selectedItem.mode === 'unknown'" title="暂时无法识别签到类型，请重新同步签到项后再试。" type="warning" :closable="false" show-icon />
