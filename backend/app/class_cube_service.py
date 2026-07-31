@@ -204,6 +204,26 @@ def build_submission_fields(
     return fields
 
 
+def _eligible_task_items(
+    task: dict[str, Any],
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    has_password = bool(str(task.get("password") or "").strip())
+    has_coordinates = (
+        task.get("latitude") not in (None, "")
+        and task.get("longitude") not in (None, "")
+    )
+    eligible = []
+    for item in items:
+        mode = str(item.get("mode") or "unknown")
+        if mode == "password" and not has_password:
+            continue
+        if mode in {"gps", "gps_photo"} and not has_coordinates:
+            continue
+        eligible.append(item)
+    return eligible
+
+
 class ClassCubeRemoteError(RuntimeError):
     status_code = 502
 
@@ -1024,7 +1044,14 @@ class ClassCubeService:
                     task.get("name", ""),
                 )
                 return result
-            for item in active_items:
+            eligible_items = _eligible_task_items(
+                task,
+                active_items,
+            )
+            result["skipped"] += (
+                len(active_items) - len(eligible_items)
+            )
+            for item in eligible_items:
                 current = self.repository.get_task(task_id, 0, True)
                 if (
                     trigger == "scheduled"

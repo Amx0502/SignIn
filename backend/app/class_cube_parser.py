@@ -175,26 +175,34 @@ def parse_checkin_items(
             and remote_module != normalized_module
         ):
             resolved_module = remote_module
+        resolved_mode = current.mode_hint
+        if (
+            mode_hint == "password"
+            or current.mode_hint == "unknown"
+        ):
+            resolved_mode = mode_hint
         items[index] = replace(
             current,
             title=current.title or title,
             remote_module=resolved_module,
             detail_url=current.detail_url or detail_url,
-            mode_hint=(
-                current.mode_hint
-                if current.mode_hint != "unknown"
-                else mode_hint
-            ),
+            mode_hint=resolved_mode,
         )
 
     for tag in soup.find_all(True):
         title = _item_title(tag)
         punchcard_id = _punchcard_item_id(tag)
         if punchcard_id:
+            mode_hint = _item_mode_hint(tag, normalized_module)
             add_item(
                 punchcard_id,
                 title=title,
-                mode_hint="qr",
+                remote_module=(
+                    "punch"
+                    if mode_hint == "password"
+                    else ""
+                ),
+                mode_hint=mode_hint,
             )
 
         password_item_id = _password_item_id(tag)
@@ -202,6 +210,7 @@ def parse_checkin_items(
             add_item(
                 password_item_id,
                 title=title,
+                remote_module="punch",
                 mode_hint="password",
             )
 
@@ -375,7 +384,15 @@ def parse_checkin_form(
         )
         method = (
             _attribute_text(form.get("method")).strip()
-            or "get"
+            or (
+                "post"
+                if (
+                    mode == "password"
+                    and _password_item_id(form)
+                    == str(item.remote_item_id)
+                )
+                else "get"
+            )
         ).lower()
     else:
         synthetic = _synthetic_contract(
@@ -503,10 +520,13 @@ def _select_checkin_form(
     response_url: str,
     item: ParsedItem,
 ) -> Tag | None:
-    for container_id in (
+    container_ids = [
         f"punchcard_{item.remote_item_id}",
         f"punch_pwd_frm_{item.remote_item_id}",
-    ):
+    ]
+    if item.mode_hint == "password":
+        container_ids.reverse()
+    for container_id in container_ids:
         container = soup.find(id=container_id)
         if isinstance(container, Tag):
             if container.name == "form" and _is_post_form(container):
@@ -517,6 +537,12 @@ def _select_checkin_form(
                 and _is_post_form(nested_form)
             ):
                 return nested_form
+            if (
+                item.mode_hint == "password"
+                and _password_item_id(container)
+                == str(item.remote_item_id)
+            ):
+                return container
 
     forms = [
         form
@@ -680,7 +706,7 @@ def _item_mode_hint(tag: Tag, module: str) -> str:
     explicit_mode = _attribute_text(tag.get("data-mode"))
     if explicit_mode:
         return explicit_mode
-    if _password_item_id(tag):
+    if _tag_has_password_marker(tag):
         return "password"
     if _gps_item_id(tag):
         return (
@@ -691,6 +717,18 @@ def _item_mode_hint(tag: Tag, module: str) -> str:
     if _punchcard_item_id(tag) or _tag_has_qr_marker(tag):
         return "qr"
     return _module_mode_hint(module)
+
+
+def _tag_has_password_marker(tag: Tag) -> bool:
+    if _password_item_id(tag):
+        return True
+    attribute_text = " ".join(
+        _attribute_text(value)
+        for value in tag.attrs.values()
+    ).lower()
+    if "punch_pwd" in attribute_text:
+        return True
+    return "密码" in tag.get_text(" ", strip=True)
 
 
 def _tag_has_qr_marker(tag: Tag) -> bool:
