@@ -3,7 +3,7 @@ import json
 import pytest
 
 from app.class_cube_client import ClassCubeClient
-from app.class_cube_parser import ParsedForm
+from app.class_cube_parser import ParsedForm, parse_checkin_result
 from app.class_cube_service import (
     CheckinParameters,
     ClassCubeValidationError,
@@ -116,3 +116,13 @@ def test_upload_photo_to_oss_uses_signed_fields_and_returns_object_key(tmp_path)
     assert kwargs["data"]["key"] == resource
     assert kwargs["files"]["file"][0] == "huitou.png"
 
+
+def test_json_checkin_success_response_is_parsed_as_success():
+    result = parse_checkin_result(
+        '{"success":true,"message":"签到成功",'
+        '"data":{"punchstatus":"ok"}}',
+        "https://k8n.cn/student/punchw/course/140242/5459289",
+    )
+
+    assert result.status == "success"
+    assert result.message == "签到成功"

@@ -1,4 +1,5 @@
 import re
+import json
 from dataclasses import dataclass, replace
 from html import unescape
 from urllib.parse import quote, unquote, urljoin, urlparse
@@ -630,6 +631,9 @@ def _is_post_form(form: Tag) -> bool:
 
 
 def parse_checkin_result(html: str, response_url: str) -> ParsedResult:
+    json_result = _json_checkin_result(html, response_url)
+    if json_result is not None:
+        return json_result
     soup = BeautifulSoup(html, "html.parser")
     message = " ".join(soup.get_text(" ", strip=True).split())
 
@@ -643,6 +647,71 @@ def parse_checkin_result(html: str, response_url: str) -> ParsedResult:
         message=message,
         response_url=response_url,
     )
+
+
+def _json_checkin_result(
+    body: str,
+    response_url: str,
+) -> ParsedResult | None:
+    try:
+        payload = json.loads(body)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    message = str(
+        payload.get("message")
+        or payload.get("msg")
+        or ""
+    ).strip()
+    data = payload.get("data")
+    data = data if isinstance(data, dict) else {}
+    remote_status = str(
+        data.get("punchstatus")
+        or data.get("status")
+        or payload.get("status")
+        or ""
+    ).strip().lower()
+    message_lower = message.lower()
+    if (
+        payload.get("success") is True
+        or remote_status in {"ok", "success", "succeeded", "1"}
+    ):
+        return ParsedResult(
+            status="success",
+            message=message,
+            response_url=response_url,
+        )
+    if (
+        remote_status in {"already_signed", "already", "signed"}
+        or "已签到" in message
+        or "已经签到" in message
+    ):
+        return ParsedResult(
+            status="already_signed",
+            message=message,
+            response_url=response_url,
+        )
+    if "密码" in message or "password" in message_lower:
+        return ParsedResult(
+            status="password_error",
+            message=message,
+            response_url=response_url,
+        )
+    if "未开始" in message or "尚未开始" in message:
+        return ParsedResult(
+            status="not_started",
+            message=message,
+            response_url=response_url,
+        )
+    if payload.get("success") is False:
+        return ParsedResult(
+            status="failed",
+            message=message,
+            response_url=response_url,
+        )
+    return None
 
 
 def _attribute_text(value: object) -> str:
