@@ -175,3 +175,28 @@ def test_sse_broker_notifies_waiting_clients_with_version_event():
 
     assert asyncio.run(scenario()) == format_version_event(2)
     assert format_version_event(7) == 'event: version\ndata: {"version":7}\n\n'
+
+
+def test_main_application_serves_menu_router_and_enforces_business_guard(
+    monkeypatch,
+):
+    import app.main as main
+
+    repository = FakeMenuRepository()
+    repository.visible = False
+    monkeypatch.setattr(main, "menu_repository", repository)
+    main.app.dependency_overrides[main.get_current_user] = lambda: {
+        "id": 2,
+        "role": "user",
+    }
+    try:
+        client = TestClient(main.app)
+        catalog = client.get("/api/menu/catalog")
+        protected = client.get("/api/xxqd/logs")
+    finally:
+        main.app.dependency_overrides.clear()
+
+    assert catalog.status_code == 200
+    assert catalog.json()["data"]["version"] == 4
+    assert protected.status_code == 403
+    assert protected.json()["menu_key"] == "xxqd.logs"
