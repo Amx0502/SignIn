@@ -106,6 +106,15 @@ def _number_text(value: float) -> str:
     return format(float(value), ".15g")
 
 
+def _normalize_photo_resource(value: str) -> str:
+    """Convert an OSS object key into the resource path expected by punch."""
+    resource = str(value or "").strip()
+    marker_index = resource.find("/p/")
+    if marker_index >= 0:
+        return resource[marker_index + 1 :]
+    return resource[2:] if resource.startswith("b/") else resource
+
+
 def _validated_number(
     value: float | None,
     label: str,
@@ -207,7 +216,11 @@ def build_submission_fields(
         except (TypeError, ValueError):
             decoded = None
         if isinstance(decoded, list):
-            values = [str(value).strip() for value in decoded if str(value).strip()]
+            values = [
+                _normalize_photo_resource(str(value))
+                for value in decoded
+                if str(value).strip()
+            ]
             if not values:
                 raise ClassCubeValidationError(
                     "GPS+拍照签到需要有效的照片资源"
@@ -219,7 +232,7 @@ def build_submission_fields(
             )
         else:
             fields[form.photo_resource_field] = json.dumps(
-                [resource],
+                [_normalize_photo_resource(resource)],
                 ensure_ascii=False,
                 separators=(",", ":"),
             )
