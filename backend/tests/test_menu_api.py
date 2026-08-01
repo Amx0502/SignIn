@@ -12,6 +12,7 @@ class FakeMenuRepository:
     def __init__(self):
         self.version = 4
         self.visible = True
+        self.visible_keys = set()
         self.last_global_update = None
 
     def effective_catalog(self, user):
@@ -50,7 +51,7 @@ class FakeMenuRepository:
         return []
 
     def is_menu_visible(self, user, menu_key):
-        return user["role"] == "admin" or self.visible
+        return user["role"] == "admin" or self.visible or menu_key in self.visible_keys
 
 
 def build_app(role="user"):
@@ -142,6 +143,25 @@ def test_hidden_menu_guard_blocks_ordinary_user_but_not_admin():
     assert TestClient(admin_app).get("/protected").status_code == 200
 
 
+def test_menu_guard_can_allow_shared_read_api_when_any_consumer_is_visible():
+    app, repository, _ = build_app(role="user")
+    repository.visible = False
+    repository.visible_keys = {"class_cube.overview"}
+
+    def current_user():
+        return {"id": 2, "role": "user"}
+
+    menu_guard = create_menu_guard(current_user, lambda: repository)
+
+    @app.get("/shared-read")
+    def shared_read(
+        user=Depends(menu_guard(("class_cube.overview", "class_cube.accounts"))),
+    ):
+        return {"user_id": user["id"]}
+
+    assert TestClient(app).get("/shared-read").status_code == 200
+
+
 def test_sse_broker_notifies_waiting_clients_with_version_event():
     async def scenario():
         broker = MenuEventBroker()
@@ -155,4 +175,3 @@ def test_sse_broker_notifies_waiting_clients_with_version_event():
 
     assert asyncio.run(scenario()) == format_version_event(2)
     assert format_version_event(7) == 'event: version\ndata: {"version":7}\n\n'
-

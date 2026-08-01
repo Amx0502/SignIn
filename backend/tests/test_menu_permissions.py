@@ -219,6 +219,53 @@ def test_audit_log_contains_before_after_target_and_version(menu_repository):
     assert log["after"] == {"xxqd.overview": "hidden"}
 
 
+def test_full_form_save_audits_only_changed_items_and_noop_keeps_version(
+    menu_repository,
+):
+    result = menu_repository.update_global(
+        expected_version=1,
+        visibility={
+            "xxqd": True,
+            "xxqd.overview": False,
+            "xxqd.accounts": True,
+        },
+        actor_user_id=1,
+    )
+    log = menu_repository.list_audit_logs(limit=10)[0]
+    assert result["version"] == 2
+    assert log["before"] == {"xxqd.overview": True}
+    assert log["after"] == {"xxqd.overview": False}
+
+    noop = menu_repository.update_global(
+        expected_version=2,
+        visibility={
+            "xxqd": True,
+            "xxqd.overview": False,
+            "xxqd.accounts": True,
+        },
+        actor_user_id=1,
+    )
+    assert noop["version"] == 2
+    assert len(menu_repository.list_audit_logs(limit=10)) == 1
+
+
+def test_user_full_form_save_audits_only_changed_overrides(menu_repository):
+    result = menu_repository.update_user_overrides(
+        expected_version=1,
+        user_id=2,
+        overrides={
+            "xxqd": "inherit",
+            "xxqd.overview": "hidden",
+            "xxqd.accounts": "inherit",
+        },
+        actor_user_id=1,
+    )
+    log = menu_repository.list_audit_logs(limit=10)[0]
+    assert result["version"] == 2
+    assert log["before"] == {"xxqd.overview": "inherit"}
+    assert log["after"] == {"xxqd.overview": "hidden"}
+
+
 def test_catalog_builder_suppresses_children_when_parent_is_hidden():
     menus = build_effective_menu(
         global_visibility={"xxqd": False, "xxqd.overview": True},

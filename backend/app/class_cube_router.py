@@ -106,11 +106,20 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
         menu_dependency("class_cube.logs")
         if menu_dependency else auth_dependency
     )
+    access_shared_read = (
+        menu_dependency((
+            "class_cube.overview",
+            "class_cube.accounts",
+            "class_cube.tasks",
+            "class_cube.runs",
+        ))
+        if menu_dependency else auth_dependency
+    )
 
     @router.get("/settings")
     def get_settings(
         request: Request,
-        actor=Depends(access_accounts),
+        actor=Depends(access_shared_read),
     ):
         return _invoke(
             request, _service(request).get_settings, actor
@@ -120,7 +129,7 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
     def update_settings(
         payload: ClassCubeSettingsUpdate,
         request: Request,
-        actor=Depends(access_accounts),
+        actor=Depends(access_shared_read),
     ):
         return _invoke(
             request,
@@ -162,7 +171,7 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             default=None,
             gt=0,
         ),
-        actor=Depends(access_accounts),
+        actor=Depends(access_shared_read),
     ):
         return _invoke(
             request,
@@ -237,7 +246,7 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
     def list_courses(
         account_id: int,
         request: Request,
-        actor=Depends(access_accounts),
+        actor=Depends(access_shared_read),
     ):
         return _invoke(
             request,
@@ -265,7 +274,7 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
         course_id: int,
         request: Request,
         latest_only: bool = Query(default=False),
-        actor=Depends(access_accounts),
+        actor=Depends(access_shared_read),
     ):
         return _invoke(
             request,
@@ -312,7 +321,7 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
     def list_tasks(
         request: Request,
         owner_user_id: int | None = Query(default=None, gt=0),
-        actor=Depends(access_tasks),
+        actor=Depends(access_shared_read),
     ):
         return _invoke(
             request, _service(request).list_tasks, actor,
@@ -397,7 +406,7 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
         status: str | None = Query(default=None, max_length=32),
         limit: int = Query(default=100, ge=1, le=200),
         offset: int = Query(default=0, ge=0),
-        actor=Depends(access_runs),
+        actor=Depends(access_shared_read),
     ):
         return _invoke(
             request, _service(request).list_runs, actor,

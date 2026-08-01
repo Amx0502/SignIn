@@ -77,6 +77,14 @@ class MenuRepository:
             raise MenuVersionConflictError(int(current or 1))
         return expected_version + 1
 
+    @staticmethod
+    def _assert_version(session, expected_version: int) -> None:
+        current = session.scalar(
+            select(MenuConfigStateRow.version).where(MenuConfigStateRow.id == 1)
+        )
+        if int(current or 1) != expected_version:
+            raise MenuVersionConflictError(int(current or 1))
+
     def _record_audit(
         self,
         session,
@@ -111,9 +119,17 @@ class MenuRepository:
             raise ValueError("菜单显示状态必须是布尔值")
         with self.database.session() as session:
             current = self._global_visibility(session)
-            before = {key: current.get(key, True) for key in visibility}
+            changed = {
+                key: visible
+                for key, visible in visibility.items()
+                if current.get(key, True) != visible
+            }
+            if not changed:
+                self._assert_version(session, expected_version)
+                return {"version": expected_version, "visibility": current}
+            before = {key: current.get(key, True) for key in changed}
             version = self._bump_version(session, expected_version)
-            for key, visible in visibility.items():
+            for key, visible in changed.items():
                 row = session.get(MenuConfigRow, key)
                 if row is None:
                     session.add(MenuConfigRow(menu_key=key, visible=visible))
@@ -125,7 +141,7 @@ class MenuRepository:
                 target_type="global",
                 target_user_id=None,
                 before=before,
-                after=dict(visibility),
+                after=dict(changed),
                 version=version,
             )
             return {"version": version, "visibility": {**current, **visibility}}
@@ -147,7 +163,7 @@ class MenuRepository:
             if user is None or user.role != "user":
                 raise ValueError("只能为普通用户设置菜单覆盖")
             current = self._user_overrides(session, user_id)
-            before = {
+            requested_before = {
                 key: (
                     "inherit"
                     if key not in current
@@ -155,8 +171,17 @@ class MenuRepository:
                 )
                 for key in overrides
             }
+            changed = {
+                key: state
+                for key, state in overrides.items()
+                if requested_before[key] != state
+            }
+            if not changed:
+                self._assert_version(session, expected_version)
+                return {"version": expected_version, "overrides": dict(overrides)}
+            before = {key: requested_before[key] for key in changed}
             version = self._bump_version(session, expected_version)
-            for key, state in overrides.items():
+            for key, state in changed.items():
                 row = session.get(UserMenuOverrideRow, (user_id, key))
                 if state == "inherit":
                     if row is not None:
@@ -179,7 +204,7 @@ class MenuRepository:
                 target_type="user",
                 target_user_id=user_id,
                 before=before,
-                after=dict(overrides),
+                after=dict(changed),
                 version=version,
             )
             return {"version": version, "overrides": dict(overrides)}
@@ -255,4 +280,3 @@ class MenuRepository:
                 }
                 for row in rows
             ]
-

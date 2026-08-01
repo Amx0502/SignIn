@@ -24,16 +24,22 @@ def _conflict(error: MenuVersionConflictError) -> JSONResponse:
 
 
 def create_menu_guard(auth_dependency, get_repository: Callable):
-    def require_menu(menu_key: str):
+    def require_menu(menu_key: str | tuple[str, ...]):
+        menu_keys = (menu_key,) if isinstance(menu_key, str) else tuple(menu_key)
+
         async def dependency(user=Depends(auth_dependency)):
             repository = get_repository()
-            if not repository.is_menu_visible(user, menu_key):
+            if not any(
+                repository.is_menu_visible(user, candidate)
+                for candidate in menu_keys
+            ):
                 raise HTTPException(
                     status_code=403,
                     detail={
                         "ok": False,
                         "error": "该功能已被管理员隐藏",
-                        "menu_key": menu_key,
+                        "menu_key": menu_keys[0],
+                        "menu_keys": list(menu_keys),
                     },
                 )
             return user
@@ -135,4 +141,3 @@ def create_menu_router(
         return _success(get_repository().list_audit_logs(limit))
 
     return router
-
