@@ -9,10 +9,6 @@
           <p>Professional Admin Console</p>
         </div>
       </div>
-      <div v-if="!sidebarCollapsed" class="sidebar-status">
-        <span class="pulse-dot"></span>
-        <span>{{ loading ? '正在同步数据' : '服务运行中' }}</span>
-      </div>
       <el-menu
         :key="sidebarMenuRenderKey"
         ref="sidebarMenuRef"
@@ -122,7 +118,7 @@ import { buildSidebarSections } from './menu/sidebarSections.js'
 const router = useRouter()
 const route = useRoute()
 
-const { loading } = useAppState()
+useAppState()
 
 const sidebarCollapsed = ref(false)
 const sidebarMenuRef = ref(null)
@@ -241,8 +237,6 @@ onUnmounted(() => {
 .brand-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 16px; background: linear-gradient(135deg, #60a5fa, #2563eb); color: #fff; font-weight: 900; box-shadow: 0 16px 30px rgba(37, 99, 235, 0.35); }
 .brand h1 { margin: 0; font-size: 21px; color: #fff; letter-spacing: -0.03em; }
 .brand p { margin: 6px 0 0; font-size: 11px; color: #9fb0cf; text-transform: uppercase; letter-spacing: 0.08em; }
-.sidebar-status { position: relative; margin: 12px 8px 18px; padding: 12px 14px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 16px; background: rgba(255, 255, 255, 0.05); color: #cbd5e1; font-size: 13px; }
-.pulse-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #22c55e; margin-right: 8px; box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.12); animation: pulse 1.5s infinite; }
 .sidebar-menu { position: relative; border-right: none; background: transparent; }
 .sidebar-menu :deep(.el-sub-menu__title), .sidebar-menu :deep(.el-menu-item) { border-radius: 14px; margin: 5px 0; height: 48px; line-height: 48px; color: #dbeafe; transition: all 0.22s ease; }
 .sidebar-menu :deep(.el-sub-menu__title:hover), .sidebar-menu :deep(.el-menu-item:hover) { background: rgba(96, 165, 250, 0.14); transform: translateX(3px); }
