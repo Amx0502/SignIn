@@ -184,4 +184,3 @@ export function resetMenuState() {
   menuState.loading = false
   menuState.error = ''
 }
-

@@ -38,4 +38,3 @@ class MenuEventBroker:
                 yield format_version_event(observed)
             except TimeoutError:
                 yield ": keep-alive\n\n"
-

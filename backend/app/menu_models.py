@@ -11,4 +11,3 @@ class GlobalMenuConfigUpdate(BaseModel):
 class UserMenuOverrideUpdate(BaseModel):
     version: int = Field(ge=1)
     overrides: dict[str, Literal["inherit", "visible", "hidden"]]
-

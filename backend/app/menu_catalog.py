@@ -149,4 +149,3 @@ def visible_menu_keys(menus: list[dict[str, Any]]) -> set[str]:
 
 def catalog_tree() -> list[dict[str, Any]]:
     return build_effective_menu({}, {}, True)
-
