@@ -137,7 +137,14 @@
                 <el-input-number v-model="form.accuracy" :min="0" :precision="1" :controls="false" />
               </el-form-item>
             </div>
-            <el-alert v-if="selectedItem.mode === 'gps_photo'" title="兼容模式将自动附带 res，无需上传本地照片。" type="info" :closable="false" show-icon />
+            <el-alert v-if="selectedItem.mode === 'gps_photo'" title="请上传本次签到照片，系统会先直传 OSS，再使用动态 res 提交。" type="info" :closable="false" show-icon />
+            <el-form-item v-if="selectedItem.mode === 'gps_photo'" label="签到照片">
+              <input ref="photoInput" class="photo-input" type="file" accept="image/jpeg,image/png,image/webp" @change="uploadPhoto" />
+              <div class="photo-picker">
+                <el-button :loading="photoUploading" @click="photoInput?.click()">{{ form.photoPath ? '更换照片' : '选择并上传照片' }}</el-button>
+                <small>{{ form.photoPath ? '照片已上传' : '尚未上传照片' }}</small>
+              </div>
+            </el-form-item>
             <el-form-item v-if="selectedItem.mode === 'password'" label="签到密码">
               <el-input v-model="form.password" type="text" maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
             </el-form-item>
@@ -190,21 +197,25 @@ const props = defineProps({
   itemsLoading: { type: Boolean, default: false },
   itemsSyncing: { type: Boolean, default: false },
   manualCheckinAction: { type: Function, required: true },
+  uploadPhotoAction: { type: Function, required: true },
   batchDeleteAccountsAction: { type: Function, required: true },
 })
 const emit = defineEmits(['qr-login', 'select-account', 'select-course', 'select-item', 'sync-courses', 'sync-items', 'rename-account', 'delete-account'])
 const checkingIn = ref(false)
+const photoUploading = ref(false)
+const photoInput = ref(null)
 const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
 const resultVisible = ref(false)
 const result = ref(null)
-const form = reactive({ coordinateInput: '', accuracy: 20, password: '', notify_wecom: false })
+const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', notify_wecom: false })
 
 function resetManualState() {
   Object.assign(form, {
     coordinateInput: '',
     accuracy: 20,
     password: '',
+    photoPath: '',
     notify_wecom: false,
   })
   result.value = null
@@ -305,6 +316,7 @@ async function submitManual() {
       Object.assign(payload, parseCoordinates(form.coordinateInput), { accuracy: form.accuracy })
     }
     if (props.selectedItem.mode === 'password') payload.password = form.password
+    if (props.selectedItem.mode === 'gps_photo') payload.photoPath = form.photoPath
     result.value = await props.manualCheckinAction(props.selectedItem.id, payload)
     resultVisible.value = true
   } catch (error) {
@@ -312,6 +324,23 @@ async function submitManual() {
     resultVisible.value = true
   } finally {
     checkingIn.value = false
+  }
+}
+
+async function uploadPhoto(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file || !props.selectedAccountId) return
+  photoUploading.value = true
+  try {
+    const response = await props.uploadPhotoAction(file, props.selectedAccountId)
+    form.photoPath = response?.path || ''
+    if (!form.photoPath) throw new Error('照片上传结果无效')
+    ElMessage.success('签到照片上传成功')
+  } catch (error) {
+    ElMessage.error(error.message || '照片上传失败')
+  } finally {
+    photoUploading.value = false
   }
 }
 </script>
@@ -343,7 +372,7 @@ async function submitManual() {
 .selector-row { display:flex;align-items:center;gap:12px;margin-bottom:14px }.selector-row .el-select { flex:1 }.course-code,.option-code { color:#64748b;font-size:11px }.option-code { float:right;margin-left:20px }
 .manual-form { margin-top:18px;padding:18px;border:1px solid #bfdbfe;border-radius:18px;background:linear-gradient(145deg,#f8fbff,#eff6ff) }
 .manual-form__head { display:flex;justify-content:space-between;gap:12px;margin-bottom:16px }.manual-form__head>div { display:flex;align-items:center;gap:9px }.manual-form__head small { color:#64748b;font-size:11px }.mode-chip { padding:5px 9px;color:#1d4ed8;border-radius:9px;background:#dbeafe;font-size:11px;font-weight:700 }
-.location-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px }.location-grid .el-input-number,.location-grid .el-input { width:100% }.coordinate-row { display:flex;align-items:center;gap:8px;width:100%;min-width:0 }.coordinate-row .el-input { flex:1;min-width:0 }.field-tip { margin:7px 0 0;color:#64748b;font-size:11px }
+.location-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px }.location-grid .el-input-number,.location-grid .el-input { width:100% }.coordinate-row { display:flex;align-items:center;gap:8px;width:100%;min-width:0 }.coordinate-row .el-input { flex:1;min-width:0 }.field-tip { margin:7px 0 0;color:#64748b;font-size:11px }.photo-input{display:none}.photo-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.photo-picker small{color:#64748b;font-size:11px}
 .manual-actions { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:4px }
 .result-content { display:grid;justify-items:center;padding:16px 10px;text-align:center }.result-icon { display:grid;width:70px;height:70px;place-items:center;color:#fff;border-radius:24px;background:linear-gradient(135deg,#2563eb,#0ea5e9);font-size:38px;box-shadow:0 18px 35px rgb(37 99 235 / 24%) }.result-content.is-success .result-icon,.result-content.is-already_signed .result-icon { background:linear-gradient(135deg,#059669,#10b981) }.result-content.is-failed .result-icon { background:linear-gradient(135deg,#dc2626,#f87171) }.result-content small { margin-top:17px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.14em }.result-content h2 { margin:6px 0;color:#172033 }.result-content p { max-width:390px;margin:0 0 14px;color:#64748b;line-height:1.7 }
 @container(max-width:480px){

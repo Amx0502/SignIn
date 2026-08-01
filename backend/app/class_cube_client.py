@@ -1,4 +1,5 @@
 import base64
+import mimetypes
 import secrets
 from dataclasses import dataclass
 from http.cookies import SimpleCookie
@@ -9,6 +10,7 @@ from urllib.parse import quote, urljoin, urlparse
 
 import requests
 import time
+import uuid
 
 from app.class_cube_parser import (
     PASSWORD_FIELD_ALIASES,
@@ -36,11 +38,14 @@ CHECKIN_LIST_URLS = {
         "https://bjmf.k8n.cn/student/course/{course_id}/daka"
     ),
 }
+OSS_UPLOAD_KEY_URL = (
+    "https://k8n.cn/student/oss-upload-key?type=punch_from_wxapp"
+)
 QR_TTL_SECONDS = 120
 CONNECT_TIMEOUT = 5
 READ_TIMEOUT = 10
 GET_MAX_ATTEMPTS = 3
-AUTHENTICATED_HOSTS = frozenset({"bjmf.k8n.cn", "bj.k8n.cn"})
+AUTHENTICATED_HOSTS = frozenset({"k8n.cn", "bjmf.k8n.cn", "bj.k8n.cn"})
 AUTH_REDIRECT_MAX_HOPS = 5
 AUTH_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 
@@ -102,9 +107,11 @@ class ClassCubeClient:
     def __init__(
         self,
         session_factory: Callable[[], requests.Session] = requests.Session,
+        upload_session_factory: Callable[[], requests.Session] = requests.Session,
         clock: Callable[[], float] | None = None,
     ):
         self._session_factory = session_factory
+        self._upload_session_factory = upload_session_factory
         self._clock = clock or __import__("time").monotonic
         self._qr_sessions: dict[str, _QrSession] = {}
         self._qr_lock = RLock()
@@ -374,6 +381,95 @@ class ClassCubeClient:
             if photo_file is not None:
                 photo_file.close()
             session.close()
+
+    def upload_photo_to_oss(
+        self,
+        cookie: str,
+        photo_path,
+    ) -> str:
+        """Upload a check-in photo using the platform's temporary OSS policy.
+
+        The credential request is authenticated with the student's cookie. The
+        subsequent OSS upload deliberately uses a clean session so the cookie
+        is never sent to the third-party storage host.
+        """
+        credential_session = self._short_lived_session(cookie)
+        upload_session = None
+        photo_file = None
+        try:
+            credential_response = self._get_with_retries(
+                credential_session,
+                OSS_UPLOAD_KEY_URL,
+            )
+            self._raise_if_cookie_expired(credential_response)
+            try:
+                credential = credential_response.json()
+            except (TypeError, ValueError) as exc:
+                raise ClassCubeRequestError(
+                    "photo upload credential response is not valid JSON"
+                ) from exc
+            if not isinstance(credential, dict):
+                raise ClassCubeRequestError(
+                    "photo upload credential response is invalid"
+                )
+
+            host = str(credential.get("host") or "").strip()
+            policy = str(credential.get("policy") or "").strip()
+            access_id = str(credential.get("accessid") or "").strip()
+            signature = str(credential.get("signature") or "").strip()
+            callback = str(credential.get("callback") or "").strip()
+            directory = str(credential.get("dir") or "").strip("/")
+            self._validate_oss_upload_host(host)
+            if not all((policy, access_id, signature, callback, directory)):
+                raise ClassCubeRequestError(
+                    "photo upload credential response is incomplete"
+                )
+            if ".." in directory.split("/"):
+                raise ClassCubeRequestError(
+                    "photo upload directory is invalid"
+                )
+
+            photo = Path(photo_path)
+            photo_file = photo.open("rb")
+            content_type = mimetypes.guess_type(photo.name)[0] or (
+                "application/octet-stream"
+            )
+            extension = photo.suffix.lower() or ".bin"
+            object_key = (
+                f"{directory}/{time.strftime('%H%M%S')}"
+                f"{uuid.uuid4().hex[:16]}{extension}"
+            )
+            upload_session = self._upload_session_factory()
+            response = upload_session.post(
+                host,
+                data={
+                    "key": object_key,
+                    "policy": policy,
+                    "OSSAccessKeyId": access_id,
+                    "signature": signature,
+                    "callback": callback,
+                },
+                files={
+                    "file": (photo.name, photo_file, content_type),
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+            if not 200 <= response.status_code < 300:
+                response.raise_for_status()
+                raise ClassCubeRequestError(
+                    "photo upload failed"
+                )
+            return object_key
+        except requests.RequestException as exc:
+            raise ClassCubeRequestError(
+                "photo upload request failed"
+            ) from exc
+        finally:
+            if photo_file is not None:
+                photo_file.close()
+            if upload_session is not None:
+                upload_session.close()
+            credential_session.close()
 
     def poll_qr_session(
         self,
@@ -731,6 +827,22 @@ class ClassCubeClient:
         if not is_allowed:
             raise ClassCubeRequestError(
                 "authenticated URL is outside the allowed HTTPS hosts"
+            )
+
+    @staticmethod
+    def _validate_oss_upload_host(url: str) -> None:
+        try:
+            parsed = urlparse(url)
+            hostname = (parsed.hostname or "").lower()
+            is_allowed = (
+                parsed.scheme.lower() == "https"
+                and hostname.endswith(".aliyuncs.com")
+            )
+        except (TypeError, ValueError):
+            is_allowed = False
+        if not is_allowed:
+            raise ClassCubeRequestError(
+                "photo upload host is outside the allowed HTTPS hosts"
             )
 
     @staticmethod

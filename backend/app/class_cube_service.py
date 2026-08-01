@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+import json
 import math
 import os
 from pathlib import Path, PurePosixPath
@@ -48,10 +49,6 @@ class ClassCubeValidationError(ValueError):
 
 CLASS_CUBE_PHOTO_MAX_BYTES = 10 * 1024 * 1024
 CLASS_CUBE_PHOTO_CHUNK_BYTES = 64 * 1024
-AUTOCHECK_GPS_PHOTO_RES = (
-    "s46grRvFJukcJc3CFnqHcKQLxAvxJYJ-"
-    "Uh8bsD1YcXiVMN-MoqkVmZPDzpUhTMyf"
-)
 _PHOTO_CONTENT_TYPES = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -190,16 +187,40 @@ def build_submission_fields(
         if form.gps_address_field:
             fields[form.gps_address_field] = ""
 
-    if form.mode == "gps_photo" and form.photo_resource_field:
+    if form.mode == "gps_photo":
+        if not form.photo_resource_field:
+            raise ClassCubeValidationError(
+                "无法识别 GPS+拍照签到的照片字段"
+            )
         remote_value = str(
             form.hidden_fields.get(form.photo_resource_field) or ""
         ).strip()
         supplied_value = str(remote_photo_value or "").strip()
-        if supplied_value:
-            fields[form.photo_resource_field] = supplied_value
-        elif not remote_value:
-            fields[form.photo_resource_field] = (
-                AUTOCHECK_GPS_PHOTO_RES
+        resource = supplied_value or remote_value
+        if not resource:
+            raise ClassCubeValidationError(
+                "GPS+拍照签到需要上传照片"
+            )
+        try:
+            decoded = json.loads(resource)
+        except (TypeError, ValueError):
+            decoded = None
+        if isinstance(decoded, list):
+            values = [str(value).strip() for value in decoded if str(value).strip()]
+            if not values:
+                raise ClassCubeValidationError(
+                    "GPS+拍照签到需要有效的照片资源"
+                )
+            fields[form.photo_resource_field] = json.dumps(
+                values,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        else:
+            fields[form.photo_resource_field] = json.dumps(
+                [resource],
+                ensure_ascii=False,
+                separators=(",", ":"),
             )
     return fields
 
@@ -896,7 +917,7 @@ class ClassCubeService:
         return {
             "longitude": coordinate(task.get("longitude")),
             "latitude": coordinate(task.get("latitude")),
-            "image_count": 0,
+            "image_count": 1 if task.get("photo_path") else 0,
             "password": (
                 "configured"
                 if task.get("password")
@@ -1080,6 +1101,7 @@ class ClassCubeService:
                         "longitude": task.get("longitude"),
                         "accuracy": task.get("accuracy"),
                         "password": task.get("password") or "",
+                        "photo_path": task.get("photo_path") or "",
                     },
                     actor,
                     before_submit=lambda: self._mark_automatic_submitting(
@@ -1407,7 +1429,7 @@ class ClassCubeService:
         return {
             "latitude": payload.get("latitude"),
             "longitude": payload.get("longitude"),
-            "image_count": 0,
+            "image_count": 1 if payload.get("photo_path") else 0,
             "password": (
                 "configured"
                 if payload.get("password")
@@ -1620,6 +1642,35 @@ class ClassCubeService:
             password=str(payload.get("password") or ""),
         )
 
+        remote_photo_value = ""
+        if form.mode == "gps_photo":
+            photo_path = str(payload.get("photo_path") or "").strip()
+            if not photo_path:
+                return self._checkin_view(
+                    "waiting_parameter",
+                    "GPS+拍照签到需要先上传签到照片",
+                )
+            try:
+                photo = self._owned_photo_path(
+                    photo_path,
+                    int(account["owner_user_id"]),
+                )
+                remote_photo_value = self.client.upload_photo_to_oss(
+                    account["cookie"],
+                    photo,
+                )
+            except ClassCubeValidationError as exc:
+                return self._checkin_view(
+                    "waiting_parameter",
+                    str(exc),
+                )
+            except (ClassCubeRequestError, OSError) as exc:
+                self._log_remote_failure("上传签到照片", exc)
+                return self._checkin_view(
+                    "failed",
+                    "签到照片上传失败，请稍后重试",
+                )
+
         submit_started = False
 
         def mark_submitting():
@@ -1633,6 +1684,7 @@ class ClassCubeService:
                 form,
                 parameters,
                 remote_item_id=str(item["remote_item_id"]),
+                remote_photo_value=remote_photo_value,
             )
         except ClassCubeValidationError as exc:
             return self._checkin_view(

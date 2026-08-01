@@ -92,6 +92,22 @@
             <el-form-item label="预设密码">
               <el-input v-model="draft.password" type="text" autocomplete="new-password" placeholder="密码签到使用" />
             </el-form-item>
+            <el-form-item label="GPS+拍照签到照片">
+              <input
+                ref="photoInput"
+                class="photo-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                @change="uploadPhoto"
+              />
+              <div class="photo-picker">
+                <el-button :loading="photoUploading" @click="photoInput?.click()">
+                  {{ draft.photo_path ? '更换照片' : '选择并上传照片' }}
+                </el-button>
+                <small v-if="draft.photo_path" class="field-tip">已配置照片，可用于 GPS+拍照签到</small>
+                <small v-else class="field-tip">GPS+拍照签到必须配置照片</small>
+              </div>
+            </el-form-item>
           </section>
 
           <section class="editor-section">
@@ -140,6 +156,7 @@ const props = defineProps({
   isAdmin: { type: Boolean, default: false },
   coursesLoading: { type: Boolean, default: false },
   saveTaskAction: { type: Function, required: true },
+  uploadPhotoAction: { type: Function, required: true },
   removeTasksAction: { type: Function, required: true },
   runTaskAction: { type: Function, required: true },
 })
@@ -148,6 +165,8 @@ const tableRef = ref(null)
 const editorVisible = ref(false)
 const editingId = ref(null)
 const saving = ref(false)
+const photoUploading = ref(false)
+const photoInput = ref(null)
 const runningTaskId = ref(null)
 const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', password: '', has_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
 const draft = reactive(emptyDraft())
@@ -189,6 +208,26 @@ async function save() {
     emit('refresh')
   } catch (error) { ElMessage.error(error.message || '保存失败') } finally { saving.value = false }
 }
+async function uploadPhoto(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!draft.account_id) {
+    ElMessage.warning('请先选择班级魔方账号')
+    return
+  }
+  photoUploading.value = true
+  try {
+    const response = await props.uploadPhotoAction(file, draft.account_id)
+    draft.photo_path = response?.path || ''
+    if (!draft.photo_path) throw new Error('照片上传结果无效')
+    ElMessage.success('签到照片上传成功')
+  } catch (error) {
+    ElMessage.error(error.message || '照片上传失败')
+  } finally {
+    photoUploading.value = false
+  }
+}
 async function toggleTask(row, enabled) {
   try { await props.saveTaskAction({ enabled }, row.id); ElMessage.success(enabled ? '任务已启用' : '任务已停用'); emit('refresh') } catch (error) { ElMessage.error(error.message || '更新失败') }
 }
@@ -223,6 +262,7 @@ async function removeSelected() {
 .task-panel { border:1px solid rgb(191 219 254 / 58%);border-radius:22px;background:rgb(255 255 255 / 84%);box-shadow:0 18px 42px rgb(15 23 42 / 7%);backdrop-filter:blur(18px) }
 .panel-head { display:flex;align-items:center;justify-content:space-between;gap:14px }.panel-head strong,.panel-head small,.task-name strong,.task-name small { display:block }.panel-head strong{font-size:16px}.panel-head small,.task-name small,.muted{margin-top:4px;color:#64748b;font-size:11px}.task-name strong{color:#172033}
 .task-editor-form{max-height:min(68vh,680px);overflow-x:hidden;overflow-y:auto;padding:2px 4px 4px}.editor-layout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.editor-section{min-width:0;overflow:hidden;padding:16px 16px 6px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);box-shadow:0 10px 28px rgb(37 99 235 / 6%)}.editor-section :deep(.el-form-item__content){min-width:0}.editor-section header{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:12px;border-bottom:1px solid #e8eef8}.editor-section header strong,.editor-section header small{display:block}.editor-section header strong{color:#172033;font-size:15px}.editor-section header small{margin-top:2px;color:#8492a6;font-size:11px}.section-index{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-size:11px;font-weight:800;box-shadow:0 7px 16px rgb(37 99 235 / 22%)}.el-select,.el-input-number{width:100%}.coordinate-row{display:flex;align-items:center;gap:8px;width:100%;min-width:0}.coordinate-row .el-input{flex:1;min-width:0}.field-tip{display:block;margin-top:7px;color:#64748b;font-size:11px}.schedule-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.date-range{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.schedule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;min-width:0}.schedule-row :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.date-range :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.switch-options{display:grid;gap:8px;padding:12px;border-radius:12px;background:#eff6ff}.switch-options .el-checkbox{margin-right:0}
+.photo-input{display:none}.photo-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 @media(max-width:900px){.editor-layout{grid-template-columns:repeat(2,minmax(0,1fr))}.editor-section:last-child{grid-column:1/-1}.task-editor-form{max-height:72vh}}
 @media(max-width:760px){.panel-head{align-items:stretch;flex-direction:column}.panel-head :deep(.el-space),.panel-head :deep(.el-space__item),.panel-head .el-button{width:100%}.editor-layout{grid-template-columns:1fr}.editor-section:last-child{grid-column:auto}.date-range{grid-template-columns:1fr}.task-editor-form{max-height:70vh}.editor-section{padding:14px 13px 4px}}
 </style>

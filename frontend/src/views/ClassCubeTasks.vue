@@ -8,6 +8,7 @@
       :is-admin="isAdmin"
       :courses-loading="coursesLoading"
       :save-task-action="saveTask"
+      :upload-photo-action="uploadPhoto"
       :remove-tasks-action="removeTasks"
       :run-task-action="runTask"
       @update:selected-task-ids="value => selectedTaskIds = value"
@@ -20,5 +21,5 @@
 import { computed, onMounted } from 'vue'
 import AutoTaskPanel from '../components/class-cube/AutoTaskPanel.vue'
 import { useClassCube } from '../composables/useClassCube.js'
-const {tasks,accounts,courses,selectedTaskIds,coursesLoading,saveTask,removeTasks,runTask,selectAccount,refreshBackground,loadInitial,startBackgroundPolling}=useClassCube(); const user=JSON.parse(localStorage.getItem('user')||'{}'); const isAdmin=computed(()=>user.role==='admin'); onMounted(async()=>{await loadInitial().catch(()=>{});startBackgroundPolling()})
+const {tasks,accounts,courses,selectedTaskIds,coursesLoading,saveTask,uploadPhoto,removeTasks,runTask,selectAccount,refreshBackground,loadInitial,startBackgroundPolling}=useClassCube(); const user=JSON.parse(localStorage.getItem('user')||'{}'); const isAdmin=computed(()=>user.role==='admin'); onMounted(async()=>{await loadInitial().catch(()=>{});startBackgroundPolling()})
 </script><style scoped>.cube-subpage{display:grid;gap:18px}</style>
