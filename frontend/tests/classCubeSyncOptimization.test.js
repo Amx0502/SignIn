@@ -102,7 +102,7 @@ test('composable exports itemsSyncing so the button loading is wired', async () 
   )
 
   assert.match(source, /const itemsSyncing = ref\(false\)/)
-  assert.match(source, /itemsSyncing,\n    error,/)
+  assert.match(source, /itemsSyncing,\r?\n    error,/)
   assert.doesNotMatch(source, /syncingItems/)
 })
 
