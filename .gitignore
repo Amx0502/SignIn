@@ -17,4 +17,6 @@ frontend/dist/
 .worktrees/
 docs/
 backend/test_*.py
+backend/tests/
 frontend/src/**/*.test.js
+frontend/tests/
