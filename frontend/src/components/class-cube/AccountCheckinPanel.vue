@@ -137,7 +137,7 @@
                 <el-input-number v-model="form.accuracy" :min="0" :precision="1" :controls="false" />
               </el-form-item>
             </div>
-            <el-alert v-if="selectedItem.mode === 'gps_photo'" title="请上传本次签到照片，系统会先直传 OSS，再使用动态 res 提交。" type="info" :closable="false" show-icon />
+            <el-alert v-if="selectedItem.mode === 'gps_photo'" title="可上传照片自动生成 res，也可填写手动 res 覆盖上传值。" type="info" :closable="false" show-icon />
             <el-form-item v-if="selectedItem.mode === 'gps_photo'" label="签到照片">
               <TaskImageUpload
                 :file-list="photoFiles"
@@ -145,6 +145,17 @@
                 :http-request="uploadPhoto"
                 :on-remove="removePhoto"
               />
+            </el-form-item>
+            <el-form-item v-if="selectedItem.mode === 'gps_photo'" label="手动 res（可选）">
+              <el-input
+                v-model="form.photoRes"
+                type="text"
+                clearable
+                maxlength="2048"
+                show-word-limit
+                placeholder="填写后跳过远程上传，例如 %5B%22p%2F...png%22%5D"
+              />
+              <p class="field-tip">填写后优先使用该资源值；留空则使用上传照片生成的 res。</p>
             </el-form-item>
             <el-form-item v-if="selectedItem.mode === 'password'" label="签到密码">
               <el-input v-model="form.password" type="text" maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
@@ -182,7 +193,7 @@ import {
   Delete, Key, Loading, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { parseCoordinates } from '../../utils/classCubeTaskForm.js'
+import { buildManualCheckinPayload } from '../../utils/classCubeCheckin.js'
 import TaskImageUpload from '../TaskImageUpload.vue'
 
 const props = defineProps({
@@ -210,7 +221,7 @@ const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
 const resultVisible = ref(false)
 const result = ref(null)
-const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', notify_wecom: false })
+const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', notify_wecom: false })
 
 function resetManualState() {
   Object.assign(form, {
@@ -218,6 +229,7 @@ function resetManualState() {
     accuracy: 20,
     password: '',
     photoPath: '',
+    photoRes: '',
     notify_wecom: false,
   })
   photoFiles.value = []
@@ -314,12 +326,15 @@ async function batchDeleteSelected() {
 async function submitManual() {
   checkingIn.value = true
   try {
-    const payload = { notify_wecom: form.notify_wecom }
-    if (['gps', 'gps_photo'].includes(props.selectedItem.mode)) {
-      Object.assign(payload, parseCoordinates(form.coordinateInput), { accuracy: form.accuracy })
-    }
-    if (props.selectedItem.mode === 'password') payload.password = form.password
-    if (props.selectedItem.mode === 'gps_photo') payload.photoPath = form.photoPath
+    const payload = buildManualCheckinPayload({
+      mode: props.selectedItem.mode,
+      coordinateInput: form.coordinateInput,
+      accuracy: form.accuracy,
+      password: form.password,
+      photoPath: form.photoPath,
+      photoRes: form.photoRes,
+      notifyWecom: form.notify_wecom,
+    })
     result.value = await props.manualCheckinAction(props.selectedItem.id, payload)
     resultVisible.value = true
   } catch (error) {

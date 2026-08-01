@@ -8,6 +8,7 @@ import re
 import time
 from threading import RLock
 from typing import Any, Callable
+from urllib.parse import unquote
 import uuid
 
 from fastapi import UploadFile
@@ -195,7 +196,7 @@ def build_submission_fields(
         remote_value = str(
             form.hidden_fields.get(form.photo_resource_field) or ""
         ).strip()
-        supplied_value = str(remote_photo_value or "").strip()
+        supplied_value = unquote(str(remote_photo_value or "").strip())
         resource = supplied_value or remote_value
         if not resource:
             raise ClassCubeValidationError(
@@ -1642,34 +1643,35 @@ class ClassCubeService:
             password=str(payload.get("password") or ""),
         )
 
-        remote_photo_value = ""
+        remote_photo_value = str(payload.get("photo_res") or "").strip()
         if form.mode == "gps_photo":
-            photo_path = str(payload.get("photo_path") or "").strip()
-            if not photo_path:
-                return self._checkin_view(
-                    "waiting_parameter",
-                    "GPS+拍照签到需要先上传签到照片",
-                )
-            try:
-                photo = self._owned_photo_path(
-                    photo_path,
-                    int(account["owner_user_id"]),
-                )
-                remote_photo_value = self.client.upload_photo_to_oss(
-                    account["cookie"],
-                    photo,
-                )
-            except ClassCubeValidationError as exc:
-                return self._checkin_view(
-                    "waiting_parameter",
-                    str(exc),
-                )
-            except (ClassCubeRequestError, OSError) as exc:
-                self._log_remote_failure("上传签到照片", exc)
-                return self._checkin_view(
-                    "failed",
-                    "签到照片上传失败，请稍后重试",
-                )
+            if not remote_photo_value:
+                photo_path = str(payload.get("photo_path") or "").strip()
+                if not photo_path:
+                    return self._checkin_view(
+                        "waiting_parameter",
+                        "GPS+拍照签到需要先上传签到照片",
+                    )
+                try:
+                    photo = self._owned_photo_path(
+                        photo_path,
+                        int(account["owner_user_id"]),
+                    )
+                    remote_photo_value = self.client.upload_photo_to_oss(
+                        account["cookie"],
+                        photo,
+                    )
+                except ClassCubeValidationError as exc:
+                    return self._checkin_view(
+                        "waiting_parameter",
+                        str(exc),
+                    )
+                except (ClassCubeRequestError, OSError) as exc:
+                    self._log_remote_failure("上传签到照片", exc)
+                    return self._checkin_view(
+                        "failed",
+                        "签到照片上传失败，请稍后重试",
+                    )
 
         submit_started = False
 

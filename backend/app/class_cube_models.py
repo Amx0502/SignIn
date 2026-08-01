@@ -37,6 +37,7 @@ class ManualCheckinRequest(BaseModel):
     )
     password: str = Field(default="", max_length=128)
     photo_path: str = Field(default="", max_length=512)
+    photo_res: str = Field(default="", max_length=2048)
 
 
 class ClassCubeTaskCreate(BaseModel):
