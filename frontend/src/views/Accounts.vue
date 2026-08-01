@@ -88,12 +88,17 @@ import { Plus, Key, Refresh, VideoPlay, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAppState } from '../composables/useAppState'
 import { getAccountDeleteIndexes } from '../utils/batchDelete'
+import {
+  reconcileAccountSelection,
+  selectedAccountIndex,
+} from '../utils/accountEditor.js'
 import api from '../api'
 
 const { state, refreshState, refreshLogs } = useAppState()
 
 const formRef = ref(null)
 const selectedIndex = ref(-1)
+const selectedMobile = ref('')
 const selectedAccounts = ref([])
 const batchDeleting = ref(false)
 const form = reactive({
@@ -111,6 +116,7 @@ const rules = {
 
 function createNew() {
   selectedIndex.value = -1
+  selectedMobile.value = ''
   form.name = ''
   form.mobile = ''
   form.password = ''
@@ -119,12 +125,16 @@ function createNew() {
 
 function onSelectAccount(row) {
   if (!row) return
-  const idx = state.value.accounts.indexOf(row)
-  selectedIndex.value = idx
-  form.name = row.name
-  form.mobile = row.mobile
-  form.password = row.password
-  form.token = row.token || ''
+  const selection = reconcileAccountSelection({
+    accounts: state.value.accounts,
+    row,
+    selectedMobile: selectedMobile.value,
+    draft: form,
+  })
+  selectedIndex.value = selection.index
+  if (!selection.shouldHydrateDraft) return
+  selectedMobile.value = selection.selectedMobile
+  Object.assign(form, selection.draft)
 }
 
 function onSelectionChange(rows) {
@@ -136,7 +146,13 @@ async function saveAccount() {
   if (!valid) return
   try {
     if (selectedIndex.value >= 0) {
-      await api.updateAccount(selectedIndex.value, { ...form })
+      const currentIndex = selectedAccountIndex(
+        state.value.accounts,
+        selectedMobile.value,
+      )
+      if (currentIndex < 0) throw new Error('当前账号已不存在，请重新选择')
+      selectedIndex.value = currentIndex
+      await api.updateAccount(currentIndex, { ...form })
       ElMessage.success('账号已更新')
     } else {
       await api.addAccount({ name: form.name, mobile: form.mobile, password: form.password, token: '' })

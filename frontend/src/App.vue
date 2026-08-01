@@ -23,7 +23,7 @@
         :persistent="false"
         @select="closeSidebar"
       >
-        <template v-for="parent in menuState.menus" :key="parent.key">
+        <template v-for="parent in sidebarSections" :key="parent.key">
           <el-sub-menu v-if="!parent.path" :index="`menu:${parent.key}`">
             <template #title>
               <el-icon>
@@ -51,15 +51,6 @@
             <span>{{ parent.title }}</span>
           </el-menu-item>
         </template>
-        <el-sub-menu v-if="currentUser?.role === 'admin'" index="menu:system">
-          <template #title><el-icon><Setting /></el-icon><span>系统设置</span></template>
-          <el-menu-item index="/users">
-            <el-icon><UserFilled /></el-icon><span>用户管理</span>
-          </el-menu-item>
-          <el-menu-item index="/menu-management">
-            <el-icon><Menu /></el-icon><span>菜单管理</span>
-          </el-menu-item>
-        </el-sub-menu>
       </el-menu>
     </el-aside>
 
@@ -129,6 +120,7 @@ import {
   startMenuSync,
   stopMenuSync,
 } from './menu/menuStore.js'
+import { buildSidebarSections } from './menu/sidebarSections.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -142,8 +134,22 @@ const isMobile = ref(false)
 const currentUser = ref(null)
 const currentTime = ref(formatCurrentTime())
 const breadcrumb = computed(() => getBreadcrumb(route.meta))
+const sidebarSections = computed(() => buildSidebarSections(
+  menuState.menus,
+  currentUser.value?.role === 'admin',
+))
 let currentTimeTimer = null
-const iconMap = { Odometer, User, Document, Timer, List, Grid }
+const iconMap = {
+  Odometer,
+  User,
+  Document,
+  Timer,
+  List,
+  Grid,
+  Setting,
+  UserFilled,
+  Menu,
+}
 const imageMap = { xxqd: xxqdImage, class_cube: classCubeImage }
 
 const isLoginPage = computed(() => route.path === '/login')

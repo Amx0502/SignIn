@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 
 import { getMenuCatalogApi } from '../api/index.js'
 import { watchMenuVersions } from './menuEvents.js'
+import { bootstrapMenuSync } from './menuStartup.js'
 import {
   firstVisiblePath,
   menuKeyIsVisible,
@@ -153,15 +154,16 @@ async function refreshOnResume() {
 export async function startMenuSync(router) {
   stopMenuSync()
   activeRouter = router
-  hydrateMenuCatalog()
-  try {
-    await refreshMenuCatalog({ force: true })
-  } catch {
-    if (!menuState.loaded) throw new Error('无法加载菜单配置')
-  }
-  await ensureRouteAllowed(router)
-  streamController = new AbortController()
-  void streamLoop(streamController.signal)
+  const controller = new AbortController()
+  await bootstrapMenuSync({
+    hydrate: hydrateMenuCatalog,
+    refresh: () => refreshMenuCatalog({ force: true }),
+    ensureAllowed: () => ensureRouteAllowed(router),
+    startStream: () => {
+      streamController = controller
+      void streamLoop(controller.signal)
+    },
+  })
   window.addEventListener('online', refreshOnResume)
   document.addEventListener('visibilitychange', refreshOnResume)
 }
