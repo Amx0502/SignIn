@@ -23,30 +23,42 @@
         :persistent="false"
         @select="closeSidebar"
       >
-        <el-menu-item v-if="currentUser?.role === 'admin'" index="/users">
-          <el-icon><UserFilled /></el-icon><span>用户管理</span>
-        </el-menu-item>
-        <el-sub-menu index="/checkin">
-          <template #title>
-            <el-icon><img src="./img/xxqd.png" class="menu-custom-icon-xxqd" alt="签到" /></el-icon>
-            <span>小小签到</span>
-          </template>
-          <el-menu-item index="/overview"><el-icon><Odometer /></el-icon><span>系统概览</span></el-menu-item>
-          <el-menu-item index="/accounts"><el-icon><User /></el-icon><span>账号管理</span></el-menu-item>
-          <el-menu-item index="/checkin/auto"><el-icon><Timer /></el-icon><span>自动签到</span></el-menu-item>
-          <el-menu-item index="/tasks"><el-icon><List /></el-icon><span>任务管理</span></el-menu-item>
-          <el-menu-item index="/logs"><el-icon><Document /></el-icon><span>运行日志</span></el-menu-item>
-        </el-sub-menu>
-        <el-sub-menu index="/class-cube">
-          <template #title>
-            <el-icon><img src="./img/bjmf.png" class="menu-custom-icon-bjmf" alt="班级魔方" /></el-icon>
-            <span>班级魔方</span>
-          </template>
-          <el-menu-item index="/class-cube/overview"><el-icon><Odometer /></el-icon><span>系统概览</span></el-menu-item>
-          <el-menu-item index="/class-cube/accounts"><el-icon><User /></el-icon><span>账号管理</span></el-menu-item>
-          <el-menu-item index="/class-cube/tasks"><el-icon><Timer /></el-icon><span>自动任务</span></el-menu-item>
-          <el-menu-item index="/class-cube/runs"><el-icon><Document /></el-icon><span>运行记录</span></el-menu-item>
-          <el-menu-item index="/class-cube/logs"><el-icon><Document /></el-icon><span>魔方日志</span></el-menu-item>
+        <template v-for="parent in menuState.menus" :key="parent.key">
+          <el-sub-menu v-if="!parent.path" :index="`menu:${parent.key}`">
+            <template #title>
+              <el-icon>
+                <img
+                  v-if="isImageMenuIcon(parent.icon)"
+                  :src="menuImage(parent.icon)"
+                  class="menu-custom-icon"
+                  :alt="parent.title"
+                />
+                <component :is="menuIcon(parent.icon)" v-else />
+              </el-icon>
+              <span>{{ parent.title }}</span>
+            </template>
+            <el-menu-item
+              v-for="child in parent.children || []"
+              :key="child.key"
+              :index="child.path"
+            >
+              <el-icon><component :is="menuIcon(child.icon)" /></el-icon>
+              <span>{{ child.title }}</span>
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="parent.path">
+            <el-icon><component :is="menuIcon(parent.icon)" /></el-icon>
+            <span>{{ parent.title }}</span>
+          </el-menu-item>
+        </template>
+        <el-sub-menu v-if="currentUser?.role === 'admin'" index="menu:system">
+          <template #title><el-icon><Setting /></el-icon><span>系统设置</span></template>
+          <el-menu-item index="/users">
+            <el-icon><UserFilled /></el-icon><span>用户管理</span>
+          </el-menu-item>
+          <el-menu-item index="/menu-management">
+            <el-icon><Menu /></el-icon><span>菜单管理</span>
+          </el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
@@ -75,7 +87,7 @@
               <span class="header-current-time__clock">{{ currentTime.slice(11) }}</span>
             </span>
           </span>
-          <el-button type="primary" :icon="Refresh" @click="loadAll" :loading="loading">刷新数据</el-button>
+          <el-button type="primary" :icon="Refresh" @click="refreshAllData" :loading="loading || menuState.loading">刷新数据</el-button>
           <el-dropdown @command="handleUserCommand">
             <span class="user-info">
               <el-icon><User /></el-icon>
@@ -101,12 +113,22 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Odometer, User, Document, Refresh, Timer, List, Menu, UserFilled, Grid } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Refresh, Timer, List, Menu, UserFilled, Grid, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAppState } from './composables/useAppState'
 import { formatCurrentTime } from './utils/currentTime'
 import { getBreadcrumb } from './utils/breadcrumb'
 import { logoutApi } from './api'
+import xxqdImage from './img/xxqd.png'
+import classCubeImage from './img/bjmf.png'
+import {
+  isCurrentMenuVisible,
+  menuState,
+  refreshMenuCatalog,
+  resetMenuState,
+  startMenuSync,
+  stopMenuSync,
+} from './menu/menuStore.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -121,8 +143,14 @@ const currentUser = ref(null)
 const currentTime = ref(formatCurrentTime())
 const breadcrumb = computed(() => getBreadcrumb(route.meta))
 let currentTimeTimer = null
+const iconMap = { Odometer, User, Document, Timer, List, Grid }
+const imageMap = { xxqd: xxqdImage, class_cube: classCubeImage }
 
 const isLoginPage = computed(() => route.path === '/login')
+
+function menuIcon(name) { return iconMap[name] || Grid }
+function isImageMenuIcon(name) { return Boolean(imageMap[name]) }
+function menuImage(name) { return imageMap[name] || '' }
 
 function getUserInfo() {
   const userStr = localStorage.getItem('user')
@@ -144,10 +172,22 @@ async function handleUserCommand(command) {
       localStorage.removeItem('access_token')
       localStorage.removeItem('expires_at')
       localStorage.removeItem('user')
+      resetMenuState()
       currentUser.value = null
       ElMessage.success('已退出登录')
       router.push('/login')
     }
+  }
+}
+
+async function refreshAllData() {
+  try {
+    await refreshMenuCatalog({ force: true })
+    if (currentUser.value?.role === 'admin' || isCurrentMenuVisible('xxqd')) {
+      await loadAll()
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '刷新失败')
   }
 }
 
@@ -162,24 +202,34 @@ function toggleSidebar() {
 
 function closeSidebar() {
   if (isMobile.value || sidebarCollapsed.value) {
-    sidebarMenuRef.value?.close('/checkin')
+    sidebarMenuRef.value?.close('menu:xxqd')
+    sidebarMenuRef.value?.close('menu:class_cube')
+    sidebarMenuRef.value?.close('menu:system')
     sidebarMenuRenderKey.value += 1
     sidebarCollapsed.value = true
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   checkMobile()
   getUserInfo()
   currentTimeTimer = window.setInterval(() => {
     currentTime.value = formatCurrentTime()
   }, 1000)
   window.addEventListener('resize', checkMobile)
+  if (!isLoginPage.value) {
+    try {
+      await startMenuSync(router)
+    } catch (error) {
+      ElMessage.warning(error.message || '菜单配置暂时无法同步')
+    }
+  }
 })
 
 onUnmounted(() => {
   window.clearInterval(currentTimeTimer)
   window.removeEventListener('resize', checkMobile)
+  stopMenuSync()
 })
 </script>
 
@@ -206,8 +256,7 @@ onUnmounted(() => {
 .sidebar-menu :deep(.el-sub-menu__title:hover), .sidebar-menu :deep(.el-menu-item:hover) { background: rgba(96, 165, 250, 0.14); transform: translateX(3px); }
 .sidebar-menu :deep(.el-menu-item.is-active) { background: linear-gradient(90deg, rgba(37, 99, 235, 0.28), rgba(14, 165, 233, 0.12)); box-shadow: inset 3px 0 0 #60a5fa; color: #fff; font-weight: 700; }
 .sidebar-menu :deep(.el-sub-menu .el-menu) { background: rgba(255, 255, 255, 0.035); border-radius: 14px; padding: 4px; }
-.menu-custom-icon-xxqd { width: 23px; height: 23px; object-fit: contain; display: block; }
-.menu-custom-icon-bjmf { width: 20px; height: 20px; object-fit: contain; display: block; }
+.menu-custom-icon { width: 22px; height: 22px; object-fit: contain; display: block; }
 .logo-img { width: 48px; height: 48px; object-fit: contain; display: block; }
 .main-shell { min-width: 0; }
 .top-header { min-height: 76px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 28px; background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(226, 232, 240, 0.8); position: sticky; top: 0; z-index: 10; }

@@ -25,7 +25,10 @@ instance.interceptors.response.use(
       }
     }
     const msg = err.response?.data?.error || err.message || '请求失败'
-    return Promise.reject(new Error(msg))
+    const error = new Error(msg)
+    error.status = err.response?.status
+    error.data = err.response?.data
+    return Promise.reject(error)
   }
 )
 
@@ -37,6 +40,13 @@ export const createUserApi = data => instance.post('/users', data)
 export const updateUserApi = (id, data) => instance.put(`/users/${id}`, data)
 export const resetUserPasswordApi = (id, data) => instance.post(`/users/${id}/reset-password`, data)
 export const deleteUserApi = id => instance.delete(`/users/${id}`)
+export const getMenuCatalogApi = () => instance.get('/menu/catalog')
+export const getAdminMenuConfigApi = userId => instance.get('/admin/menu-config', {
+  params: userId ? { user_id: userId } : {},
+})
+export const updateGlobalMenuConfigApi = data => instance.put('/admin/menu-config/global', data)
+export const updateUserMenuOverridesApi = (userId, data) => instance.put(`/admin/menu-config/users/${userId}`, data)
+export const getMenuConfigLogsApi = (limit = 100) => instance.get('/admin/menu-config/logs', { params: { limit } })
 
 export default {
   getState: () => instance.get('/state'),
