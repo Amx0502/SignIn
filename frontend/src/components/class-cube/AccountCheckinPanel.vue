@@ -119,7 +119,7 @@
           </article>
         </div>
 
-        <div v-if="selectedItem" class="manual-form">
+        <div v-if="shouldShowManualCheckinForm(selectedItem)" class="manual-form">
           <div class="manual-form__head">
             <div><span class="mode-chip">{{ modeMeta(selectedItem.mode).label }}</span><strong>{{ selectedItem.title }}</strong></div>
             <small>只提交页面要求的字段，结果由服务端严格判断</small>
@@ -193,7 +193,7 @@ import {
   Delete, Key, Loading, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { buildManualCheckinPayload } from '../../utils/classCubeCheckin.js'
+import { buildManualCheckinPayload, shouldShowManualCheckinForm } from '../../utils/classCubeCheckin.js'
 import TaskImageUpload from '../TaskImageUpload.vue'
 
 const props = defineProps({

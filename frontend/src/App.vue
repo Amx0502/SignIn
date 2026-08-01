@@ -78,7 +78,6 @@
               <span class="header-current-time__clock">{{ currentTime.slice(11) }}</span>
             </span>
           </span>
-          <el-button type="primary" :icon="Refresh" @click="refreshAllData" :loading="loading || menuState.loading">刷新数据</el-button>
           <el-dropdown @command="handleUserCommand">
             <span class="user-info">
               <el-icon><User /></el-icon>
@@ -104,7 +103,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Odometer, User, Document, Refresh, Timer, List, Menu, UserFilled, Grid, Setting } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Timer, List, Menu, UserFilled, Grid, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAppState } from './composables/useAppState'
 import { formatCurrentTime } from './utils/currentTime'
@@ -113,9 +112,7 @@ import { logoutApi } from './api'
 import xxqdImage from './img/xxqd.png'
 import classCubeImage from './img/bjmf.png'
 import {
-  isCurrentMenuVisible,
   menuState,
-  refreshMenuCatalog,
   resetMenuState,
   startMenuSync,
   stopMenuSync,
@@ -125,7 +122,7 @@ import { buildSidebarSections } from './menu/sidebarSections.js'
 const router = useRouter()
 const route = useRoute()
 
-const { loading, loadAll } = useAppState()
+const { loading } = useAppState()
 
 const sidebarCollapsed = ref(false)
 const sidebarMenuRef = ref(null)
@@ -183,17 +180,6 @@ async function handleUserCommand(command) {
       ElMessage.success('已退出登录')
       router.push('/login')
     }
-  }
-}
-
-async function refreshAllData() {
-  try {
-    await refreshMenuCatalog({ force: true })
-    if (currentUser.value?.role === 'admin' || isCurrentMenuVisible('xxqd')) {
-      await loadAll()
-    }
-  } catch (error) {
-    ElMessage.error(error.message || '刷新失败')
   }
 }
 

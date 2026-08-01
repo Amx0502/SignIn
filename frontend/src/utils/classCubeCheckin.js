@@ -28,3 +28,7 @@ export function buildManualCheckinPayload({
   }
   return payload
 }
+
+export function shouldShowManualCheckinForm(item) {
+  return item?.status === 'active'
+}
