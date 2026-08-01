@@ -37,7 +37,9 @@ export async function watchMenuVersions({
     },
   )
   if (!response.ok || !response.body) {
-    throw new Error(`菜单实时连接失败（${response.status}）`)
+    const error = new Error(`菜单实时连接失败（${response.status}）`)
+    error.status = response.status
+    throw error
   }
 
   const reader = response.body.getReader()

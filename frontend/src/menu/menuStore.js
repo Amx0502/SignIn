@@ -135,6 +135,7 @@ async function streamLoop(signal) {
         },
       })
     } catch (error) {
+      if (error?.status === 401) return
       if (!signal.aborted) menuState.error = error.message || '菜单实时连接已断开'
     }
     if (!signal.aborted) await delay(1500, signal)

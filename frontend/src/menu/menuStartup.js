@@ -9,8 +9,13 @@ export async function bootstrapMenuSync({
 
   try {
     await refresh()
-  } catch {
+  } catch (error) {
     initialLoadFailed = true
+    // A 401 means the API client has already invalidated the session. Do not
+    // start an SSE reconnect loop with the now-removed token.
+    if (error?.status === 401) {
+      return { initialLoadFailed, unauthorized: true }
+    }
   }
 
   try {

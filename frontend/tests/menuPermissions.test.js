@@ -143,3 +143,21 @@ test('watchMenuVersions authenticates and delivers version changes', async () =>
   assert.equal(requests[0].options.headers.Authorization, 'Bearer token-123')
   assert.deepEqual(versions, [9])
 })
+
+test('watchMenuVersions marks unauthorized responses so callers can stop reconnecting', async () => {
+  const originalStorage = globalThis.localStorage
+  globalThis.localStorage = { getItem: key => key === 'access_token' ? 'expired-token' : null }
+
+  try {
+    await assert.rejects(
+      () => watchMenuVersions({
+        onVersion: () => {},
+        signal: new AbortController().signal,
+        fetchImpl: async () => ({ ok: false, status: 401, body: null }),
+      }),
+      error => error.status === 401,
+    )
+  } finally {
+    globalThis.localStorage = originalStorage
+  }
+})
