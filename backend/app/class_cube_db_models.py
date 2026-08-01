@@ -8,6 +8,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -121,6 +122,11 @@ class ClassCubeCheckinItemRow(ClassCubeBase):
             "remote_item_id",
             "remote_module",
             name="uq_class_cube_items_course_remote_module",
+        ),
+        Index(
+            "ix_class_cube_checkin_items_course_synced",
+            "course_id",
+            "synced_at",
         ),
     )
 

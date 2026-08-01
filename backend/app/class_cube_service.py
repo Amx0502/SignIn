@@ -670,6 +670,8 @@ class ClassCubeService:
         self,
         course_id: int,
         actor: dict[str, Any],
+        *,
+        latest_only: bool = False,
     ) -> list[dict[str, Any]]:
         actor_user_id, is_admin = self._actor_scope(actor)
         course = self.repository.get_course(
@@ -726,7 +728,11 @@ class ClassCubeService:
                 "班级魔方签到项同步失败，请稍后重试",
                 retryable=True,
             ) from last_error
-        return self.list_items(course_id, actor)
+        return self.list_items(
+            course_id,
+            actor,
+            latest_only=latest_only,
+        )
 
     def list_tasks(self, actor, owner_user_id=None):
         actor_user_id, is_admin = self._actor_scope(actor)
@@ -1257,12 +1263,15 @@ class ClassCubeService:
         self,
         course_id: int,
         actor: dict[str, Any],
+        *,
+        latest_only: bool = False,
     ) -> list[dict[str, Any]]:
         actor_user_id, is_admin = self._actor_scope(actor)
         items = self.repository.list_items(
             course_id,
             actor_user_id,
             is_admin,
+            latest_only=latest_only,
         )
         return [item_view(item) for item in items]
 

@@ -46,6 +46,7 @@ export function useClassCube(api = classCubeApi) {
   const loading = ref(false)
   const coursesLoading = ref(false)
   const itemsLoading = ref(false)
+  const itemsSyncing = ref(false)
   const error = ref('')
 
   let backgroundTimer = null
@@ -121,7 +122,7 @@ export function useClassCube(api = classCubeApi) {
     }
     itemsLoading.value = true
     try {
-      const fresh = responseData(await api.listItems(courseId), [])
+      const fresh = responseData(await api.listItems(courseId, { latest_only: 1 }), [])
       if (generation !== itemRequestGeneration || courseId !== selectedCourseId.value) return []
       items.value = latestSyncedDayItems(
         Array.isArray(fresh) ? fresh : [],
@@ -207,8 +208,18 @@ export function useClassCube(api = classCubeApi) {
   }
 
   async function syncItems(courseId = selectedCourseId.value) {
-    await api.syncItems(courseId)
-    return loadItems(courseId)
+    if (!courseId) return []
+    itemsSyncing.value = true
+    try {
+      const fresh = responseData(await api.syncItems(courseId), null)
+      if (!Array.isArray(fresh)) return loadItems(courseId)
+      items.value = latestSyncedDayItems(fresh)
+      const stable = reconcileSelection(items.value, selectedItemId.value)
+      selectedItemId.value = stable?.id ?? items.value[0]?.id ?? null
+      return items.value
+    } finally {
+      itemsSyncing.value = false
+    }
   }
 
   async function saveTask(payload, taskId = null) {
@@ -397,6 +408,7 @@ export function useClassCube(api = classCubeApi) {
     loading,
     coursesLoading,
     itemsLoading,
+    itemsSyncing,
     error,
     loadAccounts,
     loadCourses,

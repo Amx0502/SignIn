@@ -241,12 +241,14 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
             _service(request).sync_items,
             course_id,
             actor,
+            latest_only=True,
         )
 
     @router.get("/courses/{course_id}/items")
     def list_items(
         course_id: int,
         request: Request,
+        latest_only: bool = Query(default=False),
         actor=Depends(auth_dependency),
     ):
         return _invoke(
@@ -254,6 +256,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
             _service(request).list_items,
             course_id,
             actor,
+            latest_only=latest_only,
         )
 
     @router.post("/items/{item_id}/checkin")

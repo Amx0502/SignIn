@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 import json
 from typing import Any, Iterable
 import uuid
 
-from sqlalchemy import Select, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from .class_cube_client import RemoteItemBundle
@@ -484,6 +484,8 @@ class ClassCubeRepository:
         course_id: int,
         actor_user_id: int,
         is_admin: bool,
+        *,
+        latest_only: bool = False,
     ) -> list[dict[str, Any]]:
         with self.database.session() as session:
             course = session.scalar(
@@ -495,12 +497,33 @@ class ClassCubeRepository:
             )
             if course is None:
                 raise ClassCubeNotFound("班级魔方课程不存在")
-            rows = session.scalars(
-                select(ClassCubeCheckinItemRow)
-                .where(
-                    ClassCubeCheckinItemRow.course_id == course_id
+            statement = select(ClassCubeCheckinItemRow).where(
+                ClassCubeCheckinItemRow.course_id == course_id
+            )
+            if latest_only:
+                latest_synced_at = session.scalar(
+                    select(
+                        func.max(
+                            ClassCubeCheckinItemRow.synced_at
+                        )
+                    ).where(
+                        ClassCubeCheckinItemRow.course_id
+                        == course_id
+                    )
                 )
-                .order_by(ClassCubeCheckinItemRow.id)
+                if latest_synced_at is not None:
+                    latest_day = latest_synced_at.date()
+                    statement = statement.where(
+                        ClassCubeCheckinItemRow.synced_at
+                        >= datetime.combine(latest_day, time.min),
+                        ClassCubeCheckinItemRow.synced_at
+                        < datetime.combine(
+                            latest_day + timedelta(days=1),
+                            time.min,
+                        ),
+                    )
+            rows = session.scalars(
+                statement.order_by(ClassCubeCheckinItemRow.id)
             ).all()
             return [self._item_record(row) for row in rows]
 

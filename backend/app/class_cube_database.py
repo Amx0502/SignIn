@@ -55,6 +55,7 @@ class ClassCubeDatabase:
                 self._migrate_claim_table(database_engine)
                 self._migrate_task_table(database_engine)
                 self._migrate_task_run_table(database_engine)
+                self._migrate_checkin_item_index(database_engine)
             session_factory = sessionmaker(
                 bind=database_engine,
                 autoflush=False,
@@ -281,6 +282,24 @@ class ClassCubeDatabase:
                             f"ON {table} ({column_name})"
                         )
                     )
+
+    @staticmethod
+    def _migrate_checkin_item_index(engine: Engine) -> None:
+        table = "class_cube_checkin_items"
+        existing_indexes = {
+            index["name"]
+            for index in inspect(engine).get_indexes(table)
+        }
+        index_name = "ix_class_cube_checkin_items_course_synced"
+        if index_name not in existing_indexes:
+            quote = engine.dialect.identifier_preparer.quote
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        f"CREATE INDEX {quote(index_name)} "
+                        f"ON {table} (course_id, synced_at)"
+                    )
+                )
 
     @contextmanager
     def session(self) -> Iterator[Session]:

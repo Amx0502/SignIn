@@ -26,8 +26,8 @@ export function createClassCubeApi(instance = defaultInstance) {
 
     syncItems: courseId =>
       instance.post(`${root}/courses/${courseId}/items/sync`),
-    listItems: courseId =>
-      instance.get(`${root}/courses/${courseId}/items`),
+    listItems: (courseId, params = {}) =>
+      instance.get(`${root}/courses/${courseId}/items`, { params }),
     manualCheckin: (itemId, data) =>
       instance.post(`${root}/items/${itemId}/checkin`, data),
     uploadPhoto: (file, accountId = null) => {

@@ -69,12 +69,22 @@
         <template #header>
           <div class="section-head">
             <div><strong>课程签到中心</strong><small>选择课程后同步当前签到项</small></div>
-            <el-button
-              :icon="Refresh"
-              :disabled="!selectedCourseId || coursesLoading || itemsLoading"
-              :loading="syncing || itemsLoading"
-              @click="emit('sync-items', selectedCourseId)"
-            >同步签到项</el-button>
+            <div class="sync-actions">
+              <el-tag
+                v-if="itemsSyncing"
+                type="primary"
+                effect="plain"
+                size="small"
+                :icon="Loading"
+                class="sync-tag"
+              >同步中…</el-tag>
+              <el-button
+                :icon="Refresh"
+                :disabled="!selectedCourseId || coursesLoading || itemsLoading || itemsSyncing"
+                :loading="itemsSyncing || itemsLoading"
+                @click="emit('sync-items', selectedCourseId)"
+              >同步签到项</el-button>
+            </div>
           </div>
         </template>
         <div class="selector-row">
@@ -92,7 +102,7 @@
           <span v-if="selectedCourse" class="course-code">班级码 {{ selectedCourse.class_code || '—' }}</span>
         </div>
 
-        <el-skeleton v-if="itemsLoading" :rows="3" animated />
+        <el-skeleton v-if="itemsLoading && !items.length" :rows="3" animated />
         <el-empty v-else-if="!selectedCourseId" description="先选择账号与课程" :image-size="88" />
         <el-empty v-else-if="!items.length" description="当前课程暂无签到项" :image-size="88" />
         <div v-else class="item-list">
@@ -161,7 +171,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
   Aim, Camera, Cellphone, CircleCheck, CircleCheckFilled, CircleCloseFilled,
-  Delete, Key, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, User, WarningFilled,
+  Delete, Key, Loading, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { parseCoordinates } from '../../utils/classCubeTaskForm.js'
@@ -178,11 +188,11 @@ const props = defineProps({
   selectedItem: { type: Object, default: null },
   coursesLoading: { type: Boolean, default: false },
   itemsLoading: { type: Boolean, default: false },
+  itemsSyncing: { type: Boolean, default: false },
   manualCheckinAction: { type: Function, required: true },
   batchDeleteAccountsAction: { type: Function, required: true },
 })
 const emit = defineEmits(['qr-login', 'select-account', 'select-course', 'select-item', 'sync-courses', 'sync-items', 'rename-account', 'delete-account'])
-const syncing = ref(false)
 const checkingIn = ref(false)
 const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
@@ -318,6 +328,8 @@ async function submitManual() {
 .checkin-card { container-type:inline-size }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.section-head strong,.section-head small { display: block; }.section-head strong { color: #172033; font-size: 16px; }.section-head small { margin-top: 4px; color: #64748b; font-size: 11px; }
 .account-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.sync-actions { display: flex; align-items: center; gap: 8px; }
+.sync-tag { margin: 0; }
 .account-list,.item-list { display: grid; gap: 9px; max-height: 480px; overflow-y: auto; overflow-x: hidden; }
 .account-row,.item-row { align-items: center; padding: 12px; margin-top: 5px; border: 1px solid #e2e8f0; border-radius: 15px; background: #f8fafc; cursor: pointer; transition: .2s ease; }
 .account-row { display: grid; grid-template-columns: auto 39px minmax(0, 1fr) auto auto; gap: 8px; }
