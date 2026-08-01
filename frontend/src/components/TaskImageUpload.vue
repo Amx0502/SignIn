@@ -60,7 +60,10 @@ const previewName = ref('')
 
 function resolveFileUrl(file) {
   if (file?.url) return file.url
-  if (file?.path) return `/uploads/${String(file.path).split(/[\\/]/).pop()}`
+  if (file?.path) {
+    const normalized = String(file.path).replace(/\\/g, '/').replace(/^\/+/, '')
+    return `/uploads/${normalized.replace(/^uploads\//, '')}`
+  }
   return ''
 }
 

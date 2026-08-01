@@ -139,11 +139,12 @@
             </div>
             <el-alert v-if="selectedItem.mode === 'gps_photo'" title="请上传本次签到照片，系统会先直传 OSS，再使用动态 res 提交。" type="info" :closable="false" show-icon />
             <el-form-item v-if="selectedItem.mode === 'gps_photo'" label="签到照片">
-              <input ref="photoInput" class="photo-input" type="file" accept="image/jpeg,image/png,image/webp" @change="uploadPhoto" />
-              <div class="photo-picker">
-                <el-button :loading="photoUploading" @click="photoInput?.click()">{{ form.photoPath ? '更换照片' : '选择并上传照片' }}</el-button>
-                <small>{{ form.photoPath ? '照片已上传' : '尚未上传照片' }}</small>
-              </div>
+              <TaskImageUpload
+                :file-list="photoFiles"
+                :limit="1"
+                :http-request="uploadPhoto"
+                :on-remove="removePhoto"
+              />
             </el-form-item>
             <el-form-item v-if="selectedItem.mode === 'password'" label="签到密码">
               <el-input v-model="form.password" type="text" maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
@@ -182,6 +183,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { parseCoordinates } from '../../utils/classCubeTaskForm.js'
+import TaskImageUpload from '../TaskImageUpload.vue'
 
 const props = defineProps({
   accounts: { type: Array, default: () => [] },
@@ -203,7 +205,7 @@ const props = defineProps({
 const emit = defineEmits(['qr-login', 'select-account', 'select-course', 'select-item', 'sync-courses', 'sync-items', 'rename-account', 'delete-account'])
 const checkingIn = ref(false)
 const photoUploading = ref(false)
-const photoInput = ref(null)
+const photoFiles = ref([])
 const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
 const resultVisible = ref(false)
@@ -218,6 +220,7 @@ function resetManualState() {
     photoPath: '',
     notify_wecom: false,
   })
+  photoFiles.value = []
   result.value = null
   resultVisible.value = false
 }
@@ -327,21 +330,33 @@ async function submitManual() {
   }
 }
 
-async function uploadPhoto(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
+async function uploadPhoto(options) {
+  const file = options?.file
   if (!file || !props.selectedAccountId) return
   photoUploading.value = true
   try {
     const response = await props.uploadPhotoAction(file, props.selectedAccountId)
     form.photoPath = response?.path || ''
     if (!form.photoPath) throw new Error('照片上传结果无效')
+    photoFiles.value = [{
+      uid: `${Date.now()}`,
+      name: file.name,
+      path: form.photoPath,
+      status: 'success',
+    }]
+    options?.onSuccess?.(response)
     ElMessage.success('签到照片上传成功')
   } catch (error) {
+    options?.onError?.(error)
     ElMessage.error(error.message || '照片上传失败')
   } finally {
     photoUploading.value = false
   }
+}
+
+function removePhoto() {
+  form.photoPath = ''
+  photoFiles.value = []
 }
 </script>
 
