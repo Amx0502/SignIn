@@ -27,15 +27,15 @@ from app.class_cube_parser import (
 )
 
 
-QR_LOGIN_URL = "https://bjmf.k8n.cn/weixin/qrlogin/student"
-COURSES_URL = "https://bjmf.k8n.cn/student"
-STUDENT_PROFILE_URL = "https://bjmf.k8n.cn/student/my"
+QR_LOGIN_URL = "https://k8n.cn/weixin/qrlogin/student"
+COURSES_URL = "https://k8n.cn/student"
+STUDENT_PROFILE_URL = "https://k8n.cn/student/my"
 CHECKIN_LIST_URLS = {
     "punchs": (
-        "https://bjmf.k8n.cn/student/course/{course_id}/punchs"
+        "https://k8n.cn/student/course/{course_id}/punchs"
     ),
     "daka": (
-        "https://bjmf.k8n.cn/student/course/{course_id}/daka"
+        "https://k8n.cn/student/course/{course_id}/daka"
     ),
 }
 OSS_UPLOAD_KEY_URL = (
@@ -45,7 +45,7 @@ QR_TTL_SECONDS = 120
 CONNECT_TIMEOUT = 5
 READ_TIMEOUT = 10
 GET_MAX_ATTEMPTS = 3
-AUTHENTICATED_HOSTS = frozenset({"k8n.cn", "bjmf.k8n.cn", "bj.k8n.cn"})
+AUTHENTICATED_HOSTS = frozenset({"k8n.cn"})
 AUTH_REDIRECT_MAX_HOPS = 5
 AUTH_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 
@@ -1064,7 +1064,7 @@ class ClassCubeClient:
         parsed = urlparse(redirect_url)
         return (
             parsed.scheme == "https"
-            and parsed.hostname == "bjmf.k8n.cn"
+            and parsed.hostname == "k8n.cn"
             and parsed.path.rstrip("/")
             == "/weixin/uidlogin/student"
         )
