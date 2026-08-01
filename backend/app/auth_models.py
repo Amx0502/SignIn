@@ -83,8 +83,8 @@ class MenuConfigAuditLogRow(AuthBase):
         primary_key=True,
         autoincrement=True,
     )
-    actor_user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    actor_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     target_type: Mapped[str] = mapped_column(String(16), nullable=False)
     target_user_id: Mapped[int | None] = mapped_column(

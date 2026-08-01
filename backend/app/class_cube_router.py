@@ -85,16 +85,32 @@ def _invoke(
         )
 
 
-def create_class_cube_router(auth_dependency) -> APIRouter:
+def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter:
     router = APIRouter(
         prefix="/api/class-cube",
         tags=["class-cube"],
+    )
+    access_accounts = (
+        menu_dependency("class_cube.accounts")
+        if menu_dependency else auth_dependency
+    )
+    access_tasks = (
+        menu_dependency("class_cube.tasks")
+        if menu_dependency else auth_dependency
+    )
+    access_runs = (
+        menu_dependency("class_cube.runs")
+        if menu_dependency else auth_dependency
+    )
+    access_logs = (
+        menu_dependency("class_cube.logs")
+        if menu_dependency else auth_dependency
     )
 
     @router.get("/settings")
     def get_settings(
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request, _service(request).get_settings, actor
@@ -104,7 +120,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def update_settings(
         payload: ClassCubeSettingsUpdate,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -117,7 +133,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def create_qr_session(
         request: Request,
         payload: QrSessionCreate | None = None,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -130,7 +146,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def poll_qr_session(
         token: str,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -146,7 +162,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
             default=None,
             gt=0,
         ),
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -159,7 +175,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def get_logs(
         request: Request,
         limit: int = Query(default=200, ge=1, le=1000),
-        actor=Depends(auth_dependency),
+        actor=Depends(access_logs),
     ):
         return _success(request.app.state.class_cube_log_store.snapshot(limit))
 
@@ -168,7 +184,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
         account_id: int,
         payload: ClassCubeAccountUpdate,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -182,7 +198,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def delete_account(
         account_id: int,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -195,7 +211,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def batch_delete_accounts(
         payload: ClassCubeAccountBatchDelete,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -208,7 +224,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def sync_courses(
         account_id: int,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -221,7 +237,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def list_courses(
         account_id: int,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -234,7 +250,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def sync_items(
         course_id: int,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -249,7 +265,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
         course_id: int,
         request: Request,
         latest_only: bool = Query(default=False),
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -264,7 +280,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
         item_id: int,
         payload: ManualCheckinRequest,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -282,7 +298,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
             default=None,
             gt=0,
         ),
-        actor=Depends(auth_dependency),
+        actor=Depends(access_accounts),
     ):
         return _invoke(
             request,
@@ -296,7 +312,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def list_tasks(
         request: Request,
         owner_user_id: int | None = Query(default=None, gt=0),
-        actor=Depends(auth_dependency),
+        actor=Depends(access_tasks),
     ):
         return _invoke(
             request, _service(request).list_tasks, actor,
@@ -307,7 +323,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def create_task(
         payload: ClassCubeTaskCreate,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_tasks),
     ):
         return _invoke(
             request, _service(request).create_task,
@@ -319,7 +335,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
         task_id: int,
         payload: ClassCubeTaskUpdate,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_tasks),
     ):
         return _invoke(
             request, _service(request).update_task, task_id,
@@ -330,7 +346,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def delete_task(
         task_id: int,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_tasks),
     ):
         return _invoke(
             request, _service(request).delete_task, task_id, actor
@@ -340,7 +356,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def batch_delete_tasks(
         payload: ClassCubeTaskBatchDelete,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_tasks),
     ):
         return _invoke(
             request, _service(request).batch_delete_tasks,
@@ -351,7 +367,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def run_task_now(
         task_id: int,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_tasks),
     ):
         service = _service(request)
         actor_user_id, is_admin = service._actor_scope(actor)
@@ -381,7 +397,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
         status: str | None = Query(default=None, max_length=32),
         limit: int = Query(default=100, ge=1, le=200),
         offset: int = Query(default=0, ge=0),
-        actor=Depends(auth_dependency),
+        actor=Depends(access_runs),
     ):
         return _invoke(
             request, _service(request).list_runs, actor,
@@ -398,7 +414,7 @@ def create_class_cube_router(auth_dependency) -> APIRouter:
     def confirm_claim_retry(
         claim_id: int,
         request: Request,
-        actor=Depends(auth_dependency),
+        actor=Depends(access_runs),
     ):
         return _invoke(
             request, _service(request).confirm_claim_retry,

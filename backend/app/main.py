@@ -39,6 +39,9 @@ from .class_cube_router import create_class_cube_router
 from .class_cube_service import ClassCubeService
 from .class_cube_scheduler import ClassCubeScheduler
 from .class_cube_logging import ClassCubeLogStore, create_class_cube_logger
+from .menu_events import MenuEventBroker
+from .menu_repository import MenuRepository
+from .menu_router import create_menu_guard, create_menu_router
 from .repository import DuplicateMobileError
 from .service import AppState
 
@@ -46,13 +49,15 @@ app_state = AppState(start_scheduler=False)
 auth_service = AuthService()
 auth_database: AuthDatabase | None = None
 class_cube_database: ClassCubeDatabase | None = None
+menu_repository: MenuRepository | None = None
+menu_event_broker = MenuEventBroker()
 class_cube_log_store = ClassCubeLogStore()
 security = HTTPBearer()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global auth_database, class_cube_database
+    global auth_database, class_cube_database, menu_repository
     created_auth_repository = False
     class_cube_service: ClassCubeService | None = None
     class_cube_scheduler: ClassCubeScheduler | None = None
@@ -71,6 +76,9 @@ async def lifespan(app: FastAPI):
             )
             auth_service.set_repository(auth_repository)
             created_auth_repository = True
+
+        menu_repository = MenuRepository(auth_service.repository.database)
+        menu_repository.initialize()
 
         class_cube_database = ClassCubeDatabase(
             database_config.class_cube
@@ -110,6 +118,7 @@ async def lifespan(app: FastAPI):
                         if auth_database is not None:
                             auth_database.dispose()
                             auth_database = None
+                        menu_repository = None
                         if created_auth_repository:
                             auth_service.repository = None
 
@@ -180,21 +189,36 @@ async def require_admin(user=Depends(get_current_user)):
     return user
 
 
-app.include_router(create_class_cube_router(get_current_user))
+def get_menu_repository() -> MenuRepository:
+    if menu_repository is None:
+        raise RuntimeError("菜单权限服务尚未初始化")
+    return menu_repository
+
+
+require_menu = create_menu_guard(get_current_user, get_menu_repository)
+app.include_router(
+    create_menu_router(
+        get_current_user,
+        require_admin,
+        get_menu_repository,
+        menu_event_broker,
+    )
+)
+app.include_router(create_class_cube_router(get_current_user, require_menu))
 
 
 @app.get("/api/state")
-def get_state(_user=Depends(get_current_user)):
+def get_state(_user=Depends(require_menu("xxqd"))):
     return success(app_state.snapshot())
 
 
 @app.get("/api/xxqd/logs")
-def get_logs(limit: int = 200, _user=Depends(get_current_user)):
+def get_logs(limit: int = 200, _user=Depends(require_menu("xxqd.logs"))):
     return success(app_state.get_logs(limit))
 
 
 @app.post("/api/accounts")
-def add_account(payload: AccountCreate, _user=Depends(get_current_user)):
+def add_account(payload: AccountCreate, _user=Depends(require_menu("xxqd.accounts"))):
     return success(app_state.add_account(payload.model_dump()))
 
 
@@ -202,7 +226,7 @@ def add_account(payload: AccountCreate, _user=Depends(get_current_user)):
 def update_account(
     account_index: int,
     payload: AccountUpdate,
-    _user=Depends(get_current_user),
+    _user=Depends(require_menu("xxqd.accounts")),
 ):
     try:
         return success(app_state.update_account(account_index, payload.model_dump()))
@@ -211,7 +235,7 @@ def update_account(
 
 
 @app.delete("/api/accounts/{account_index}")
-def delete_account(account_index: int, _user=Depends(get_current_user)):
+def delete_account(account_index: int, _user=Depends(require_menu("xxqd.accounts"))):
     try:
         app_state.delete_account(account_index)
         return success(True)
@@ -220,7 +244,7 @@ def delete_account(account_index: int, _user=Depends(get_current_user)):
 
 
 @app.post("/api/accounts/{account_index}/login")
-def login_account(account_index: int, _user=Depends(get_current_user)):
+def login_account(account_index: int, _user=Depends(require_menu("xxqd.accounts"))):
     try:
         return success(app_state.login_account(account_index))
     except IndexError:
@@ -228,7 +252,7 @@ def login_account(account_index: int, _user=Depends(get_current_user)):
 
 
 @app.post("/api/accounts/{account_index}/refresh-token")
-def refresh_token(account_index: int, _user=Depends(get_current_user)):
+def refresh_token(account_index: int, _user=Depends(require_menu("xxqd.accounts"))):
     try:
         return success(app_state.refresh_single_token(account_index))
     except IndexError:
@@ -236,7 +260,7 @@ def refresh_token(account_index: int, _user=Depends(get_current_user)):
 
 
 @app.get("/api/accounts/{account_index}/projects")
-def fetch_projects(account_index: int, _user=Depends(get_current_user)):
+def fetch_projects(account_index: int, _user=Depends(require_menu("xxqd.accounts"))):
     try:
         return success(app_state.fetch_projects(account_index))
     except IndexError:
@@ -247,7 +271,7 @@ def fetch_projects(account_index: int, _user=Depends(get_current_user)):
 def add_task(
     account_index: int,
     payload: TaskCreate,
-    _user=Depends(get_current_user),
+    _user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
         return success(app_state.add_task(account_index, payload.model_dump()))
@@ -260,7 +284,7 @@ def update_task(
     account_index: int,
     task_index: int,
     payload: TaskUpdate,
-    _user=Depends(get_current_user),
+    _user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
         return success(app_state.update_task(account_index, task_index, payload.model_dump()))
@@ -272,7 +296,7 @@ def update_task(
 def delete_task(
     account_index: int,
     task_index: int,
-    _user=Depends(get_current_user),
+    _user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
         app_state.delete_task(account_index, task_index)
@@ -285,7 +309,7 @@ def delete_task(
 def run_task(
     account_index: int,
     task_index: int,
-    _user=Depends(get_current_user),
+    _user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
         return success(app_state.run_task(account_index, task_index))
@@ -296,7 +320,7 @@ def run_task(
 
 
 @app.post("/api/accounts/{account_index}/run-all")
-def run_account_tasks(account_index: int, _user=Depends(get_current_user)):
+def run_account_tasks(account_index: int, _user=Depends(require_menu("xxqd.auto"))):
     try:
         return success(app_state.run_account_tasks(account_index))
     except IndexError:
@@ -304,17 +328,17 @@ def run_account_tasks(account_index: int, _user=Depends(get_current_user)):
 
 
 @app.post("/api/accounts/refresh-all")
-def refresh_all_tokens(_user=Depends(get_current_user)):
+def refresh_all_tokens(_user=Depends(require_menu("xxqd.accounts"))):
     return success(app_state.refresh_all_tokens())
 
 
 @app.post("/api/run-all")
-def run_all_enabled_tasks(_user=Depends(get_current_user)):
+def run_all_enabled_tasks(_user=Depends(require_menu("xxqd.auto"))):
     return success(app_state.run_all_enabled_tasks())
 
 
 @app.post("/api/settings")
-def set_settings(payload: Settings, _user=Depends(get_current_user)):
+def set_settings(payload: Settings, _user=Depends(require_menu("xxqd.auto"))):
     return success(app_state.set_settings(payload.model_dump()))
 
 
@@ -425,7 +449,10 @@ def delete_user(user_id: int, admin=Depends(require_admin)):
 
 
 @app.post("/api/upload")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(
+    file: UploadFile = File(...),
+    _user=Depends(require_menu("xxqd.tasks")),
+):
     config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     ext = Path(file.filename or "image.jpg").suffix
     name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
