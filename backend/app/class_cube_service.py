@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import math
 import os
@@ -1616,6 +1617,102 @@ class ClassCubeService:
         if payload.get("notify_wecom", False):
             self._send_manual_notification(summary)
         return result
+
+    def admin_parallel_qr_checkin(
+        self,
+        item_id: int,
+        qr_url: str,
+        actor: dict[str, Any],
+    ) -> dict[str, Any]:
+        actor_user_id, is_admin = self._actor_scope(actor)
+        if not is_admin:
+            raise ClassCubeValidationError("仅管理员可以发起同班账号并发签到")
+        qr_url = str(qr_url or "").strip()
+        if not qr_url:
+            raise ClassCubeValidationError("二维码地址不能为空")
+
+        source_item = self.repository.get_item(
+            item_id,
+            actor_user_id,
+            is_admin,
+        )
+        source_course = self.repository.get_course(
+            source_item["course_id"],
+            actor_user_id,
+            is_admin,
+        )
+        if source_item.get("mode") != "qr":
+            raise ClassCubeValidationError("当前签到项不是二维码签到")
+
+        targets = self.repository.list_qr_checkin_targets(
+            source_course["remote_course_id"],
+            source_item["remote_item_id"],
+            source_item["remote_module"],
+        )
+
+        def execute_target(target: dict[str, Any]) -> dict[str, Any]:
+            started_at = datetime.now()
+            target_context = {
+                "actor_user_id": actor_user_id,
+                "is_admin": is_admin,
+                "item": target["item"],
+                "course": target["course"],
+                "account": target["account"],
+            }
+            payload = {"qr_url": qr_url}
+            try:
+                result = self.manual_checkin(
+                    target["item"]["id"],
+                    payload,
+                    actor,
+                    context=target_context,
+                )
+            except Exception as exc:
+                result = self._checkin_view(
+                    "failed",
+                    f"批量二维码签到异常：{type(exc).__name__}",
+                )
+            summary = self._manual_summary(
+                target_context,
+                result,
+                payload,
+                started_at,
+            )
+            self._record_manual_run(target_context, summary, started_at)
+            account = target["account"]
+            return {
+                "account_id": account["id"],
+                "account_name": (
+                    account.get("name")
+                    or account.get("remote_user_name")
+                    or "-"
+                ),
+                "status": result.get("status", "failed"),
+                "message": result.get("message", ""),
+            }
+
+        details: list[dict[str, Any]] = []
+        max_workers = min(8, max(1, len(targets)))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(execute_target, target) for target in targets]
+            for future in as_completed(futures):
+                details.append(future.result())
+        details.sort(key=lambda row: row["account_id"])
+        counts = {
+            "success": sum(row["status"] == "success" for row in details),
+            "already_signed": sum(
+                row["status"] == "already_signed" for row in details
+            ),
+            "failed": sum(row["status"] == "failed" for row in details),
+            "unknown": sum(
+                row["status"] == "unknown_result" for row in details
+            ),
+        }
+        return {
+            "total": len(details),
+            **counts,
+            "details": details,
+        }
 
     def manual_checkin(
         self,

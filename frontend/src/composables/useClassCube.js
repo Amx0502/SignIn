@@ -385,6 +385,10 @@ export function useClassCube(api = classCubeApi) {
     return invoke(api.manualCheckin, itemId, request)
   }
 
+  function batchQrCheckin(itemId, qrUrl) {
+    return invoke(api.batchQrCheckin, itemId, { qr_url: qrUrl })
+  }
+
   return {
     accounts,
     courses,
@@ -432,6 +436,7 @@ export function useClassCube(api = classCubeApi) {
     dispose,
     uploadPhoto: (...args) => invoke(api.uploadPhoto, ...args),
     manualCheckin,
+    batchQrCheckin,
     updateAccount: (...args) => invoke(api.updateAccount, ...args),
     deleteAccount: (...args) => invoke(api.deleteAccount, ...args),
     deleteTask: (...args) => invoke(api.deleteTask, ...args),

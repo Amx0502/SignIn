@@ -179,6 +179,9 @@
               <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown'" @click="submitManual">
                 <el-icon><Position /></el-icon>执行{{ modeMeta(selectedItem.mode).label }}
               </el-button>
+              <el-button v-if="isAdmin && selectedItem.mode === 'qr' && form.qrUrl" type="warning" size="large" :loading="batchCheckingIn" :disabled="checkingIn" @click="submitBatchQr">
+                <el-icon><User /></el-icon>为同班账号并发签到
+              </el-button>
             </div>
           </el-form>
         </div>
@@ -222,12 +225,15 @@ const props = defineProps({
   coursesLoading: { type: Boolean, default: false },
   itemsLoading: { type: Boolean, default: false },
   itemsSyncing: { type: Boolean, default: false },
+  isAdmin: { type: Boolean, default: false },
   manualCheckinAction: { type: Function, required: true },
+  batchQrCheckinAction: { type: Function, required: true },
   uploadPhotoAction: { type: Function, required: true },
   batchDeleteAccountsAction: { type: Function, required: true },
 })
 const emit = defineEmits(['qr-login', 'select-account', 'select-course', 'select-item', 'sync-courses', 'sync-items', 'rename-account', 'delete-account'])
 const checkingIn = ref(false)
+const batchCheckingIn = ref(false)
 const qrDecoding = ref(false)
 const qrFileInput = ref(null)
 const photoUploading = ref(false)
@@ -359,6 +365,33 @@ async function submitManual() {
     resultVisible.value = true
   } finally {
     checkingIn.value = false
+  }
+}
+
+async function submitBatchQr() {
+  if (!props.isAdmin || props.selectedItem?.mode !== 'qr' || !form.qrUrl) return
+  try {
+    await ElMessageBox.confirm(
+      '系统将把此二维码提交给同一课程下所有有效账号，是否继续？',
+      '确认并发签到',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  batchCheckingIn.value = true
+  try {
+    const summary = await props.batchQrCheckinAction(props.selectedItem.id, form.qrUrl)
+    result.value = {
+      status: summary.failed || summary.unknown ? 'failed' : 'success',
+      message: `并发签到完成：共 ${summary.total} 个账号，成功 ${summary.success} 个，已签到 ${summary.already_signed} 个，失败 ${summary.failed} 个，未知 ${summary.unknown} 个`,
+    }
+    resultVisible.value = true
+  } catch (error) {
+    result.value = { status: 'failed', message: error.message || '并发签到请求失败' }
+    resultVisible.value = true
+  } finally {
+    batchCheckingIn.value = false
   }
 }
 
