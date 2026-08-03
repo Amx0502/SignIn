@@ -1805,6 +1805,39 @@ class ClassCubeService:
             "details": details,
         }
 
+    def sync_all_account_items(self, actor: dict[str, Any]) -> dict[str, Any]:
+        _, is_admin = self._actor_scope(actor)
+        if not is_admin:
+            raise ClassCubeValidationError("仅管理员可以同步所有账号")
+        details = []
+        for course in self.repository.list_active_courses():
+            course_id = int(course["id"])
+            try:
+                self.sync_items(course_id, actor)
+            except Exception as exc:
+                details.append(
+                    {
+                        "course_id": course_id,
+                        "account_id": course.get("account_id"),
+                        "status": "failed",
+                        "message": type(exc).__name__,
+                    }
+                )
+            else:
+                details.append(
+                    {
+                        "course_id": course_id,
+                        "account_id": course.get("account_id"),
+                        "status": "success",
+                    }
+                )
+        return {
+            "total": len(details),
+            "success": sum(row["status"] == "success" for row in details),
+            "failed": sum(row["status"] == "failed" for row in details),
+            "details": details,
+        }
+
     def manual_checkin(
         self,
         item_id: int,

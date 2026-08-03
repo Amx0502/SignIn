@@ -86,6 +86,15 @@
                 :loading="itemsSyncing || itemsLoading"
                 @click="emit('sync-items', selectedCourseId)"
               >同步签到项</el-button>
+              <el-button
+                v-if="isAdmin"
+                type="warning"
+                plain
+                :icon="Refresh"
+                :loading="allAccountsSyncing"
+                :disabled="allAccountsSyncing || itemsSyncing || coursesLoading || itemsLoading"
+                @click="syncAllAccounts"
+              >同步所有账号</el-button>
             </div>
           </div>
         </template>
@@ -244,12 +253,14 @@ const props = defineProps({
   manualCheckinAction: { type: Function, required: true },
   batchQrCheckinAction: { type: Function, required: true },
   syncClassItemsAction: { type: Function, required: true },
+  syncAllAccountsAction: { type: Function, required: true },
   uploadPhotoAction: { type: Function, required: true },
   batchDeleteAccountsAction: { type: Function, required: true },
 })
 const emit = defineEmits(['qr-login', 'select-account', 'select-course', 'select-item', 'sync-courses', 'sync-items', 'rename-account', 'delete-account'])
 const checkingIn = ref(false)
 const batchCheckingIn = ref(false)
+const allAccountsSyncing = ref(false)
 const qrDecoding = ref(false)
 const qrFileInput = ref(null)
 const photoUploading = ref(false)
@@ -419,6 +430,26 @@ async function submitBatchQr() {
     resultVisible.value = true
   } finally {
     batchCheckingIn.value = false
+  }
+}
+
+async function syncAllAccounts() {
+  try {
+    await ElMessageBox.confirm(
+      '系统将同步所有有效账号的课程和签到项，是否继续？',
+      '确认同步所有账号',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  allAccountsSyncing.value = true
+  try {
+    await props.syncAllAccountsAction()
+  } catch (error) {
+    ElMessage.error(error.message || '同步所有账号失败')
+  } finally {
+    allAccountsSyncing.value = false
   }
 }
 

@@ -243,6 +243,22 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             actor,
         )
 
+    @router.post("/accounts/sync-all-items")
+    def sync_all_account_items(
+        request: Request,
+        actor=Depends(access_accounts),
+    ):
+        if actor.get("role") != "admin":
+            return JSONResponse(
+                status_code=403,
+                content={"ok": False, "error": "仅管理员可以同步所有账号"},
+            )
+        return _invoke(
+            request,
+            _service(request).sync_all_account_items,
+            actor,
+        )
+
     @router.get("/accounts/{account_id}/courses")
     def list_courses(
         account_id: int,
