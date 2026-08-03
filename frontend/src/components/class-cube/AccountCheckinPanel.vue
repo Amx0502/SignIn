@@ -161,8 +161,13 @@
             <el-form-item v-if="selectedItem.mode === 'password'" label="签到密码">
               <el-input v-model="form.password" type="text" maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
             </el-form-item>
+            <el-form-item v-if="selectedItem.mode === 'qr'" label="二维码签到图片">
+              <input ref="qrFileInput" class="qr-file-input" type="file" accept="image/*" @change="decodeQrFile" />
+              <el-button type="primary" plain :loading="qrDecoding" :icon="Upload" @click="qrFileInput?.click()">上传二维码图片并解析</el-button>
+              <p class="field-tip">图片仅在浏览器本地解析，不会上传；解析后会自动填入签到地址。</p>
+            </el-form-item>
             <el-form-item v-if="selectedItem.mode === 'qr'" label="二维码签到地址">
-              <el-input v-model="form.qrUrl" type="text" clearable maxlength="2048" placeholder="粘贴扫码得到的 k8n.cn/student/punchw/course/... 地址" />
+              <el-input v-model="form.qrUrl" type="text" clearable maxlength="2048" placeholder="粘贴或从图片解析 k8n.cn/student/punchw/course/... 地址" />
               <p class="field-tip">地址必须包含 tm 和 sign 参数，并与当前签到项匹配。</p>
             </el-form-item>
             <el-alert v-if="selectedItem.mode === 'unknown'" title="暂时无法识别签到类型，请重新同步签到项后再试。" type="warning" :closable="false" show-icon />
@@ -194,10 +199,11 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
   Aim, Camera, Cellphone, CircleCheck, CircleCheckFilled, CircleCloseFilled,
-  Delete, Key, Loading, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, User, WarningFilled,
+  Delete, Key, Loading, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, Upload, User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { buildManualCheckinPayload, shouldShowManualCheckinForm } from '../../utils/classCubeCheckin.js'
+import { decodeQrImage } from '../../utils/qrImageDecode.js'
 import TaskImageUpload from '../TaskImageUpload.vue'
 
 const props = defineProps({
@@ -219,6 +225,8 @@ const props = defineProps({
 })
 const emit = defineEmits(['qr-login', 'select-account', 'select-course', 'select-item', 'sync-courses', 'sync-items', 'rename-account', 'delete-account'])
 const checkingIn = ref(false)
+const qrDecoding = ref(false)
+const qrFileInput = ref(null)
 const photoUploading = ref(false)
 const photoFiles = ref([])
 const batchDeleting = ref(false)
@@ -351,6 +359,21 @@ async function submitManual() {
   }
 }
 
+async function decodeQrFile(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  qrDecoding.value = true
+  try {
+    form.qrUrl = await decodeQrImage(file)
+    ElMessage.success('二维码解析成功，请确认地址后执行签到')
+  } catch (error) {
+    ElMessage.error(error.message || '二维码解析失败')
+  } finally {
+    qrDecoding.value = false
+  }
+}
+
 async function uploadPhoto(options) {
   const file = options?.file
   if (!file || !props.selectedAccountId) return
@@ -382,6 +405,7 @@ function removePhoto() {
 </script>
 
 <style scoped>
+.qr-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .account-checkin { display: grid; gap: 18px; }
 .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .stats-grid article { display: flex; align-items: center; gap: 13px; min-height: 92px; padding: 17px; border: 1px solid rgb(191 219 254 / 58%); border-radius: 19px; background: rgb(255 255 255 / 82%); box-shadow: 0 12px 30px rgb(15 23 42 / 6%); backdrop-filter: blur(16px); }
