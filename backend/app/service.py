@@ -189,8 +189,32 @@ def setup_logger(log_buffer: deque[str]) -> logging.Logger:
 
 
 class CheckinService:
+    API_TIMEOUT = 30
+    API_RETRIES = 2
+
     def __init__(self, logger: logging.Logger) -> None:
         self.logger = logger
+
+    def _request_json(self, method: str, url: str, **kwargs) -> dict:
+        timeout = kwargs.pop("timeout", self.API_TIMEOUT)
+        request = requests.get if method.lower() == "get" else requests.post
+        for attempt in range(self.API_RETRIES):
+            try:
+                response = request(url, timeout=timeout, **kwargs)
+                response.raise_for_status()
+                payload = response.json()
+                return payload if isinstance(payload, dict) else {}
+            except (requests.Timeout, requests.ConnectionError):
+                if attempt + 1 >= self.API_RETRIES:
+                    raise
+                if self.logger is not None:
+                    self.logger.warning(
+                        "小小签到接口请求超时，将在短暂等待后重试（第 %s 次）: %s",
+                        attempt + 1,
+                        url,
+                    )
+                time.sleep(1 + attempt)
+        return {}
 
     @staticmethod
     def encrypt_pwd(password: str) -> str:
@@ -201,12 +225,12 @@ class CheckinService:
     def login(self, mobile: str, password: str) -> str | None:
         encrypted_pwd = self.encrypt_pwd(password)
         url = "https://api-xcx-qunsou.weiyoubot.cn/xcx/checkin/v2/user/mobile/login"
-        response = requests.post(
+        response = self._request_json(
+            "post",
             url,
             json={"mobile": mobile, "pwd": encrypted_pwd},
             headers=HEADERS,
-            timeout=15,
-        ).json()
+        )
         if response.get("msg") == "ok":
             return response["data"]["access_token"]
         return None
@@ -216,7 +240,7 @@ class CheckinService:
             "https://api-xcx-qunsou.weiyoubot.cn/xcx/checkin/v3/list"
             f"?type=5&page=1&count=100&access_token={token}"
         )
-        response = requests.get(url, headers=HEADERS, timeout=15).json()
+        response = self._request_json("get", url, headers=HEADERS)
         return response.get("data", []) or []
 
     def fetch_detail(self, cid: str, token: str) -> dict:
@@ -224,7 +248,7 @@ class CheckinService:
             "https://api-xcx-qunsou.weiyoubot.cn/xcx/checkin/v4/detail"
             f"?cid={cid}&access_token={token}&tag=0"
         )
-        return requests.get(url, headers=HEADERS, timeout=15).json()
+        return self._request_json("get", url, headers=HEADERS)
 
     def upload_image(self, image_path: str, token: str) -> str | None:
         path = Path(image_path)
@@ -238,7 +262,12 @@ class CheckinService:
         url = f"https://api-xcx-qunsou.weiyoubot.cn/xcx/file/v1/upload?access_token={token}"
         with path.open("rb") as image_file:
             files = {"file": (path.name, image_file, "image/jpeg")}
-            response = requests.post(url, headers=upload_headers, files=files, timeout=20).json()
+            response = requests.post(
+                url,
+                headers=upload_headers,
+                files=files,
+                timeout=self.API_TIMEOUT,
+            ).json()
 
         if response.get("sta") == 0 and response.get("data", {}).get("urls"):
             return response["data"]["urls"][0]
@@ -316,7 +345,7 @@ class CheckinService:
             "https://api-xcx-qunsou.weiyoubot.cn/xcx/checkin/v3/doit",
             headers=HEADERS,
             json=payload,
-            timeout=20,
+            timeout=self.API_TIMEOUT,
         ).json()
 
         if response.get("msg") == "ok" or response.get("sta") == 0:
