@@ -2,7 +2,7 @@
   <router-view v-if="isLoginPage" />
   <el-container v-else class="app-wrapper">
     <el-aside :width="sidebarCollapsed ? '80px' : '280px'" class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-      <div class="brand">
+      <div class="brand" role="button" tabindex="0" aria-label="打开综合总览" @click="router.push('/dashboard')" @keydown.enter="router.push('/dashboard')">
         <img src="./img/logo.png" class="logo-img" alt="签到" />
         <div v-if="!sidebarCollapsed">
           <h1>签到管理系统</h1>

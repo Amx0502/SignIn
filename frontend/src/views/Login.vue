@@ -100,7 +100,7 @@ async function handleLogin() {
       ElMessage.success('登录成功')
       
       const urlParams = new URLSearchParams(window.location.search)
-      const redirect = urlParams.get('redirect') || '/overview'
+      const redirect = urlParams.get('redirect') || '/dashboard'
       window.location.href = redirect
     } else {
       ElMessage.error(response.error || '登录失败')
