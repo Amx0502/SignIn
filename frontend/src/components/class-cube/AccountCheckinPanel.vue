@@ -162,8 +162,11 @@
               <el-input v-model="form.password" type="text" maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
             </el-form-item>
             <el-form-item v-if="selectedItem.mode === 'qr'" label="二维码签到图片">
+              <div class="qr-upload-zone" @paste.prevent="handleQrPaste" @dragover.prevent @drop.prevent="handleQrDrop">
               <input ref="qrFileInput" class="qr-file-input" type="file" accept="image/*" @change="decodeQrFile" />
               <el-button type="primary" plain :loading="qrDecoding" :icon="Upload" @click="qrFileInput?.click()">上传二维码图片并解析</el-button>
+              <span>可直接 Ctrl+V 粘贴，或将二维码图片拖到此处</span>
+              </div>
               <p class="field-tip">图片仅在浏览器本地解析，不会上传；解析后会自动填入签到地址。</p>
             </el-form-item>
             <el-form-item v-if="selectedItem.mode === 'qr'" label="二维码签到地址">
@@ -363,6 +366,10 @@ async function decodeQrFile(event) {
   const file = event.target.files?.[0]
   event.target.value = ''
   if (!file) return
+  await decodeQrImageFile(file)
+}
+
+async function decodeQrImageFile(file) {
   qrDecoding.value = true
   try {
     form.qrUrl = await decodeQrImage(file)
@@ -372,6 +379,19 @@ async function decodeQrFile(event) {
   } finally {
     qrDecoding.value = false
   }
+}
+
+function handleQrPaste(event) {
+  const file = Array.from(event.clipboardData?.items || [])
+    .find(item => item.kind === 'file' && item.type.startsWith('image/'))
+    ?.getAsFile()
+  if (file) decodeQrImageFile(file)
+}
+
+function handleQrDrop(event) {
+  const file = Array.from(event.dataTransfer?.files || [])
+    .find(item => item.type?.startsWith('image/'))
+  if (file) decodeQrImageFile(file)
 }
 
 async function uploadPhoto(options) {
@@ -406,6 +426,8 @@ function removePhoto() {
 
 <style scoped>
 .qr-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.qr-upload-zone { display: inline-flex; align-items: center; gap: 10px; padding: 10px; border: 1px dashed #93c5fd; border-radius: 12px; background: #f8fbff; }
+.qr-upload-zone span { color: #64748b; font-size: 12px; }
 .account-checkin { display: grid; gap: 18px; }
 .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .stats-grid article { display: flex; align-items: center; gap: 13px; min-height: 92px; padding: 17px; border: 1px solid rgb(191 219 254 / 58%); border-radius: 19px; background: rgb(255 255 255 / 82%); box-shadow: 0 12px 30px rgb(15 23 42 / 6%); backdrop-filter: blur(16px); }

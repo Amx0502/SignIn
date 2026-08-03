@@ -1,5 +1,10 @@
 <template>
-  <div class="task-image-upload">
+  <div
+    class="task-image-upload"
+    @paste.prevent="handlePaste"
+    @dragover.prevent
+    @drop.prevent="handleDrop"
+  >
     <div class="task-image-upload__grid">
       <article
         v-for="(file, index) in fileList"
@@ -22,6 +27,7 @@
         accept="image/*"
         multiple
         :limit="limit"
+        drag
       >
         <div class="task-image-upload__trigger">
           <el-icon><UploadFilled /></el-icon>
@@ -75,6 +81,27 @@ function openPreview(file) {
 
 function removeFile(file) {
   props.onRemove(file, props.fileList)
+}
+
+function isImage(file) {
+  return file instanceof File && (file.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name || ''))
+}
+
+function addFile(file) {
+  if (!isImage(file) || props.fileList.length >= props.limit) return
+  props.httpRequest({ file })
+}
+
+function handlePaste(event) {
+  const file = Array.from(event.clipboardData?.items || [])
+    .find(item => item.kind === 'file' && item.type.startsWith('image/'))
+    ?.getAsFile()
+  if (file) addFile(file)
+}
+
+function handleDrop(event) {
+  const file = Array.from(event.dataTransfer?.files || []).find(isImage)
+  if (file) addFile(file)
 }
 </script>
 
