@@ -403,6 +403,10 @@ export function useClassCube(api = classCubeApi) {
     })
   }
 
+  function syncQrClassItems(itemId) {
+    return invoke(api.syncQrClassItems, itemId)
+  }
+
   return {
     accounts,
     courses,
@@ -453,6 +457,7 @@ export function useClassCube(api = classCubeApi) {
     uploadPhoto: (...args) => invoke(api.uploadPhoto, ...args),
     manualCheckin,
     batchQrCheckin,
+    syncQrClassItems,
     updateAccount: (...args) => invoke(api.updateAccount, ...args),
     deleteAccount: (...args) => invoke(api.deleteAccount, ...args),
     deleteTask: (...args) => invoke(api.deleteTask, ...args),

@@ -406,6 +406,29 @@ class ClassCubeRepository:
             ).all()
             return [self._course_record(row) for row in rows]
 
+    def list_courses_by_remote_course(
+        self,
+        remote_course_id: str,
+    ) -> list[dict[str, Any]]:
+        with self.database.session() as session:
+            statement = (
+                select(ClassCubeCourseRow)
+                .join(
+                    ClassCubeAccountRow,
+                    ClassCubeCourseRow.account_id
+                    == ClassCubeAccountRow.id,
+                )
+                .where(
+                    ClassCubeCourseRow.remote_course_id
+                    == str(remote_course_id),
+                    ClassCubeAccountRow.status == "active",
+                    ClassCubeAccountRow.cookie != "",
+                )
+                .order_by(ClassCubeCourseRow.id)
+            )
+            rows = session.scalars(statement).all()
+            return [self._course_record(row) for row in rows]
+
     def upsert_courses(
         self,
         account_id: int,

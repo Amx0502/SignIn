@@ -1759,6 +1759,52 @@ class ClassCubeService:
             for target in targets
         ]
 
+    def sync_qr_class_items(
+        self,
+        item_id: int,
+        actor: dict[str, Any],
+    ) -> dict[str, Any]:
+        actor_user_id, is_admin = self._actor_scope(actor)
+        item = self.repository.get_item(item_id, actor_user_id, is_admin)
+        course = self.repository.get_course(
+            item["course_id"],
+            actor_user_id,
+            is_admin,
+        )
+        if is_admin:
+            courses = self.repository.list_courses_by_remote_course(
+                course["remote_course_id"]
+            )
+        else:
+            courses = [course]
+
+        details = []
+        for target_course in courses:
+            target_course_id = int(target_course["id"])
+            try:
+                self.sync_items(target_course_id, actor)
+            except Exception as exc:
+                details.append(
+                    {
+                        "course_id": target_course_id,
+                        "status": "failed",
+                        "message": type(exc).__name__,
+                    }
+                )
+            else:
+                details.append(
+                    {
+                        "course_id": target_course_id,
+                        "status": "success",
+                    }
+                )
+        return {
+            "total": len(details),
+            "success": sum(row["status"] == "success" for row in details),
+            "failed": sum(row["status"] == "failed" for row in details),
+            "details": details,
+        }
+
     def manual_checkin(
         self,
         item_id: int,
