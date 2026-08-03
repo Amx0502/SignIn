@@ -51,6 +51,7 @@ class ClassCubeTaskCreate(BaseModel):
     longitude: float | None = Field(default=None, allow_inf_nan=False)
     accuracy: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     photo_path: str = Field(default="", max_length=512)
+    photo_res: str = Field(default="", max_length=2048)
     password: str = Field(default="", max_length=255)
     schedule_times: list[str] = Field(default_factory=list, max_length=24)
     start_date: date | None = None
@@ -67,6 +68,7 @@ class ClassCubeTaskUpdate(BaseModel):
     longitude: float | None = Field(default=None, allow_inf_nan=False)
     accuracy: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     photo_path: str | None = Field(default=None, max_length=512)
+    photo_res: str | None = Field(default=None, max_length=2048)
     password: str | None = Field(default=None, max_length=255)
     clear_password: bool = False
     schedule_times: list[str] | None = Field(
@@ -98,6 +100,7 @@ def task_view(task: dict[str, Any]) -> dict[str, Any]:
         "longitude": task.get("longitude"),
         "accuracy": task.get("accuracy"),
         "photo_path": task.get("photo_path", ""),
+        "photo_res": task.get("photo_res", ""),
         "password": task.get("password", ""),
         "schedule_times": task.get("schedule_times", []),
         "start_date": _iso(task.get("start_date")),

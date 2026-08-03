@@ -784,7 +784,7 @@ class ClassCubeRepository:
             for key, value in values.items():
                 if key in {
                     "account_id", "course_id", "name", "enabled",
-                    "latitude", "longitude", "accuracy", "photo_path",
+                    "latitude", "longitude", "accuracy", "photo_path", "photo_res",
                     "password", "start_date", "end_date",
                     "notify_wecom",
                 }:

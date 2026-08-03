@@ -804,6 +804,8 @@ class ClassCubeService:
             values["password"] = ""
         elif supplied.get("password") is None:
             supplied.pop("password", None)
+        if supplied.get("photo_res") is None:
+            supplied.pop("photo_res", None)
         values.update(supplied)
         values = self._validate_task_schedule(values)
         values["poll_interval_seconds"] = 30
@@ -1116,6 +1118,7 @@ class ClassCubeService:
                         "accuracy": task.get("accuracy"),
                         "password": task.get("password") or "",
                         "photo_path": task.get("photo_path") or "",
+                        "photo_res": task.get("photo_res") or "",
                     },
                     actor,
                     before_submit=lambda: self._mark_automatic_submitting(

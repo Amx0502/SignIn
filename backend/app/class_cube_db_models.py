@@ -217,6 +217,9 @@ class ClassCubeTaskRow(ClassCubeBase):
     photo_path: Mapped[str] = mapped_column(
         String(512), nullable=False, default=""
     )
+    photo_res: Mapped[str] = mapped_column(
+        String(2048), nullable=False, default=""
+    )
     password: Mapped[str] = mapped_column(
         String(255), nullable=False, default=""
     )

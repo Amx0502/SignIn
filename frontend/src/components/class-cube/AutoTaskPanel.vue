@@ -100,6 +100,16 @@
                 :on-remove="removePhoto"
               />
             </el-form-item>
+            <el-form-item label="手动 res（可选）">
+              <el-input
+                v-model="draft.photo_res"
+                type="text"
+                clearable
+                maxlength="2048"
+                placeholder='例如 ["p/260803/1118536714c14979bd46fd.png"]'
+              />
+              <small class="field-tip">填写后自动任务优先使用该资源值；留空时才上传上面的签到照片。</small>
+            </el-form-item>
           </section>
 
           <section class="editor-section">
@@ -161,7 +171,7 @@ const saving = ref(false)
 const photoUploading = ref(false)
 const photoFiles = ref([])
 const runningTaskId = ref(null)
-const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', password: '', has_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
+const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', photo_res: '', password: '', has_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
 const draft = reactive(emptyDraft())
 
 function accountName(id) { const row = props.accounts.find(item => item.id === id); return row?.name || row?.remote_user_name || `账号 ${id}` }

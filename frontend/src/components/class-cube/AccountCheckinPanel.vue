@@ -148,6 +148,16 @@
                 :on-remove="removePhoto"
               />
             </el-form-item>
+            <el-form-item v-if="selectedItem.mode === 'gps_photo'" label="手动 res（可选）">
+              <el-input
+                v-model="form.photoRes"
+                type="text"
+                clearable
+                maxlength="2048"
+                placeholder='例如 ["p/260803/1118536714c14979bd46fd.png"]'
+              />
+              <p class="field-tip">填写后优先使用该资源值，不再上传照片；支持 JSON 数组或单个资源路径。</p>
+            </el-form-item>
             <el-form-item v-if="selectedItem.mode === 'password'" label="签到密码">
               <el-input v-model="form.password" type="text" maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
             </el-form-item>
@@ -212,7 +222,7 @@ const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
 const resultVisible = ref(false)
 const result = ref(null)
-const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', notify_wecom: false })
+const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', notify_wecom: false })
 
 function resetManualState() {
   Object.assign(form, {
@@ -220,6 +230,7 @@ function resetManualState() {
     accuracy: 20,
     password: '',
     photoPath: '',
+    photoRes: '',
     notify_wecom: false,
   })
   photoFiles.value = []
@@ -322,6 +333,7 @@ async function submitManual() {
       accuracy: form.accuracy,
       password: form.password,
       photoPath: form.photoPath,
+      photoRes: form.photoRes,
       notifyWecom: form.notify_wecom,
     })
     result.value = await props.manualCheckinAction(props.selectedItem.id, payload)

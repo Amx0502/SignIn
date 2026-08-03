@@ -138,6 +138,7 @@ class ClassCubeDatabase:
             "end_date": "DATE NULL",
             "notify_wecom": "TINYINT(1) NOT NULL DEFAULT 1",
             "last_schedule_key": "VARCHAR(32) NOT NULL DEFAULT ''",
+            "photo_res": "VARCHAR(2048) NOT NULL DEFAULT ''",
         }
         statements = [
             f"ALTER TABLE {table} ADD COLUMN {name} {definition}"
