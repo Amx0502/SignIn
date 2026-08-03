@@ -84,12 +84,6 @@
           <div class="form-section project-section">
             <div class="section-header">
               <span>签到项目列表</span>
-              <el-tag v-if="projectsLoading" type="primary" effect="plain" size="small">
-                获取中…
-              </el-tag>
-              <el-tag v-else-if="projectFetchStatus" type="success" effect="plain" size="small">
-                {{ projectFetchStatus }}
-              </el-tag>
               <el-button type="primary" plain :icon="Search" size="small" @click="fetchProjects" :disabled="selectedAccountIndex < 0 || projectsLoading" :loading="projectsLoading">
                 {{ projectsLoading ? '获取中…' : '获取项目列表' }}
               </el-button>
@@ -187,7 +181,6 @@ const { state, refreshState, refreshLogs, selectedAccountIndex } = useAppState()
 const selectedActualIndex = ref(-1)
 const projects = ref([])
 const projectsLoading = ref(false)
-const projectFetchStatus = ref('')
 const formRef = ref(null)
 const fileList = ref([])
 const checkinResultVisible = ref(false)
@@ -265,7 +258,6 @@ onMounted(async () => {
 async function onAccountChange() {
   selectedActualIndex.value = -1
   projects.value = currentAccount.value?.projects || []
-  projectFetchStatus.value = projects.value.length ? `已缓存 ${projects.value.length} 项` : ''
   createNew()
   if (selectedAccountIndex.value != null) {
     await fetchProjects()
@@ -345,14 +337,11 @@ function onImageRemove(file, fileList) {
 async function fetchProjects() {
   if (selectedAccountIndex.value == null || projectsLoading.value) return
   projectsLoading.value = true
-  projectFetchStatus.value = ''
   try {
     const res = await api.fetchProjects(selectedAccountIndex.value)
     projects.value = res.data || []
-    projectFetchStatus.value = `已获取 ${projects.value.length} 项`
     ElMessage.success(`项目列表获取成功，共 ${projects.value.length} 项`)
   } catch (err) {
-    projectFetchStatus.value = '获取失败'
     ElMessage.error(err.message || '项目列表获取失败')
   } finally {
     projectsLoading.value = false

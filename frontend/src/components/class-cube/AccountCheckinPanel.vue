@@ -147,6 +147,7 @@
                 :http-request="uploadPhoto"
                 :on-remove="removePhoto"
               />
+              <p v-if="form.photoRes" class="field-tip photo-res-preview">当前 res：{{ form.photoRes }}</p>
             </el-form-item>
             <el-form-item v-if="selectedItem.mode === 'gps_photo'" label="手动 res（可选）">
               <el-input
@@ -338,6 +339,7 @@ async function submitManual() {
       notifyWecom: form.notify_wecom,
     })
     result.value = await props.manualCheckinAction(props.selectedItem.id, payload)
+    if (result.value?.photo_res) form.photoRes = result.value.photo_res
     resultVisible.value = true
   } catch (error) {
     result.value = { status: 'failed', message: error.message || '签到请求失败' }
@@ -354,6 +356,7 @@ async function uploadPhoto(options) {
   try {
     const response = await props.uploadPhotoAction(file, props.selectedAccountId)
     form.photoPath = response?.path || ''
+    form.photoRes = response?.photo_res || form.photoRes
     if (!form.photoPath) throw new Error('照片上传结果无效')
     photoFiles.value = [{
       uid: `${Date.now()}`,
@@ -403,6 +406,7 @@ function removePhoto() {
 .mode-icon.gps { background:linear-gradient(135deg,#0ea5e9,#06b6d4) }.mode-icon.gps_photo { background:linear-gradient(135deg,#7c3aed,#a855f7) }.mode-icon.password { background:linear-gradient(135deg,#f59e0b,#f97316) }
 .selector-row { display:flex;align-items:center;gap:12px;margin-bottom:14px }.selector-row .el-select { flex:1 }.course-code,.option-code { color:#64748b;font-size:11px }.option-code { float:right;margin-left:20px }
 .manual-form { margin-top:18px;padding:18px;border:1px solid #bfdbfe;border-radius:18px;background:linear-gradient(145deg,#f8fbff,#eff6ff) }
+.photo-res-preview { width:100%; margin:8px 0 0; overflow-wrap:anywhere; color:#2563eb; }
 .manual-form__head { display:flex;justify-content:space-between;gap:12px;margin-bottom:16px }.manual-form__head>div { display:flex;align-items:center;gap:9px }.manual-form__head small { color:#64748b;font-size:11px }.mode-chip { padding:5px 9px;color:#1d4ed8;border-radius:9px;background:#dbeafe;font-size:11px;font-weight:700 }
 .location-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px }.location-grid .el-input-number,.location-grid .el-input { width:100% }.coordinate-row { display:flex;align-items:center;gap:8px;width:100%;min-width:0 }.coordinate-row .el-input { flex:1;min-width:0 }.field-tip { margin:7px 0 0;color:#64748b;font-size:11px }.photo-input{display:none}.photo-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.photo-picker small{color:#64748b;font-size:11px}
 .manual-actions { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:4px }

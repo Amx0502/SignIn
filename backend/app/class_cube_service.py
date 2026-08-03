@@ -1375,12 +1375,16 @@ class ClassCubeService:
     def _checkin_view(
         status: str,
         message: str,
+        photo_res: str = "",
     ) -> dict[str, str]:
         safe_message = " ".join(str(message).split())[:200]
-        return {
+        result = {
             "status": status,
             "message": safe_message,
         }
+        if photo_res:
+            result["photo_res"] = photo_res
+        return result
 
     def _mark_account_expired(
         self,
@@ -1706,6 +1710,7 @@ class ClassCubeService:
                 "waiting_parameter",
                 str(exc),
             )
+        photo_res_value = fields.get(form.photo_resource_field, "")
 
         try:
             mark_submitting()
@@ -1753,11 +1758,16 @@ class ClassCubeService:
                 "班级魔方登录已失效，请重新扫码",
             )
         if result.status == "success":
-            return self._checkin_view("success", "签到成功")
+            return self._checkin_view(
+                "success",
+                "签到成功",
+                photo_res=photo_res_value,
+            )
         if result.status == "already_signed":
             return self._checkin_view(
                 "already_signed",
                 "该签到项已经完成",
+                photo_res=photo_res_value,
             )
         if result.status == "password_error":
             return self._checkin_view(
