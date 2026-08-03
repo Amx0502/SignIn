@@ -338,11 +338,15 @@ class ClassCubeClient:
         if (parsed.hostname or "").lower() != "k8n.cn":
             raise ClassCubeRequestError("二维码签到地址必须来自 k8n.cn")
         path_parts = [part for part in parsed.path.split("/") if part]
+        anonymous_qr_item = str(expected_item_id).startswith("qr-active-")
         if (
             len(path_parts) != 5
             or path_parts[:3] != ["student", "punchw", "course"]
             or path_parts[3] != str(expected_course_id)
-            or path_parts[4] != str(expected_item_id)
+            or (
+                not anonymous_qr_item
+                and path_parts[4] != str(expected_item_id)
+            )
         ):
             raise ClassCubeRequestError("二维码签到地址与当前签到项不匹配")
         query = parse_qs(parsed.query, keep_blank_values=False)
