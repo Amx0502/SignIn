@@ -79,6 +79,8 @@
                 class="sync-tag"
               >同步中…</el-tag>
               <el-button
+                type="primary"
+                plain
                 :icon="Refresh"
                 :disabled="!selectedCourseId || coursesLoading || itemsLoading || itemsSyncing"
                 :loading="itemsSyncing || itemsLoading"
