@@ -429,6 +429,26 @@ class ClassCubeRepository:
             rows = session.scalars(statement).all()
             return [self._course_record(row) for row in rows]
 
+    def list_active_courses(self) -> list[dict[str, Any]]:
+        with self.database.session() as session:
+            statement = (
+                select(ClassCubeCourseRow)
+                .join(
+                    ClassCubeAccountRow,
+                    ClassCubeCourseRow.account_id
+                    == ClassCubeAccountRow.id,
+                )
+                .where(
+                    ClassCubeAccountRow.status == "active",
+                    ClassCubeAccountRow.cookie != "",
+                )
+                .order_by(ClassCubeCourseRow.id)
+            )
+            return [
+                self._course_record(row)
+                for row in session.scalars(statement).all()
+            ]
+
     def upsert_courses(
         self,
         account_id: int,
