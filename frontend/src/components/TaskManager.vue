@@ -153,7 +153,7 @@
             </el-form-item>
             <el-form-item v-if="selectedActualIndex >= 0">
               <el-space wrap>
-                <el-button type="success" :icon="VideoPlay" @click="runTask">执行选中任务</el-button>
+                <el-button type="success" :icon="VideoPlay" :loading="runningTask" :disabled="runningTask" @click="runTask">执行选中任务</el-button>
                 <el-button type="danger" :icon="Delete" @click="deleteTask">删除任务</el-button>
               </el-space>
             </el-form-item>
@@ -185,6 +185,7 @@ const formRef = ref(null)
 const fileList = ref([])
 const checkinResultVisible = ref(false)
 const checkinResult = ref(null)
+const runningTask = ref(false)
 const locationMode = ref('none')
 
 const form = reactive({
@@ -387,6 +388,8 @@ async function saveTask() {
 }
 
 async function runTask() {
+  if (runningTask.value || selectedAccountIndex.value == null || selectedActualIndex.value < 0) return
+  runningTask.value = true
   try {
     const res = await api.runTask(selectedAccountIndex.value, selectedActualIndex.value)
     checkinResult.value = createCheckinResult(res.data || {})
@@ -394,6 +397,8 @@ async function runTask() {
     await refreshLogs()
   } catch (err) {
     ElMessage.error(err.message)
+  } finally {
+    runningTask.value = false
   }
 }
 

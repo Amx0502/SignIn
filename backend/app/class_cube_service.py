@@ -1141,6 +1141,9 @@ class ClassCubeService:
                     "message": checkin_result.get("message", ""),
                     "executed_at": datetime.now().strftime("%H:%M:%S"),
                 }
+                if checkin_result.get("photo_res"):
+                    detail["photo_res"] = checkin_result["photo_res"]
+                    result["photo_res"] = checkin_result["photo_res"]
                 result["details"].append(detail)
                 parameter_text = "；".join(
                     self._parameter_log_parts(task_parameters)
@@ -1494,6 +1497,7 @@ class ClassCubeService:
             "trigger": "course_manual",
             "started_at": started_at.isoformat(),
             "parameters": self._manual_parameters(payload),
+            "photo_res": result.get("photo_res", ""),
         }
 
     def _record_manual_run(self, context, summary, started_at):

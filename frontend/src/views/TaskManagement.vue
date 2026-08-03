@@ -65,7 +65,7 @@
                 :icon="Edit" 
                 @click="toggleInlineEdit(task)"
               >{{ isEditing(task) ? '关闭' : '编辑' }}</el-button>
-              <el-button type="success" size="small" :icon="VideoPlay" @click="runTask(task)">执行</el-button>
+              <el-button type="success" size="small" :icon="VideoPlay" :loading="runningTaskKey === getTaskKey(task)" :disabled="runningTaskKey !== null && runningTaskKey !== getTaskKey(task)" @click="runTask(task)">执行</el-button>
               <el-button type="danger" size="small" :icon="Delete" @click="deleteTask(task)">删除</el-button>
             </div>
           </div>
@@ -146,6 +146,7 @@ const editTimesInputs = reactive({})
 const editLocationModes = reactive({})
 const selectedTaskKeys = ref(new Set())
 const batchDeleting = ref(false)
+const runningTaskKey = ref(null)
 
 const allTasks = computed(() => {
   const tasks = []
@@ -353,6 +354,8 @@ function onImageRemove(task, file) {
 }
 
 async function runTask(row) {
+  if (runningTaskKey.value !== null) return
+  runningTaskKey.value = getTaskKey(row)
   try {
     const res = await api.runTask(row.accountIndex, row.taskIndex)
     checkinResult.value = createCheckinResult(res.data || {})
@@ -360,6 +363,8 @@ async function runTask(row) {
     await refreshLogs()
   } catch (err) {
     ElMessage.error(err.message)
+  } finally {
+    runningTaskKey.value = null
   }
 }
 

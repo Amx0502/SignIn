@@ -139,7 +139,7 @@
                 <el-input-number v-model="form.accuracy" :min="0" :precision="1" :controls="false" />
               </el-form-item>
             </div>
-            <el-alert v-if="selectedItem.mode === 'gps_photo'" title="可上传照片自动生成 res，也可填写手动 res 覆盖上传值。" type="info" :closable="false" show-icon />
+            <el-alert v-if="selectedItem.mode === 'gps_photo'" title="照片将在提交签到时上传，实际 res 会记录在运行记录中。" type="info" :closable="false" show-icon />
             <el-form-item v-if="selectedItem.mode === 'gps_photo'" label="签到照片">
               <TaskImageUpload
                 :file-list="photoFiles"
@@ -147,18 +147,6 @@
                 :http-request="uploadPhoto"
                 :on-remove="removePhoto"
               />
-              <p v-if="form.photoRes" class="field-tip photo-res-preview">当前 res：{{ form.photoRes }}</p>
-            </el-form-item>
-            <el-form-item v-if="selectedItem.mode === 'gps_photo'" label="手动 res（可选）">
-              <el-input
-                v-model="form.photoRes"
-                type="text"
-                clearable
-                maxlength="2048"
-                show-word-limit
-                placeholder="填写后跳过远程上传，例如 %5B%22p%2F...png%22%5D"
-              />
-              <p class="field-tip">填写后优先使用该资源值；留空则使用上传照片生成的 res。</p>
             </el-form-item>
             <el-form-item v-if="selectedItem.mode === 'password'" label="签到密码">
               <el-input v-model="form.password" type="text" maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
@@ -224,7 +212,7 @@ const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
 const resultVisible = ref(false)
 const result = ref(null)
-const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', notify_wecom: false })
+const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', notify_wecom: false })
 
 function resetManualState() {
   Object.assign(form, {
@@ -232,7 +220,6 @@ function resetManualState() {
     accuracy: 20,
     password: '',
     photoPath: '',
-    photoRes: '',
     notify_wecom: false,
   })
   photoFiles.value = []
@@ -335,11 +322,9 @@ async function submitManual() {
       accuracy: form.accuracy,
       password: form.password,
       photoPath: form.photoPath,
-      photoRes: form.photoRes,
       notifyWecom: form.notify_wecom,
     })
     result.value = await props.manualCheckinAction(props.selectedItem.id, payload)
-    if (result.value?.photo_res) form.photoRes = result.value.photo_res
     resultVisible.value = true
   } catch (error) {
     result.value = { status: 'failed', message: error.message || '签到请求失败' }
@@ -356,7 +341,6 @@ async function uploadPhoto(options) {
   try {
     const response = await props.uploadPhotoAction(file, props.selectedAccountId)
     form.photoPath = response?.path || ''
-    form.photoRes = response?.photo_res || form.photoRes
     if (!form.photoPath) throw new Error('照片上传结果无效')
     photoFiles.value = [{
       uid: `${Date.now()}`,
@@ -406,7 +390,6 @@ function removePhoto() {
 .mode-icon.gps { background:linear-gradient(135deg,#0ea5e9,#06b6d4) }.mode-icon.gps_photo { background:linear-gradient(135deg,#7c3aed,#a855f7) }.mode-icon.password { background:linear-gradient(135deg,#f59e0b,#f97316) }
 .selector-row { display:flex;align-items:center;gap:12px;margin-bottom:14px }.selector-row .el-select { flex:1 }.course-code,.option-code { color:#64748b;font-size:11px }.option-code { float:right;margin-left:20px }
 .manual-form { margin-top:18px;padding:18px;border:1px solid #bfdbfe;border-radius:18px;background:linear-gradient(145deg,#f8fbff,#eff6ff) }
-.photo-res-preview { width:100%; margin:8px 0 0; overflow-wrap:anywhere; color:#2563eb; }
 .manual-form__head { display:flex;justify-content:space-between;gap:12px;margin-bottom:16px }.manual-form__head>div { display:flex;align-items:center;gap:9px }.manual-form__head small { color:#64748b;font-size:11px }.mode-chip { padding:5px 9px;color:#1d4ed8;border-radius:9px;background:#dbeafe;font-size:11px;font-weight:700 }
 .location-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px }.location-grid .el-input-number,.location-grid .el-input { width:100% }.coordinate-row { display:flex;align-items:center;gap:8px;width:100%;min-width:0 }.coordinate-row .el-input { flex:1;min-width:0 }.field-tip { margin:7px 0 0;color:#64748b;font-size:11px }.photo-input{display:none}.photo-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.photo-picker small{color:#64748b;font-size:11px}
 .manual-actions { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:4px }
