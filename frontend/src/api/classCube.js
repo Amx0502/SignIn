@@ -32,6 +32,8 @@ export function createClassCubeApi(instance = defaultInstance) {
       instance.post(`${root}/items/${itemId}/checkin`, data),
     batchQrCheckin: (itemId, data) =>
       instance.post(`${root}/items/${itemId}/checkin/batch-qr`, data),
+    listBatchQrTargets: itemId =>
+      instance.get(`${root}/items/${itemId}/checkin/batch-qr/targets`),
     uploadPhoto: (file, accountId = null) => {
       const formData = new FormData()
       formData.append('file', file)

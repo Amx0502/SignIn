@@ -70,6 +70,26 @@ def test_admin_parallel_qr_checkin_runs_targets_concurrently_and_isolates_failur
     assert len(service.repository.saved) == 2
 
 
+def test_admin_parallel_qr_checkin_only_runs_selected_accounts():
+    service = ClassCubeService.__new__(ClassCubeService)
+    service.repository = _Repository()
+    service._record_manual_run = lambda *_args: None
+    service.manual_checkin = lambda *_args, **_kwargs: {
+        "status": "success",
+        "message": "签到成功",
+    }
+
+    result = service.admin_parallel_qr_checkin(
+        item_id=1,
+        qr_url="https://k8n.cn/student/punchw/course/1/4508830?tm=x&sign=y",
+        actor={"id": 99, "role": "admin"},
+        account_ids=[2],
+    )
+
+    assert result["total"] == 1
+    assert result["details"][0]["account_id"] == 2
+
+
 def test_admin_parallel_qr_checkin_rejects_non_admin_actor():
     service = ClassCubeService.__new__(ClassCubeService)
     service.repository = object()

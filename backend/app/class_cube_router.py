@@ -318,6 +318,25 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             item_id,
             payload.qr_url,
             actor,
+            account_ids=payload.account_ids,
+        )
+
+    @router.get("/items/{item_id}/checkin/batch-qr/targets")
+    def list_batch_qr_targets(
+        item_id: int,
+        request: Request,
+        actor=Depends(access_accounts),
+    ):
+        if actor.get("role") != "admin":
+            return JSONResponse(
+                status_code=403,
+                content={"ok": False, "error": "仅管理员可以查看同班账号"},
+            )
+        return _invoke(
+            request,
+            _service(request).list_admin_qr_targets,
+            item_id,
+            actor,
         )
 
     @router.post("/photos")
