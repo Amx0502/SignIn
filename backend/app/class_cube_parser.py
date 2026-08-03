@@ -275,7 +275,10 @@ def parse_checkin_items(
     # The live QR page intentionally omits the punch item id and only renders
     # the QR marker. Keep it visible so the UI can offer QR upload; the real
     # item id is validated from the scanned URL at submission time.
-    if not items and _tag_has_qr_marker(soup):
+    if (
+        _tag_has_qr_marker(soup)
+        and not any(item.mode_hint == "qr" for item in items)
+    ):
         add_item(
             f"qr-active-{course_id}",
             title="二维码签到",
