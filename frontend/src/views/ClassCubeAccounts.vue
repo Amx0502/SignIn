@@ -1,16 +1,16 @@
 <template>
   <div class="cube-subpage"><el-card><template #header><div class="page-head"><span>账号管理</span><el-button type="primary" @click="openQrLogin">微信扫码添加账号</el-button></div></template>
-    <AccountCheckinPanel :accounts="accounts" :courses="courses" :items="items" :tasks="tasks" :selected-account-id="selectedAccountId" :selected-course-id="selectedCourseId" :selected-item-id="selectedItemId" :selected-course="selectedCourse" :selected-item="selectedItem" :courses-loading="coursesLoading" :items-loading="itemsLoading" :items-syncing="itemsSyncing" :is-admin="isAdmin" :manual-checkin-action="manualCheckinAndSync" :batch-qr-checkin-action="batchQrCheckin" :upload-photo-action="uploadPhoto" :batch-delete-accounts-action="removeAccounts" @qr-login="openQrLogin" @select-account="selectAccount" @select-course="selectCourse" @select-item="value => selectedItemId = value" @sync-courses="syncCourses" @sync-items="handleSyncItems" @rename-account="renameAccount" @delete-account="removeAccount" />
+    <AccountCheckinPanel :accounts="accounts" :courses="courses" :items="items" :tasks="tasks" :qr-targets="qrTargets" :selected-account-id="selectedAccountId" :selected-course-id="selectedCourseId" :selected-item-id="selectedItemId" :selected-course="selectedCourse" :selected-item="selectedItem" :courses-loading="coursesLoading" :items-loading="itemsLoading" :items-syncing="itemsSyncing" :is-admin="isAdmin" :manual-checkin-action="manualCheckinAndSync" :batch-qr-checkin-action="batchQrCheckin" :upload-photo-action="uploadPhoto" :batch-delete-accounts-action="removeAccounts" @qr-login="openQrLogin" @select-account="selectAccount" @select-course="selectCourse" @select-item="value => selectedItemId = value" @sync-courses="syncCourses" @sync-items="handleSyncItems" @rename-account="renameAccount" @delete-account="removeAccount" />
   </el-card><QrLoginDialog v-model="qrVisible" :session="qrSession" :qr-remaining-seconds="qrRemainingSeconds" :loading="qrLoading" @regenerate="regenerateQr" /></div>
 </template>
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import AccountCheckinPanel from '../components/class-cube/AccountCheckinPanel.vue'
 import QrLoginDialog from '../components/class-cube/QrLoginDialog.vue'
 import { useClassCube } from '../composables/useClassCube.js'
 import { syncAfterManualCheckin } from '../utils/classCubeCheckin.js'
-const cube = useClassCube(); const { accounts,courses,items,tasks,selectedAccountId,selectedCourseId,selectedItemId,selectedCourse,selectedItem,coursesLoading,itemsLoading,itemsSyncing,qrSession,qrRemainingSeconds,manualCheckin,batchQrCheckin,uploadPhoto,selectAccount,selectCourse,syncCourses,syncItems,updateAccount,deleteAccount,deleteAccounts,loadAccounts,loadTasks,loadRuns,loadInitial,startQrLogin } = cube
+const cube = useClassCube(); const { accounts,courses,items,tasks,qrTargets,selectedAccountId,selectedCourseId,selectedItemId,selectedCourse,selectedItem,coursesLoading,itemsLoading,itemsSyncing,qrSession,qrRemainingSeconds,manualCheckin,batchQrCheckin,loadQrTargets,uploadPhoto,selectAccount,selectCourse,syncCourses,syncItems,updateAccount,deleteAccount,deleteAccounts,loadAccounts,loadTasks,loadRuns,loadInitial,startQrLogin } = cube
 const isAdmin = JSON.parse(localStorage.getItem('user') || '{}')?.role === 'admin'
 const qrVisible=ref(false); const qrLoading=ref(false); const qrAccountId=ref(null)
 async function manualCheckinAndSync(itemId, payload) {
@@ -49,5 +49,9 @@ async function removeAccounts(ids){
 async function openQrLogin(id=null){qrAccountId.value=id;qrVisible.value=true;await regenerateQr()}
 async function regenerateQr(){qrLoading.value=true;try{await startQrLogin(qrAccountId.value)}catch(e){ElMessage.error(e.message||'二维码生成失败')}finally{qrLoading.value=false}}
 onMounted(()=>loadInitial().catch(()=>{}))
+watch(selectedItemId, value => {
+  if (isAdmin && selectedItem.value?.mode === 'qr') loadQrTargets(value).catch(() => {})
+  else qrTargets.value = []
+}, { immediate: true })
 </script>
 <style scoped>.cube-subpage{display:grid;gap:18px}.page-head{display:flex;justify-content:space-between;align-items:center;font-weight:700}</style>

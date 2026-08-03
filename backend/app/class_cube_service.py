@@ -1623,6 +1623,7 @@ class ClassCubeService:
         item_id: int,
         qr_url: str,
         actor: dict[str, Any],
+        account_ids: list[int] | None = None,
     ) -> dict[str, Any]:
         actor_user_id, is_admin = self._actor_scope(actor)
         if not is_admin:
@@ -1649,6 +1650,13 @@ class ClassCubeService:
             source_item["remote_item_id"],
             source_item["remote_module"],
         )
+        if account_ids is not None:
+            selected_ids = {int(account_id) for account_id in account_ids}
+            targets = [
+                target
+                for target in targets
+                if int(target["account"]["id"]) in selected_ids
+            ]
 
         def execute_target(target: dict[str, Any]) -> dict[str, Any]:
             started_at = datetime.now()
@@ -1713,6 +1721,43 @@ class ClassCubeService:
             **counts,
             "details": details,
         }
+
+    def list_admin_qr_targets(
+        self,
+        item_id: int,
+        actor: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        actor_user_id, is_admin = self._actor_scope(actor)
+        if not is_admin:
+            raise ClassCubeValidationError("仅管理员可以查看同班账号")
+        source_item = self.repository.get_item(
+            item_id,
+            actor_user_id,
+            is_admin,
+        )
+        source_course = self.repository.get_course(
+            source_item["course_id"],
+            actor_user_id,
+            is_admin,
+        )
+        if source_item.get("mode") != "qr":
+            raise ClassCubeValidationError("当前签到项不是二维码签到")
+        targets = self.repository.list_qr_checkin_targets(
+            source_course["remote_course_id"],
+            source_item["remote_item_id"],
+            source_item["remote_module"],
+        )
+        return [
+            {
+                "id": target["account"]["id"],
+                "name": target["account"].get("name", ""),
+                "remote_user_name": target["account"].get(
+                    "remote_user_name", ""
+                ),
+                "status": target["account"].get("status", "active"),
+            }
+            for target in targets
+        ]
 
     def manual_checkin(
         self,

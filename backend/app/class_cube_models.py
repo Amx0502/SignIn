@@ -43,6 +43,10 @@ class ManualCheckinRequest(BaseModel):
 
 class BatchQrCheckinRequest(BaseModel):
     qr_url: str = Field(min_length=1, max_length=2048)
+    account_ids: list[Annotated[int, Field(gt=0)]] | None = Field(
+        default=None,
+        max_length=200,
+    )
 
 
 class ClassCubeTaskCreate(BaseModel):

@@ -179,9 +179,23 @@
               <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown'" @click="submitManual">
                 <el-icon><Position /></el-icon>执行{{ modeMeta(selectedItem.mode).label }}
               </el-button>
-              <el-button v-if="isAdmin && selectedItem.mode === 'qr' && form.qrUrl" type="warning" size="large" :loading="batchCheckingIn" :disabled="checkingIn" @click="submitBatchQr">
-                <el-icon><User /></el-icon>为同班账号并发签到
-              </el-button>
+              <el-popover v-if="isAdmin && selectedItem.mode === 'qr' && form.qrUrl" placement="top-start" trigger="click" :width="300">
+                <template #reference>
+                  <el-button type="warning" size="large" :loading="batchCheckingIn" :disabled="checkingIn || !selectedBatchAccountIds.length">
+                    <el-icon><User /></el-icon>并发签到（{{ selectedBatchAccountIds.length }}）
+                  </el-button>
+                </template>
+                <div class="batch-target-picker">
+                  <strong>选择同班账号</strong>
+                  <el-checkbox-group v-model="selectedBatchAccountIds">
+                    <el-checkbox v-for="target in qrTargets" :key="target.id" :label="target.id">
+                      {{ target.name || target.remote_user_name || `账号 ${target.id}` }}
+                    </el-checkbox>
+                  </el-checkbox-group>
+                  <small v-if="!qrTargets.length">当前没有符合条件的账号</small>
+                  <el-button type="primary" size="small" :disabled="!selectedBatchAccountIds.length" @click="submitBatchQr">确认并发签到</el-button>
+                </div>
+              </el-popover>
             </div>
           </el-form>
         </div>
@@ -217,6 +231,7 @@ const props = defineProps({
   courses: { type: Array, default: () => [] },
   items: { type: Array, default: () => [] },
   tasks: { type: Array, default: () => [] },
+  qrTargets: { type: Array, default: () => [] },
   selectedAccountId: { type: Number, default: null },
   selectedCourseId: { type: Number, default: null },
   selectedItemId: { type: Number, default: null },
@@ -240,6 +255,7 @@ const photoUploading = ref(false)
 const photoFiles = ref([])
 const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
+const selectedBatchAccountIds = ref([])
 const resultVisible = ref(false)
 const result = ref(null)
 const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', qrUrl: '', notify_wecom: false })
@@ -277,6 +293,12 @@ watch(
       [...selectedAccountIds.value].filter(id => available.has(id)),
     )
   },
+)
+
+watch(
+  () => props.qrTargets,
+  targets => { selectedBatchAccountIds.value = targets.map(target => target.id) },
+  { immediate: true },
 )
 
 const activeItems = computed(() => props.items.filter(item => item.status === 'active').length)
@@ -369,10 +391,10 @@ async function submitManual() {
 }
 
 async function submitBatchQr() {
-  if (!props.isAdmin || props.selectedItem?.mode !== 'qr' || !form.qrUrl) return
+  if (!props.isAdmin || props.selectedItem?.mode !== 'qr' || !form.qrUrl || !selectedBatchAccountIds.value.length) return
   try {
     await ElMessageBox.confirm(
-      '系统将把此二维码提交给同一课程下所有有效账号，是否继续？',
+      `系统将把此二维码提交给选中的 ${selectedBatchAccountIds.value.length} 个账号，是否继续？`,
       '确认并发签到',
       { type: 'warning' },
     )
@@ -381,7 +403,11 @@ async function submitBatchQr() {
   }
   batchCheckingIn.value = true
   try {
-    const summary = await props.batchQrCheckinAction(props.selectedItem.id, form.qrUrl)
+    const summary = await props.batchQrCheckinAction(
+      props.selectedItem.id,
+      form.qrUrl,
+      selectedBatchAccountIds.value,
+    )
     result.value = {
       status: summary.failed || summary.unknown ? 'failed' : 'success',
       message: `并发签到完成：共 ${summary.total} 个账号，成功 ${summary.success} 个，已签到 ${summary.already_signed} 个，失败 ${summary.failed} 个，未知 ${summary.unknown} 个`,
@@ -458,7 +484,7 @@ function removePhoto() {
 </script>
 
 <style scoped>
-.qr-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.batch-target-picker { display:grid; gap:10px; }.batch-target-picker strong { color:#172033; }.batch-target-picker .el-checkbox-group { display:grid; max-height:220px; overflow:auto; gap:4px; }.batch-target-picker small { color:#64748b; }.qr-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .qr-upload-zone { display: inline-flex; align-items: center; gap: 10px; padding: 10px; border: 1px dashed #93c5fd; border-radius: 12px; background: #f8fbff; }
 .qr-upload-zone span { color: #64748b; font-size: 12px; }
 .account-checkin { display: grid; gap: 18px; }

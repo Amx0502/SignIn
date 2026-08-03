@@ -31,6 +31,7 @@ export function useClassCube(api = classCubeApi) {
   const tasks = ref([])
   const runs = ref([])
   const logs = ref([])
+  const qrTargets = ref([])
 
   const selectedAccountId = ref(null)
   const selectedCourseId = ref(null)
@@ -133,6 +134,16 @@ export function useClassCube(api = classCubeApi) {
     } finally {
       if (generation === itemRequestGeneration) itemsLoading.value = false
     }
+  }
+
+  async function loadQrTargets(itemId = selectedItemId.value) {
+    if (!itemId) {
+      qrTargets.value = []
+      return []
+    }
+    const fresh = responseData(await api.listBatchQrTargets(itemId), [])
+    qrTargets.value = Array.isArray(fresh) ? fresh : []
+    return qrTargets.value
   }
 
   async function loadTasks(params = taskFilters.value) {
@@ -385,8 +396,11 @@ export function useClassCube(api = classCubeApi) {
     return invoke(api.manualCheckin, itemId, request)
   }
 
-  function batchQrCheckin(itemId, qrUrl) {
-    return invoke(api.batchQrCheckin, itemId, { qr_url: qrUrl })
+  function batchQrCheckin(itemId, qrUrl, accountIds = []) {
+    return invoke(api.batchQrCheckin, itemId, {
+      qr_url: qrUrl,
+      account_ids: accountIds,
+    })
   }
 
   return {
@@ -396,6 +410,7 @@ export function useClassCube(api = classCubeApi) {
     tasks,
     runs,
     logs,
+    qrTargets,
     selectedAccountId,
     selectedCourseId,
     selectedItemId,
@@ -417,6 +432,7 @@ export function useClassCube(api = classCubeApi) {
     loadAccounts,
     loadCourses,
     loadItems,
+    loadQrTargets,
     loadTasks,
     loadRuns,
     loadLogs,
