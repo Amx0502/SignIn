@@ -135,6 +135,16 @@
             <div><span class="mode-chip">{{ modeMeta(selectedItem.mode).label }}</span><strong>{{ selectedItem.title }}</strong></div>
             <small>只提交页面要求的字段，结果由服务端严格判断</small>
           </div>
+          <el-alert
+            v-if="classItemsSyncing"
+            class="class-sync-alert"
+            title="正在同步更新同班级签到项，请稍候…"
+            description="同步完成前暂时禁止执行签到，避免使用过期的签到项配置。"
+            type="warning"
+            effect="dark"
+            :closable="false"
+            show-icon
+          />
           <el-form label-position="top">
             <div v-if="['gps', 'gps_photo'].includes(selectedItem.mode)" class="location-grid">
               <el-form-item label="签到位置">
@@ -185,12 +195,12 @@
             <el-alert v-if="selectedItem.mode === 'unknown'" title="暂时无法识别签到类型，请重新同步签到项后再试。" type="warning" :closable="false" show-icon />
             <div class="manual-actions">
               <el-checkbox v-model="form.notify_wecom">发送企业微信通知</el-checkbox>
-              <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown'" @click="submitManual">
+              <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown' || classItemsSyncing" @click="submitManual">
                 <el-icon><Position /></el-icon>执行{{ modeMeta(selectedItem.mode).label }}
               </el-button>
               <el-popover v-if="isAdmin && selectedItem.mode === 'qr' && form.qrUrl" placement="top-start" trigger="click" :width="300">
                 <template #reference>
-                  <el-button type="warning" size="large" :loading="batchCheckingIn" :disabled="checkingIn || !selectedBatchAccountIds.length">
+                  <el-button type="warning" size="large" :loading="batchCheckingIn" :disabled="checkingIn || classItemsSyncing || !selectedBatchAccountIds.length">
                     <el-icon><User /></el-icon>并发签到（{{ selectedBatchAccountIds.length }}）
                   </el-button>
                 </template>
@@ -261,6 +271,7 @@ const emit = defineEmits(['qr-login', 'select-account', 'select-course', 'select
 const checkingIn = ref(false)
 const batchCheckingIn = ref(false)
 const allAccountsSyncing = ref(false)
+const classItemsSyncing = ref(false)
 const qrDecoding = ref(false)
 const qrFileInput = ref(null)
 const photoUploading = ref(false)
@@ -380,6 +391,7 @@ async function batchDeleteSelected() {
 }
 
 async function submitManual() {
+  if (classItemsSyncing.value) return
   checkingIn.value = true
   try {
     const payload = buildManualCheckinPayload({
@@ -403,7 +415,7 @@ async function submitManual() {
 }
 
 async function submitBatchQr() {
-  if (!props.isAdmin || props.selectedItem?.mode !== 'qr' || !form.qrUrl || !selectedBatchAccountIds.value.length) return
+  if (classItemsSyncing.value || !props.isAdmin || props.selectedItem?.mode !== 'qr' || !form.qrUrl || !selectedBatchAccountIds.value.length) return
   try {
     await ElMessageBox.confirm(
       `系统将把此二维码提交给选中的 ${selectedBatchAccountIds.value.length} 个账号，是否继续？`,
@@ -462,13 +474,16 @@ async function decodeQrFile(event) {
 
 async function decodeQrImageFile(file) {
   qrDecoding.value = true
+  classItemsSyncing.value = false
   try {
     form.qrUrl = await decodeQrImage(file)
+    classItemsSyncing.value = true
     const summary = await props.syncClassItemsAction(props.selectedItem.id)
     ElMessage.success(`二维码解析成功，已同步 ${summary.success} 个同班账号的签到项`)
   } catch (error) {
     ElMessage.error(error.message || '二维码解析失败')
   } finally {
+    classItemsSyncing.value = false
     qrDecoding.value = false
   }
 }
