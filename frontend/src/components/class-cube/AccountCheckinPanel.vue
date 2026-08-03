@@ -243,6 +243,7 @@ const props = defineProps({
   isAdmin: { type: Boolean, default: false },
   manualCheckinAction: { type: Function, required: true },
   batchQrCheckinAction: { type: Function, required: true },
+  syncClassItemsAction: { type: Function, required: true },
   uploadPhotoAction: { type: Function, required: true },
   batchDeleteAccountsAction: { type: Function, required: true },
 })
@@ -432,7 +433,8 @@ async function decodeQrImageFile(file) {
   qrDecoding.value = true
   try {
     form.qrUrl = await decodeQrImage(file)
-    ElMessage.success('二维码解析成功，请确认地址后执行签到')
+    const summary = await props.syncClassItemsAction(props.selectedItem.id)
+    ElMessage.success(`二维码解析成功，已同步 ${summary.success} 个同班账号的签到项`)
   } catch (error) {
     ElMessage.error(error.message || '二维码解析失败')
   } finally {

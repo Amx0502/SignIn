@@ -339,6 +339,19 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             actor,
         )
 
+    @router.post("/items/{item_id}/checkin/sync-class")
+    def sync_qr_class_items(
+        item_id: int,
+        request: Request,
+        actor=Depends(access_accounts),
+    ):
+        return _invoke(
+            request,
+            _service(request).sync_qr_class_items,
+            item_id,
+            actor,
+        )
+
     @router.post("/photos")
     def upload_photo(
         request: Request,
