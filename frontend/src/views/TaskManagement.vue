@@ -92,7 +92,7 @@
                 </el-form-item>
                 <el-form-item label="签到位置">
                   <el-radio-group v-model="editLocationModes[getTaskKey(task)]">
-                    <el-radio value="none">不使用位置</el-radio>
+                    <el-radio value="none">不显示位置</el-radio>
                     <el-radio value="auto">自动获取位置</el-radio>
                   </el-radio-group>
                 </el-form-item>
