@@ -1646,6 +1646,31 @@ class ClassCubeService:
             )
 
         form = self._stored_form(item)
+        qr_url = str(payload.get("qr_url") or "").strip()
+        if form.mode == "qr" and qr_url:
+            try:
+                qr_result = self.client.submit_qr_url(
+                    account["cookie"],
+                    qr_url,
+                    expected_course_id=str(course["remote_course_id"]),
+                    expected_item_id=str(item["remote_item_id"]),
+                )
+            except ClassCubeCookieExpired:
+                self._mark_account_expired(
+                    account["id"], actor_user_id, is_admin
+                )
+                return self._checkin_view(
+                    "failed",
+                    "班级魔方登录已失效，请重新扫码",
+                )
+            except (ClassCubeRequestError, OSError) as exc:
+                self._log_remote_failure("二维码签到", exc)
+                return self._checkin_view("failed", str(exc))
+            status = qr_result.status or "unknown_result"
+            return self._checkin_view(
+                status,
+                qr_result.message or "二维码签到完成",
+            )
         if (
             not form.submit_capable
             or form.mode not in {

@@ -161,7 +161,10 @@
             <el-form-item v-if="selectedItem.mode === 'password'" label="签到密码">
               <el-input v-model="form.password" type="text" maxlength="128" autocomplete="off" placeholder="请输入本次签到密码" />
             </el-form-item>
-            <el-alert v-if="selectedItem.mode === 'qr'" title="二维码签到无需额外参数，将按远程签到页的明确表单提交。" type="info" :closable="false" show-icon />
+            <el-form-item v-if="selectedItem.mode === 'qr'" label="二维码签到地址">
+              <el-input v-model="form.qrUrl" type="text" clearable maxlength="2048" placeholder="粘贴扫码得到的 k8n.cn/student/punchw/course/... 地址" />
+              <p class="field-tip">地址必须包含 tm 和 sign 参数，并与当前签到项匹配。</p>
+            </el-form-item>
             <el-alert v-if="selectedItem.mode === 'unknown'" title="暂时无法识别签到类型，请重新同步签到项后再试。" type="warning" :closable="false" show-icon />
             <div class="manual-actions">
               <el-checkbox v-model="form.notify_wecom">发送企业微信通知</el-checkbox>
@@ -222,7 +225,7 @@ const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
 const resultVisible = ref(false)
 const result = ref(null)
-const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', notify_wecom: false })
+const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', qrUrl: '', notify_wecom: false })
 
 function resetManualState() {
   Object.assign(form, {
@@ -231,6 +234,7 @@ function resetManualState() {
     password: '',
     photoPath: '',
     photoRes: '',
+    qrUrl: '',
     notify_wecom: false,
   })
   photoFiles.value = []
@@ -334,6 +338,7 @@ async function submitManual() {
       password: form.password,
       photoPath: form.photoPath,
       photoRes: form.photoRes,
+      qrUrl: form.qrUrl,
       notifyWecom: form.notify_wecom,
     })
     result.value = await props.manualCheckinAction(props.selectedItem.id, payload)

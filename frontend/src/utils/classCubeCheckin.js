@@ -14,6 +14,7 @@ export function buildManualCheckinPayload({
   password = '',
   photoPath = '',
   photoRes = '',
+  qrUrl = '',
   notifyWecom = false,
 }) {
   const payload = { notify_wecom: Boolean(notifyWecom) }
@@ -21,6 +22,7 @@ export function buildManualCheckinPayload({
     Object.assign(payload, parseCoordinates(coordinateInput), { accuracy })
   }
   if (mode === 'password') payload.password = password
+  if (mode === 'qr' && String(qrUrl || '').trim()) payload.qr_url = String(qrUrl).trim()
   if (mode === 'gps_photo') {
     payload.photo_path = photoPath
     const normalizedPhotoRes = String(photoRes || '').trim()

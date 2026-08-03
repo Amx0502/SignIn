@@ -6,7 +6,7 @@ from http.cookies import SimpleCookie
 from pathlib import Path
 from threading import RLock
 from typing import Callable
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse, urlunparse, parse_qs
 
 import requests
 import time
@@ -320,6 +320,47 @@ class ClassCubeClient:
         finally:
             if photo_file is not None:
                 photo_file.close()
+            session.close()
+
+    def submit_qr_url(
+        self,
+        cookie: str,
+        qr_url: str,
+        *,
+        expected_course_id: str,
+        expected_item_id: str,
+    ) -> ParsedResult:
+        """Execute a signed QR check-in URL captured from the QR scanner."""
+        try:
+            parsed = urlparse(str(qr_url or "").strip())
+        except ValueError as exc:
+            raise ClassCubeRequestError("二维码签到地址格式无效") from exc
+        if (parsed.hostname or "").lower() != "k8n.cn":
+            raise ClassCubeRequestError("二维码签到地址必须来自 k8n.cn")
+        path_parts = [part for part in parsed.path.split("/") if part]
+        if (
+            len(path_parts) != 5
+            or path_parts[:3] != ["student", "punchw", "course"]
+            or path_parts[3] != str(expected_course_id)
+            or path_parts[4] != str(expected_item_id)
+        ):
+            raise ClassCubeRequestError("二维码签到地址与当前签到项不匹配")
+        query = parse_qs(parsed.query, keep_blank_values=False)
+        if not query.get("tm") or not query.get("sign"):
+            raise ClassCubeRequestError("二维码签到地址缺少 tm 或 sign 参数")
+        normalized_url = urlunparse(
+            ("https", parsed.netloc, parsed.path, parsed.params, parsed.query, "")
+        )
+        self._validate_authenticated_url(normalized_url)
+        session = self._short_lived_session(cookie)
+        try:
+            response = self._get_with_retries(session, normalized_url)
+            self._raise_if_cookie_expired(response)
+            return parse_checkin_result(
+                response.text,
+                response.url or normalized_url,
+            )
+        finally:
             session.close()
 
     def upload_photo(
