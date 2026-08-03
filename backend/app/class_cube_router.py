@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from .class_cube_models import (
     ClassCubeAccountBatchDelete,
     ClassCubeAccountUpdate,
+    BatchQrCheckinRequest,
     ManualCheckinRequest,
     QrSessionCreate,
     ClassCubeTaskCreate,
@@ -296,6 +297,26 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             _service(request).tracked_manual_checkin,
             item_id,
             payload.model_dump(),
+            actor,
+        )
+
+    @router.post("/items/{item_id}/checkin/batch-qr")
+    def batch_qr_checkin(
+        item_id: int,
+        payload: BatchQrCheckinRequest,
+        request: Request,
+        actor=Depends(access_accounts),
+    ):
+        if actor.get("role") != "admin":
+            return JSONResponse(
+                status_code=403,
+                content={"ok": False, "error": "仅管理员可以发起同班账号并发签到"},
+            )
+        return _invoke(
+            request,
+            _service(request).admin_parallel_qr_checkin,
+            item_id,
+            payload.qr_url,
             actor,
         )
 

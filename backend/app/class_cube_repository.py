@@ -527,6 +527,53 @@ class ClassCubeRepository:
             ).all()
             return [self._item_record(row) for row in rows]
 
+    def list_qr_checkin_targets(
+        self,
+        remote_course_id: str,
+        remote_item_id: str,
+        remote_module: str,
+    ) -> list[dict[str, Any]]:
+        """Return detached account/course/item records for an admin batch."""
+        with self.database.session() as session:
+            statement = (
+                select(
+                    ClassCubeAccountRow,
+                    ClassCubeCourseRow,
+                    ClassCubeCheckinItemRow,
+                )
+                .join(
+                    ClassCubeCourseRow,
+                    ClassCubeCourseRow.account_id
+                    == ClassCubeAccountRow.id,
+                )
+                .join(
+                    ClassCubeCheckinItemRow,
+                    ClassCubeCheckinItemRow.course_id
+                    == ClassCubeCourseRow.id,
+                )
+                .where(
+                    ClassCubeAccountRow.status == "active",
+                    ClassCubeAccountRow.cookie != "",
+                    ClassCubeCourseRow.remote_course_id
+                    == str(remote_course_id),
+                    ClassCubeCheckinItemRow.remote_item_id
+                    == str(remote_item_id),
+                    ClassCubeCheckinItemRow.remote_module
+                    == str(remote_module),
+                    ClassCubeCheckinItemRow.status == "active",
+                )
+                .order_by(ClassCubeAccountRow.id)
+            )
+            rows = session.execute(statement).all()
+            return [
+                {
+                    "account": self._account_record(account),
+                    "course": self._course_record(course),
+                    "item": self._item_record(item),
+                }
+                for account, course, item in rows
+            ]
+
     def upsert_items(
         self,
         course_id: int,

@@ -41,6 +41,10 @@ class ManualCheckinRequest(BaseModel):
     qr_url: str = Field(default="", max_length=2048)
 
 
+class BatchQrCheckinRequest(BaseModel):
+    qr_url: str = Field(min_length=1, max_length=2048)
+
+
 class ClassCubeTaskCreate(BaseModel):
     owner_user_id: int | None = Field(default=None, gt=0)
     account_id: int = Field(gt=0)
