@@ -835,12 +835,20 @@ def _tag_has_password_marker(tag: Tag) -> bool:
 
 
 def _tag_has_qr_marker(tag: Tag) -> bool:
-    attribute_text = " ".join(
-        _attribute_text(value)
-        for value in tag.attrs.values()
-    )
-    if re.search(r"\bscanqr\s*\(", attribute_text, re.IGNORECASE):
-        return True
+    candidates = [tag, *tag.find_all(True)]
+    for candidate in candidates:
+        attribute_text = " ".join(
+            _attribute_text(value)
+            for value in candidate.attrs.values()
+        )
+        if re.search(r"\bscanqr\s*\(", attribute_text, re.IGNORECASE):
+            return True
+        if re.search(
+            r"\b(?:la-)?qrcode\b|\bqr[-_]code\b|\bqrcode[-_]icon\b",
+            attribute_text,
+            re.IGNORECASE,
+        ):
+            return True
     text = tag.get_text(" ", strip=True)
     return "扫码" in text or "二维码" in text
 
