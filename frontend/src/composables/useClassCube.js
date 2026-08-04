@@ -56,6 +56,7 @@ export function useClassCube(api = classCubeApi) {
   let qrGeneration = 0
   let courseRequestGeneration = 0
   let itemRequestGeneration = 0
+  let batchTargetRequestGeneration = 0
   let accountSelectionGeneration = 0
   let courseSelectionGeneration = 0
   let disposed = false
@@ -137,11 +138,16 @@ export function useClassCube(api = classCubeApi) {
   }
 
   async function loadBatchTargets(itemId = selectedItemId.value) {
+    const generation = ++batchTargetRequestGeneration
+    batchTargets.value = []
     if (!itemId) {
-      batchTargets.value = []
       return []
     }
     const fresh = responseData(await api.listBatchTargets(itemId), [])
+    if (
+      generation !== batchTargetRequestGeneration
+      || itemId !== selectedItemId.value
+    ) return []
     batchTargets.value = Array.isArray(fresh) ? fresh : []
     return batchTargets.value
   }

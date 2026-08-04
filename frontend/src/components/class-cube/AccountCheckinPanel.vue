@@ -82,7 +82,7 @@
                 type="primary"
                 plain
                 :icon="Refresh"
-                :disabled="!selectedCourseId || coursesLoading || itemsLoading || itemsSyncing || classAccountsSyncing"
+                :disabled="!selectedCourseId || coursesLoading || itemsLoading || itemsSyncing"
                 :loading="itemsSyncing || itemsLoading"
                 @click="emit('sync-items', selectedCourseId)"
               >同步签到项</el-button>
@@ -92,7 +92,7 @@
                 plain
                 :icon="Refresh"
                 :loading="classAccountsSyncing"
-                :disabled="!selectedCourseId || classAccountsSyncing || allAccountsSyncing || coursesLoading || itemsLoading || itemsSyncing"
+                :disabled="!selectedCourseId || classAccountsSyncing || coursesLoading || itemsLoading || itemsSyncing"
                 @click="syncClassAccounts"
               >同步同班账号</el-button>
               <el-button
@@ -101,7 +101,7 @@
                 plain
                 :icon="Refresh"
                 :loading="allAccountsSyncing"
-                :disabled="allAccountsSyncing || classAccountsSyncing || itemsSyncing || coursesLoading || itemsLoading"
+                :disabled="allAccountsSyncing || itemsSyncing || coursesLoading || itemsLoading"
                 @click="syncAllAccounts"
               >同步所有账号</el-button>
             </div>
@@ -228,6 +228,17 @@
         <p>{{ result.message || resultMeta.tip }}</p>
         <el-tag :type="resultMeta.type" effect="dark">{{ result.status }}</el-tag>
       </div>
+      <div v-if="batchDetails.length" class="batch-result-list">
+        <div v-for="detail in batchDetails" :key="detail.account_id" class="batch-result-row">
+          <div>
+            <strong>{{ detail.account_name || `账号 ${detail.account_id}` }}</strong>
+            <small>{{ detail.message || '无详细信息' }}</small>
+          </div>
+          <el-tag :type="batchStatusType(detail.status)" size="small">
+            {{ detail.status }}
+          </el-tag>
+        </div>
+      </div>
       <template #footer><el-button type="primary" @click="resultVisible = false">完成</el-button></template>
     </el-dialog>
   </div>
@@ -280,6 +291,7 @@ const selectedAccountIds = ref(new Set())
 const selectedBatchAccountIds = ref([])
 const resultVisible = ref(false)
 const result = ref(null)
+const batchDetails = ref([])
 const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', qrUrl: '', notify_wecom: false })
 
 function resetManualState() {
@@ -294,6 +306,7 @@ function resetManualState() {
   })
   photoFiles.value = []
   result.value = null
+  batchDetails.value = []
   resultVisible.value = false
 }
 
@@ -347,6 +360,11 @@ const results = {
 }
 const resultMeta = computed(() => results[result.value?.status] || results.failed)
 function modeMeta(mode) { return modes[mode] || modes.unknown }
+function batchStatusType(status) {
+  if (['success', 'already_signed'].includes(status)) return 'success'
+  if (status === 'unknown_result') return 'warning'
+  return 'danger'
+}
 
 async function accountCommand(command, account) {
   if (command === 'rescan') return emit('qr-login', account.id)
@@ -396,6 +414,7 @@ async function batchDeleteSelected() {
 
 async function submitManual() {
   if (batchCheckingIn.value) return
+  batchDetails.value = []
   checkingIn.value = true
   try {
     const payload = buildManualCheckinPayload({
@@ -454,8 +473,10 @@ async function submitBatchCheckin() {
       status: summary.failed || summary.unknown ? 'failed' : 'success',
       message: `并发签到完成：共 ${summary.total} 个账号，成功 ${summary.success} 个，已签到 ${summary.already_signed} 个，失败 ${summary.failed} 个，未知 ${summary.unknown} 个`,
     }
+    batchDetails.value = Array.isArray(summary.details) ? summary.details : []
     resultVisible.value = true
   } catch (error) {
+    batchDetails.value = []
     result.value = { status: 'failed', message: error.message || '并发签到请求失败' }
     resultVisible.value = true
   } finally {
@@ -559,6 +580,9 @@ function removePhoto() {
 </script>
 
 <style scoped>
+.batch-result-list { display: grid; gap: 8px; max-height: 260px; margin-top: 16px; overflow: auto; }
+.batch-result-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
+.batch-result-row div { min-width: 0; }.batch-result-row strong,.batch-result-row small { display: block; }.batch-result-row strong { color: #172033; }.batch-result-row small { margin-top: 3px; overflow: hidden; color: #64748b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .batch-target-picker { display:grid; gap:10px; }.batch-target-picker strong { color:#172033; }.batch-target-picker .el-checkbox-group { display:grid; max-height:220px; overflow:auto; gap:4px; }.batch-target-picker small { color:#64748b; }.qr-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .qr-upload-zone { display: inline-flex; align-items: center; gap: 10px; padding: 10px; border: 1px dashed #93c5fd; border-radius: 12px; background: #f8fbff; }
 .qr-upload-zone span { color: #64748b; font-size: 12px; }

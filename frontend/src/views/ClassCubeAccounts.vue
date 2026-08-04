@@ -16,6 +16,9 @@ const qrVisible=ref(false); const qrLoading=ref(false); const qrAccountId=ref(nu
 async function syncClassItemsAndRefresh(courseId) {
   const summary = await syncClassItems(courseId)
   await loadItems(selectedCourseId.value)
+  if (['qr', 'password', 'gps'].includes(selectedItem.value?.mode)) {
+    await loadBatchTargets(selectedItemId.value)
+  }
   return summary
 }
 async function syncAllAccountsAndRefresh() {
@@ -62,7 +65,7 @@ async function regenerateQr(){qrLoading.value=true;try{await startQrLogin(qrAcco
 onMounted(()=>loadInitial().catch(()=>{}))
 watch(() => [selectedItemId.value, selectedItem.value?.mode], ([value, mode]) => {
   if (isAdmin && ['qr', 'password', 'gps'].includes(mode)) loadBatchTargets(value).catch(() => {})
-  else batchTargets.value = []
+  else loadBatchTargets(null)
 }, { immediate: true })
 </script>
 <style scoped>.cube-subpage{display:grid;gap:18px}.page-head{display:flex;justify-content:space-between;align-items:center;font-weight:700}</style>
