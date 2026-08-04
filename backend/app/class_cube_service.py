@@ -1618,19 +1618,18 @@ class ClassCubeService:
             self._send_manual_notification(summary)
         return result
 
-    def admin_parallel_qr_checkin(
+    def admin_parallel_checkin(
         self,
         item_id: int,
-        qr_url: str,
+        payload: dict[str, Any],
         actor: dict[str, Any],
         account_ids: list[int] | None = None,
     ) -> dict[str, Any]:
         actor_user_id, is_admin = self._actor_scope(actor)
         if not is_admin:
-            raise ClassCubeValidationError("仅管理员可以发起同班账号并发签到")
-        qr_url = str(qr_url or "").strip()
-        if not qr_url:
-            raise ClassCubeValidationError("二维码地址不能为空")
+            raise ClassCubeValidationError(
+                "仅管理员可以发起同班账号并发签到"
+            )
 
         source_item = self.repository.get_item(
             item_id,
@@ -1642,13 +1641,29 @@ class ClassCubeService:
             actor_user_id,
             is_admin,
         )
-        if source_item.get("mode") != "qr":
-            raise ClassCubeValidationError("当前签到项不是二维码签到")
+        mode = str(source_item.get("mode") or "unknown")
+        if mode not in {"qr", "password", "gps"}:
+            raise ClassCubeValidationError(
+                "当前签到类型不支持同班账号并发签到"
+            )
+        payload = dict(payload)
+        if mode == "qr" and not str(payload.get("qr_url") or "").strip():
+            raise ClassCubeValidationError("二维码地址不能为空")
+        if mode == "password" and not str(
+            payload.get("password") or ""
+        ).strip():
+            raise ClassCubeValidationError("签到密码不能为空")
+        if mode == "gps" and (
+            payload.get("latitude") is None
+            or payload.get("longitude") is None
+        ):
+            raise ClassCubeValidationError("GPS 签到需要经纬度")
 
-        targets = self.repository.list_qr_checkin_targets(
+        targets = self.repository.list_class_checkin_targets(
             source_course["remote_course_id"],
             source_item["remote_item_id"],
             source_item["remote_module"],
+            mode,
         )
         if account_ids is not None:
             selected_ids = {int(account_id) for account_id in account_ids}
@@ -1657,6 +1672,8 @@ class ClassCubeService:
                 for target in targets
                 if int(target["account"]["id"]) in selected_ids
             ]
+        if not targets:
+            raise ClassCubeValidationError("没有符合条件的同班账号")
 
         def execute_target(target: dict[str, Any]) -> dict[str, Any]:
             started_at = datetime.now()
@@ -1667,7 +1684,6 @@ class ClassCubeService:
                 "course": target["course"],
                 "account": target["account"],
             }
-            payload = {"qr_url": qr_url}
             try:
                 result = self.manual_checkin(
                     target["item"]["id"],
@@ -1678,7 +1694,7 @@ class ClassCubeService:
             except Exception as exc:
                 result = self._checkin_view(
                     "failed",
-                    f"批量二维码签到异常：{type(exc).__name__}",
+                    f"同班账号并发签到异常：{type(exc).__name__}",
                 )
             summary = self._manual_summary(
                 target_context,
@@ -1722,7 +1738,7 @@ class ClassCubeService:
             "details": details,
         }
 
-    def list_admin_qr_targets(
+    def list_admin_batch_targets(
         self,
         item_id: int,
         actor: dict[str, Any],
@@ -1740,12 +1756,16 @@ class ClassCubeService:
             actor_user_id,
             is_admin,
         )
-        if source_item.get("mode") != "qr":
-            raise ClassCubeValidationError("当前签到项不是二维码签到")
-        targets = self.repository.list_qr_checkin_targets(
+        mode = str(source_item.get("mode") or "unknown")
+        if mode not in {"qr", "password", "gps"}:
+            raise ClassCubeValidationError(
+                "当前签到类型不支持同班账号并发签到"
+            )
+        targets = self.repository.list_class_checkin_targets(
             source_course["remote_course_id"],
             source_item["remote_item_id"],
             source_item["remote_module"],
+            mode,
         )
         return [
             {
@@ -1759,24 +1779,24 @@ class ClassCubeService:
             for target in targets
         ]
 
-    def sync_qr_class_items(
+    def sync_class_items(
         self,
-        item_id: int,
+        course_id: int,
         actor: dict[str, Any],
     ) -> dict[str, Any]:
         actor_user_id, is_admin = self._actor_scope(actor)
-        item = self.repository.get_item(item_id, actor_user_id, is_admin)
+        if not is_admin:
+            raise ClassCubeValidationError(
+                "仅管理员可以同步同班账号签到项"
+            )
         course = self.repository.get_course(
-            item["course_id"],
+            course_id,
             actor_user_id,
             is_admin,
         )
-        if is_admin:
-            courses = self.repository.list_courses_by_remote_course(
-                course["remote_course_id"]
-            )
-        else:
-            courses = [course]
+        courses = self.repository.list_courses_by_remote_course(
+            course["remote_course_id"]
+        )
 
         details = []
         for target_course in courses:

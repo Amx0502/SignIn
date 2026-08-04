@@ -31,7 +31,7 @@ export function useClassCube(api = classCubeApi) {
   const tasks = ref([])
   const runs = ref([])
   const logs = ref([])
-  const qrTargets = ref([])
+  const batchTargets = ref([])
 
   const selectedAccountId = ref(null)
   const selectedCourseId = ref(null)
@@ -56,6 +56,7 @@ export function useClassCube(api = classCubeApi) {
   let qrGeneration = 0
   let courseRequestGeneration = 0
   let itemRequestGeneration = 0
+  let batchTargetRequestGeneration = 0
   let accountSelectionGeneration = 0
   let courseSelectionGeneration = 0
   let disposed = false
@@ -136,14 +137,19 @@ export function useClassCube(api = classCubeApi) {
     }
   }
 
-  async function loadQrTargets(itemId = selectedItemId.value) {
+  async function loadBatchTargets(itemId = selectedItemId.value) {
+    const generation = ++batchTargetRequestGeneration
+    batchTargets.value = []
     if (!itemId) {
-      qrTargets.value = []
       return []
     }
-    const fresh = responseData(await api.listBatchQrTargets(itemId), [])
-    qrTargets.value = Array.isArray(fresh) ? fresh : []
-    return qrTargets.value
+    const fresh = responseData(await api.listBatchTargets(itemId), [])
+    if (
+      generation !== batchTargetRequestGeneration
+      || itemId !== selectedItemId.value
+    ) return []
+    batchTargets.value = Array.isArray(fresh) ? fresh : []
+    return batchTargets.value
   }
 
   async function loadTasks(params = taskFilters.value) {
@@ -396,15 +402,15 @@ export function useClassCube(api = classCubeApi) {
     return invoke(api.manualCheckin, itemId, request)
   }
 
-  function batchQrCheckin(itemId, qrUrl, accountIds = []) {
-    return invoke(api.batchQrCheckin, itemId, {
-      qr_url: qrUrl,
+  function batchCheckin(itemId, payload = {}, accountIds = []) {
+    return invoke(api.batchCheckin, itemId, {
+      ...payload,
       account_ids: accountIds,
     })
   }
 
-  function syncQrClassItems(itemId) {
-    return invoke(api.syncQrClassItems, itemId)
+  function syncClassItems(courseId) {
+    return invoke(api.syncClassItems, courseId)
   }
 
   function syncAllAccountItems() {
@@ -418,7 +424,7 @@ export function useClassCube(api = classCubeApi) {
     tasks,
     runs,
     logs,
-    qrTargets,
+    batchTargets,
     selectedAccountId,
     selectedCourseId,
     selectedItemId,
@@ -440,7 +446,7 @@ export function useClassCube(api = classCubeApi) {
     loadAccounts,
     loadCourses,
     loadItems,
-    loadQrTargets,
+    loadBatchTargets,
     loadTasks,
     loadRuns,
     loadLogs,
@@ -460,8 +466,8 @@ export function useClassCube(api = classCubeApi) {
     dispose,
     uploadPhoto: (...args) => invoke(api.uploadPhoto, ...args),
     manualCheckin,
-    batchQrCheckin,
-    syncQrClassItems,
+    batchCheckin,
+    syncClassItems,
     syncAllAccountItems,
     updateAccount: (...args) => invoke(api.updateAccount, ...args),
     deleteAccount: (...args) => invoke(api.deleteAccount, ...args),

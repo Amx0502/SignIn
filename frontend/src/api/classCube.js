@@ -32,12 +32,12 @@ export function createClassCubeApi(instance = defaultInstance) {
       instance.get(`${root}/courses/${courseId}/items`, { params }),
     manualCheckin: (itemId, data) =>
       instance.post(`${root}/items/${itemId}/checkin`, data),
-    batchQrCheckin: (itemId, data) =>
-      instance.post(`${root}/items/${itemId}/checkin/batch-qr`, data),
-    listBatchQrTargets: itemId =>
-      instance.get(`${root}/items/${itemId}/checkin/batch-qr/targets`),
-    syncQrClassItems: itemId =>
-      instance.post(`${root}/items/${itemId}/checkin/sync-class`),
+    batchCheckin: (itemId, data) =>
+      instance.post(`${root}/items/${itemId}/checkin/batch`, data),
+    listBatchTargets: itemId =>
+      instance.get(`${root}/items/${itemId}/checkin/batch/targets`),
+    syncClassItems: courseId =>
+      instance.post(`${root}/courses/${courseId}/items/sync-class`),
     uploadPhoto: (file, accountId = null) => {
       const formData = new FormData()
       formData.append('file', file)
