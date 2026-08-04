@@ -1674,6 +1674,12 @@ class ClassCubeService:
             ]
         if not targets:
             raise ClassCubeValidationError("没有符合条件的同班账号")
+        self.logger.info(
+            "开始同班账号并发签到；签到项：%s；类型：%s；目标账号：%s 个",
+            source_item.get("title", "签到项"),
+            self._mode_name(mode),
+            len(targets),
+        )
 
         def execute_target(target: dict[str, Any]) -> dict[str, Any]:
             started_at = datetime.now()
@@ -1704,14 +1710,27 @@ class ClassCubeService:
             )
             self._record_manual_run(target_context, summary, started_at)
             account = target["account"]
+            account_name = (
+                account.get("name")
+                or account.get("remote_user_name")
+                or f"账号 {account['id']}"
+            )
+            result_status = result.get("status", "failed")
+            result_logger = (
+                self.logger.info
+                if result_status in {"success", "already_signed"}
+                else self.logger.error
+            )
+            result_logger(
+                "同班账号并发签到结果；账号：%s；签到项：%s；结果：%s",
+                account_name,
+                target["item"].get("title", "签到项"),
+                self._status_name(result_status),
+            )
             return {
                 "account_id": account["id"],
-                "account_name": (
-                    account.get("name")
-                    or account.get("remote_user_name")
-                    or "-"
-                ),
-                "status": result.get("status", "failed"),
+                "account_name": account_name,
+                "status": result_status,
                 "message": result.get("message", ""),
             }
 
@@ -1732,6 +1751,15 @@ class ClassCubeService:
                 row["status"] == "unknown_result" for row in details
             ),
         }
+        self.logger.info(
+            "同班账号并发签到完成；总数：%s；成功：%s；已签到：%s；"
+            "失败：%s；未知：%s",
+            len(details),
+            counts["success"],
+            counts["already_signed"],
+            counts["failed"],
+            counts["unknown"],
+        )
         return {
             "total": len(details),
             **counts,

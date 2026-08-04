@@ -1191,9 +1191,27 @@ class ClassCubeRepository:
                 query.order_by(ClassCubeTaskRunRow.id.desc())
                 .offset(offset).limit(min(200, max(1, limit)))
             ).all()
+            account_ids = {int(row.account_id) for row in rows}
+            accounts = session.scalars(
+                select(ClassCubeAccountRow).where(
+                    ClassCubeAccountRow.id.in_(account_ids)
+                )
+            ).all() if account_ids else []
+            account_names = {
+                int(account.id): (
+                    account.name
+                    or account.remote_user_name
+                    or f"账号 {account.id}"
+                )
+                for account in accounts
+            }
             records = []
             for row in rows:
                 record = self._run_record(row)
+                record["account_name"] = account_names.get(
+                    int(row.account_id),
+                    f"账号 {row.account_id}",
+                )
                 claim_id = session.scalar(
                     select(ClassCubeTaskItemClaimRow.id).where(
                         ClassCubeTaskItemClaimRow.last_run_id == row.id
