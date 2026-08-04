@@ -570,11 +570,12 @@ class ClassCubeRepository:
             ).all()
             return [self._item_record(row) for row in rows]
 
-    def list_qr_checkin_targets(
+    def list_class_checkin_targets(
         self,
         remote_course_id: str,
         remote_item_id: str,
         remote_module: str,
+        mode: str,
     ) -> list[dict[str, Any]]:
         """Return detached account/course/item records for an admin batch."""
         with self.database.session() as session:
@@ -603,6 +604,7 @@ class ClassCubeRepository:
                     == str(remote_item_id),
                     ClassCubeCheckinItemRow.remote_module
                     == str(remote_module),
+                    ClassCubeCheckinItemRow.mode == str(mode),
                     ClassCubeCheckinItemRow.status == "active",
                 )
                 .order_by(ClassCubeAccountRow.id)

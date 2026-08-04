@@ -82,17 +82,26 @@
                 type="primary"
                 plain
                 :icon="Refresh"
-                :disabled="!selectedCourseId || coursesLoading || itemsLoading || itemsSyncing"
+                :disabled="!selectedCourseId || coursesLoading || itemsLoading || itemsSyncing || classAccountsSyncing"
                 :loading="itemsSyncing || itemsLoading"
                 @click="emit('sync-items', selectedCourseId)"
               >同步签到项</el-button>
+              <el-button
+                v-if="isAdmin"
+                type="success"
+                plain
+                :icon="Refresh"
+                :loading="classAccountsSyncing"
+                :disabled="!selectedCourseId || classAccountsSyncing || allAccountsSyncing || coursesLoading || itemsLoading || itemsSyncing"
+                @click="syncClassAccounts"
+              >同步同班账号</el-button>
               <el-button
                 v-if="isAdmin"
                 type="warning"
                 plain
                 :icon="Refresh"
                 :loading="allAccountsSyncing"
-                :disabled="allAccountsSyncing || itemsSyncing || coursesLoading || itemsLoading"
+                :disabled="allAccountsSyncing || classAccountsSyncing || itemsSyncing || coursesLoading || itemsLoading"
                 @click="syncAllAccounts"
               >同步所有账号</el-button>
             </div>
@@ -135,16 +144,6 @@
             <div><span class="mode-chip">{{ modeMeta(selectedItem.mode).label }}</span><strong>{{ selectedItem.title }}</strong></div>
             <small>只提交页面要求的字段，结果由服务端严格判断</small>
           </div>
-          <el-alert
-            v-if="classItemsSyncing"
-            class="class-sync-alert"
-            title="正在同步更新同班级签到项，请稍候…"
-            description="同步完成前暂时禁止执行签到，避免使用过期的签到项配置。"
-            type="warning"
-            effect="dark"
-            :closable="false"
-            show-icon
-          />
           <el-form label-position="top">
             <div v-if="['gps', 'gps_photo'].includes(selectedItem.mode)" class="location-grid">
               <el-form-item label="签到位置">
@@ -195,24 +194,24 @@
             <el-alert v-if="selectedItem.mode === 'unknown'" title="暂时无法识别签到类型，请重新同步签到项后再试。" type="warning" :closable="false" show-icon />
             <div class="manual-actions">
               <el-checkbox v-model="form.notify_wecom">发送企业微信通知</el-checkbox>
-              <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown' || classItemsSyncing" @click="submitManual">
+              <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown' || batchCheckingIn" @click="submitManual">
                 <el-icon><Position /></el-icon>执行{{ modeMeta(selectedItem.mode).label }}
               </el-button>
-              <el-popover v-if="isAdmin && selectedItem.mode === 'qr' && form.qrUrl" placement="top-start" trigger="click" :width="300">
+              <el-popover v-if="canBatchCheckin" placement="top-start" trigger="click" :width="300">
                 <template #reference>
-                  <el-button type="warning" size="large" :loading="batchCheckingIn" :disabled="checkingIn || classItemsSyncing || !selectedBatchAccountIds.length">
+                  <el-button type="warning" size="large" :loading="batchCheckingIn" :disabled="checkingIn || !selectedBatchAccountIds.length">
                     <el-icon><User /></el-icon>并发签到（{{ selectedBatchAccountIds.length }}）
                   </el-button>
                 </template>
                 <div class="batch-target-picker">
                   <strong>选择同班账号</strong>
                   <el-checkbox-group v-model="selectedBatchAccountIds">
-                    <el-checkbox v-for="target in qrTargets" :key="target.id" :label="target.id">
+                    <el-checkbox v-for="target in batchTargets" :key="target.id" :label="target.id">
                       {{ target.name || target.remote_user_name || `账号 ${target.id}` }}
                     </el-checkbox>
                   </el-checkbox-group>
-                  <small v-if="!qrTargets.length">当前没有符合条件的账号</small>
-                  <el-button type="primary" size="small" :disabled="!selectedBatchAccountIds.length" @click="submitBatchQr">确认并发签到</el-button>
+                  <small v-if="!batchTargets.length">当前没有符合条件的账号</small>
+                  <el-button type="primary" size="small" :disabled="!selectedBatchAccountIds.length" @click="submitBatchCheckin">确认并发签到</el-button>
                 </div>
               </el-popover>
             </div>
@@ -250,7 +249,7 @@ const props = defineProps({
   courses: { type: Array, default: () => [] },
   items: { type: Array, default: () => [] },
   tasks: { type: Array, default: () => [] },
-  qrTargets: { type: Array, default: () => [] },
+  batchTargets: { type: Array, default: () => [] },
   selectedAccountId: { type: Number, default: null },
   selectedCourseId: { type: Number, default: null },
   selectedItemId: { type: Number, default: null },
@@ -261,7 +260,7 @@ const props = defineProps({
   itemsSyncing: { type: Boolean, default: false },
   isAdmin: { type: Boolean, default: false },
   manualCheckinAction: { type: Function, required: true },
-  batchQrCheckinAction: { type: Function, required: true },
+  batchCheckinAction: { type: Function, required: true },
   syncClassItemsAction: { type: Function, required: true },
   syncAllAccountsAction: { type: Function, required: true },
   uploadPhotoAction: { type: Function, required: true },
@@ -271,7 +270,7 @@ const emit = defineEmits(['qr-login', 'select-account', 'select-course', 'select
 const checkingIn = ref(false)
 const batchCheckingIn = ref(false)
 const allAccountsSyncing = ref(false)
-const classItemsSyncing = ref(false)
+const classAccountsSyncing = ref(false)
 const qrDecoding = ref(false)
 const qrFileInput = ref(null)
 const photoUploading = ref(false)
@@ -319,13 +318,18 @@ watch(
 )
 
 watch(
-  () => props.qrTargets,
+  () => props.batchTargets,
   targets => { selectedBatchAccountIds.value = targets.map(target => target.id) },
   { immediate: true },
 )
 
 const activeItems = computed(() => props.items.filter(item => item.status === 'active').length)
 const enabledTasks = computed(() => props.tasks.filter(task => task.enabled).length)
+const canBatchCheckin = computed(() => (
+  props.isAdmin
+  && ['qr', 'password', 'gps'].includes(props.selectedItem?.mode)
+  && (props.selectedItem?.mode !== 'qr' || Boolean(form.qrUrl))
+))
 const modes = {
   qr: { label: '二维码签到', icon: Cellphone },
   gps: { label: 'GPS 签到', icon: Aim },
@@ -391,7 +395,7 @@ async function batchDeleteSelected() {
 }
 
 async function submitManual() {
-  if (classItemsSyncing.value) return
+  if (batchCheckingIn.value) return
   checkingIn.value = true
   try {
     const payload = buildManualCheckinPayload({
@@ -414,11 +418,25 @@ async function submitManual() {
   }
 }
 
-async function submitBatchQr() {
-  if (classItemsSyncing.value || !props.isAdmin || props.selectedItem?.mode !== 'qr' || !form.qrUrl || !selectedBatchAccountIds.value.length) return
+async function submitBatchCheckin() {
+  if (!canBatchCheckin.value || checkingIn.value || !selectedBatchAccountIds.value.length) return
+  let payload
+  try {
+    payload = buildManualCheckinPayload({
+      mode: props.selectedItem.mode,
+      coordinateInput: form.coordinateInput,
+      accuracy: form.accuracy,
+      password: form.password,
+      qrUrl: form.qrUrl,
+      notifyWecom: form.notify_wecom,
+    })
+  } catch (error) {
+    ElMessage.error(error.message || '签到参数无效')
+    return
+  }
   try {
     await ElMessageBox.confirm(
-      `系统将把此二维码提交给选中的 ${selectedBatchAccountIds.value.length} 个账号，是否继续？`,
+      `系统将为选中的 ${selectedBatchAccountIds.value.length} 个同班账号执行${modeMeta(props.selectedItem.mode).label}，是否继续？`,
       '确认并发签到',
       { type: 'warning' },
     )
@@ -427,9 +445,9 @@ async function submitBatchQr() {
   }
   batchCheckingIn.value = true
   try {
-    const summary = await props.batchQrCheckinAction(
+    const summary = await props.batchCheckinAction(
       props.selectedItem.id,
-      form.qrUrl,
+      payload,
       selectedBatchAccountIds.value,
     )
     result.value = {
@@ -442,6 +460,19 @@ async function submitBatchQr() {
     resultVisible.value = true
   } finally {
     batchCheckingIn.value = false
+  }
+}
+
+async function syncClassAccounts() {
+  if (!props.isAdmin || !props.selectedCourseId || classAccountsSyncing.value) return
+  classAccountsSyncing.value = true
+  try {
+    const summary = await props.syncClassItemsAction(props.selectedCourseId)
+    ElMessage.success(`同班账号同步完成：成功 ${summary.success} 个，失败 ${summary.failed} 个`)
+  } catch (error) {
+    ElMessage.error(error.message || '同步同班账号失败')
+  } finally {
+    classAccountsSyncing.value = false
   }
 }
 
@@ -474,16 +505,12 @@ async function decodeQrFile(event) {
 
 async function decodeQrImageFile(file) {
   qrDecoding.value = true
-  classItemsSyncing.value = false
   try {
     form.qrUrl = await decodeQrImage(file)
-    classItemsSyncing.value = true
-    const summary = await props.syncClassItemsAction(props.selectedItem.id)
-    ElMessage.success(`二维码解析成功，已同步 ${summary.success} 个同班账号的签到项`)
+    ElMessage.success('二维码解析成功')
   } catch (error) {
     ElMessage.error(error.message || '二维码解析失败')
   } finally {
-    classItemsSyncing.value = false
     qrDecoding.value = false
   }
 }

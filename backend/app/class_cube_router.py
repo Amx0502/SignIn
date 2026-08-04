@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from .class_cube_models import (
     ClassCubeAccountBatchDelete,
     ClassCubeAccountUpdate,
-    BatchQrCheckinRequest,
+    BatchCheckinRequest,
     ManualCheckinRequest,
     QrSessionCreate,
     ClassCubeTaskCreate,
@@ -316,10 +316,10 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             actor,
         )
 
-    @router.post("/items/{item_id}/checkin/batch-qr")
-    def batch_qr_checkin(
+    @router.post("/items/{item_id}/checkin/batch")
+    def batch_checkin(
         item_id: int,
-        payload: BatchQrCheckinRequest,
+        payload: BatchCheckinRequest,
         request: Request,
         actor=Depends(access_accounts),
     ):
@@ -330,15 +330,15 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             )
         return _invoke(
             request,
-            _service(request).admin_parallel_qr_checkin,
+            _service(request).admin_parallel_checkin,
             item_id,
-            payload.qr_url,
+            payload.model_dump(exclude={"account_ids"}),
             actor,
             account_ids=payload.account_ids,
         )
 
-    @router.get("/items/{item_id}/checkin/batch-qr/targets")
-    def list_batch_qr_targets(
+    @router.get("/items/{item_id}/checkin/batch/targets")
+    def list_batch_targets(
         item_id: int,
         request: Request,
         actor=Depends(access_accounts),
@@ -350,21 +350,29 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             )
         return _invoke(
             request,
-            _service(request).list_admin_qr_targets,
+            _service(request).list_admin_batch_targets,
             item_id,
             actor,
         )
 
-    @router.post("/items/{item_id}/checkin/sync-class")
-    def sync_qr_class_items(
-        item_id: int,
+    @router.post("/courses/{course_id}/items/sync-class")
+    def sync_class_items(
+        course_id: int,
         request: Request,
         actor=Depends(access_accounts),
     ):
+        if actor.get("role") != "admin":
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "仅管理员可以同步同班账号签到项",
+                },
+            )
         return _invoke(
             request,
-            _service(request).sync_qr_class_items,
-            item_id,
+            _service(request).sync_class_items,
+            course_id,
             actor,
         )
 
