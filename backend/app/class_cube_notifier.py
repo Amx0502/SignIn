@@ -49,16 +49,27 @@ class ClassCubeNotifier:
     def _time_text(value) -> str:
         if isinstance(value, datetime):
             return value.strftime("%Y-%m-%d %H:%M")
-        text = str(value or datetime.now().strftime("%Y-%m-%d %H:%M"))
-        return text[:16]
+        text = str(value or datetime.now().isoformat())
+        try:
+            return datetime.fromisoformat(
+                text.replace("Z", "+00:00")
+            ).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return text.replace("T", " ")[:16]
 
     @staticmethod
     def _detail_time(detail: dict, summary: dict) -> str:
         value = detail.get("executed_at") or summary.get("started_at")
         if isinstance(value, datetime):
             return value.strftime("%H:%M:%S")
-        text = str(value or datetime.now().strftime("%H:%M:%S"))
-        return text[-8:] if len(text) >= 8 else text
+        text = str(value or datetime.now().isoformat())
+        try:
+            return datetime.fromisoformat(
+                text.replace("Z", "+00:00")
+            ).strftime("%H:%M:%S")
+        except ValueError:
+            time_text = text.replace("T", " ").rsplit(" ", 1)[-1]
+            return time_text.split(".", 1)[0][:8]
 
     @staticmethod
     def _coordinate_text(value) -> str | None:
@@ -111,7 +122,10 @@ class ClassCubeNotifier:
                     "ℹ️",
                 )
                 executed_at = self._detail_time(detail, summary)
-                account_name = summary.get("account_name", "-")
+                account_name = detail.get(
+                    "account_name",
+                    summary.get("account_name", "-"),
+                )
                 detail_lines.append(
                     f"- {icon} {account_name} [{executed_at}]"
                 )

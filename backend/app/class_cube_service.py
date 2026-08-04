@@ -1625,6 +1625,7 @@ class ClassCubeService:
         actor: dict[str, Any],
         account_ids: list[int] | None = None,
     ) -> dict[str, Any]:
+        batch_started_at = datetime.now()
         actor_user_id, is_admin = self._actor_scope(actor)
         if not is_admin:
             raise ClassCubeValidationError(
@@ -1760,6 +1761,28 @@ class ClassCubeService:
             counts["failed"],
             counts["unknown"],
         )
+        if payload.get("notify_wecom", False):
+            self._send_manual_notification(
+                {
+                    "trigger": "course_manual",
+                    "started_at": batch_started_at.isoformat(),
+                    "account_name": "并发签到",
+                    "course_name": source_course.get("name", "-"),
+                    "item_name": source_item.get("title", "签到项"),
+                    "mode": mode,
+                    "total": len(details),
+                    **counts,
+                    "parameters": self._manual_parameters(payload),
+                    "details": [
+                        {
+                            **row,
+                            "mode": mode,
+                            "executed_at": batch_started_at.isoformat(),
+                        }
+                        for row in details
+                    ],
+                }
+            )
         return {
             "total": len(details),
             **counts,

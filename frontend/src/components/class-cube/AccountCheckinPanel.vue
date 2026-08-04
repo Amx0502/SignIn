@@ -596,8 +596,10 @@ function removePhoto() {
 .glass-card { border: 1px solid rgb(191 219 254 / 58%); border-radius: 22px; background: rgb(255 255 255 / 82%); box-shadow: 0 18px 42px rgb(15 23 42 / 7%); backdrop-filter: blur(18px); }
 .checkin-card { container-type:inline-size }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.section-head strong,.section-head small { display: block; }.section-head strong { color: #172033; font-size: 16px; }.section-head small { margin-top: 4px; color: #64748b; font-size: 11px; }
+.checkin-card .section-head > div:first-child { min-width: 9em; flex: none; }
 .account-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.sync-actions { display: flex; align-items: center; gap: 8px; }
+.sync-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sync-actions .el-button + .el-button { margin-left: 0; }
 .sync-tag { margin: 0; }
 .account-list,.item-list { display: grid; gap: 9px; max-height: 480px; overflow-y: auto; overflow-x: hidden; }
 .account-row,.item-row { align-items: center; padding: 12px; margin-top: 5px; border: 1px solid #e2e8f0; border-radius: 15px; background: #f8fafc; cursor: pointer; transition: .2s ease; }
@@ -615,6 +617,11 @@ function removePhoto() {
 .location-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px }.location-grid .el-input-number,.location-grid .el-input { width:100% }.coordinate-row { display:flex;align-items:center;gap:8px;width:100%;min-width:0 }.coordinate-row .el-input { flex:1;min-width:0 }.field-tip { margin:7px 0 0;color:#64748b;font-size:11px }.photo-input{display:none}.photo-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.photo-picker small{color:#64748b;font-size:11px}
 .manual-actions { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:4px }
 .result-content { display:grid;justify-items:center;padding:16px 10px;text-align:center }.result-icon { display:grid;width:70px;height:70px;place-items:center;color:#fff;border-radius:24px;background:linear-gradient(135deg,#2563eb,#0ea5e9);font-size:38px;box-shadow:0 18px 35px rgb(37 99 235 / 24%) }.result-content.is-success .result-icon,.result-content.is-already_signed .result-icon { background:linear-gradient(135deg,#059669,#10b981) }.result-content.is-failed .result-icon { background:linear-gradient(135deg,#dc2626,#f87171) }.result-content small { margin-top:17px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.14em }.result-content h2 { margin:6px 0;color:#172033 }.result-content p { max-width:390px;margin:0 0 14px;color:#64748b;line-height:1.7 }
+@container(max-width:720px){
+  .checkin-card .section-head{align-items:stretch;flex-direction:column}
+  .sync-actions{align-items:flex-start;flex-direction:column;justify-content:flex-start;width:100%}
+  .sync-actions .el-button{margin-left:0;white-space:nowrap}
+}
 @container(max-width:480px){
   .manual-form{padding:14px}
   .manual-form__head,.manual-form__head>div,.manual-actions{align-items:stretch;flex-direction:column}
