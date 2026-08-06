@@ -21,6 +21,7 @@
             </div>
           </template>
           <el-table
+            ref="tableRef"
             :data="state.accounts"
             row-key="mobile"
             highlight-current-row
@@ -97,6 +98,7 @@ import api from '../api'
 const { state, refreshState, refreshLogs } = useAppState()
 
 const formRef = ref(null)
+const tableRef = ref(null)
 const selectedIndex = ref(-1)
 const selectedMobile = ref('')
 const selectedAccounts = ref([])
@@ -115,6 +117,7 @@ const rules = {
 }
 
 function createNew() {
+  tableRef.value?.setCurrentRow(null)
   selectedIndex.value = -1
   selectedMobile.value = ''
   form.name = ''
