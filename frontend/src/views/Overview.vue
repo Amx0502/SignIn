@@ -63,16 +63,29 @@ import api from '../api'
 
 const { state, refreshState, refreshLogs } = useAppState()
 const settingsForm = reactive({ refresh_times: '', webhook_url: '' })
+let formInitialized = false
 const metrics = computed(() => [
   { label: '账号总数', value: state.value.account_count, icon: User, trend: '账号资产集中管理' },
   { label: '任务总数', value: state.value.task_count, icon: Tickets, trend: '覆盖普通与图片签到' },
   { label: '启用任务', value: state.value.enabled_task_count, icon: CircleCheck, trend: '已启用的定时任务' }
 ])
-watch(() => state.value.refresh_times, (val) => { settingsForm.refresh_times = (val || []).join(', ') }, { immediate: true })
-watch(() => state.value.webhook_url, (val) => { settingsForm.webhook_url = val || '' }, { immediate: true })
+watch(
+  () => [state.value.server_time, state.value.refresh_times, state.value.webhook_url],
+  ([serverTime, times, webhook]) => {
+    if (formInitialized || serverTime === '-') return
+    formInitialized = true
+    settingsForm.refresh_times = (times || []).join(', ')
+    settingsForm.webhook_url = webhook || ''
+  },
+  { immediate: true }
+)
+function syncFormFromState() {
+  settingsForm.refresh_times = (state.value.refresh_times || []).join(', ')
+  settingsForm.webhook_url = state.value.webhook_url || ''
+}
 async function toggleAuto() { await saveSettingsCore(!state.value.auto_enabled) }
 async function saveSettings() { await saveSettingsCore(state.value.auto_enabled) }
-async function saveSettingsCore(autoEnabled) { try { await api.setSettings({ auto_enabled: autoEnabled, refresh_times: settingsForm.refresh_times.split(',').map(s => s.trim()).filter(Boolean), webhook_url: settingsForm.webhook_url }); ElMessage.success('设置已保存'); await refreshState(); await refreshLogs() } catch (err) { ElMessage.error(err.message) } }
+async function saveSettingsCore(autoEnabled) { try { await api.setSettings({ auto_enabled: autoEnabled, refresh_times: settingsForm.refresh_times.split(',').map(s => s.trim()).filter(Boolean), webhook_url: settingsForm.webhook_url }); ElMessage.success('设置已保存'); await refreshState(); await refreshLogs(); syncFormFromState() } catch (err) { ElMessage.error(err.message) } }
 async function refreshAllTokens() { try { await api.refreshAllTokens(); ElMessage.success('已发起全部 Token 刷新'); await refreshLogs() } catch (err) { ElMessage.error(err.message) } }
 async function runAllEnabledTasks() { try { await api.runAllEnabledTasks(); ElMessage.success('已将全部启用任务加入队列'); await refreshLogs() } catch (err) { ElMessage.error(err.message) } }
 </script>
