@@ -77,10 +77,9 @@
           <el-popover
             v-model:visible="notifyVisible"
             placement="bottom-end"
-            :width="380"
+            :width="400"
             trigger="click"
             popper-class="notify-popper"
-            @show="markAllRead"
           >
             <template #reference>
               <el-badge
@@ -97,20 +96,37 @@
               <div class="notify-header">
                 <span>通知</span>
                 <span v-if="unreadCount" class="notify-unread">（{{ unreadCount }} 条未读）</span>
+                <div class="notify-header-actions">
+                  <el-select v-model="notifyLevelFilter" size="small" style="width: 108px">
+                    <el-option label="全部级别" value="ALL" />
+                    <el-option label="INFO" value="INFO" />
+                    <el-option label="WARNING" value="WARNING" />
+                    <el-option label="ERROR" value="ERROR" />
+                  </el-select>
+                  <el-switch v-model="dndEnabled" size="small" active-text="免打扰" @change="toggleDnd" />
+                </div>
               </div>
-              <div v-if="notifications.length" class="notify-list">
-                <div
-                  v-for="item in notifications"
-                  :key="item.id"
-                  class="notify-item"
-                  :class="{ unread: !item.read }"
-                  @click="openNotification(item)"
-                >
-                  <span class="notify-dot" :class="{ unread: !item.read }"></span>
-                  <div class="notify-body">
-                    <div class="notify-title">{{ item.title }}</div>
-                    <div class="notify-message">{{ item.message }}</div>
-                    <div class="notify-time">{{ item.time }}</div>
+              <div v-if="notifyGroups.length" class="notify-list">
+                <div v-for="group in notifyGroups" :key="group.key" class="notify-group">
+                  <div class="notify-group-title">
+                    {{ group.label }}
+                    <span class="notify-group-count">{{ group.items.length }}</span>
+                  </div>
+                  <div
+                    v-for="item in group.items"
+                    :key="item.id"
+                    class="notify-item"
+                    :class="[`notify-level-${item.level.toLowerCase()}`, { unread: !item.read }]"
+                    @click="openNotification(item)"
+                  >
+                    <span class="notify-dot" :class="`notify-dot-${item.level.toLowerCase()}`"></span>
+                    <div class="notify-body">
+                      <div class="notify-title">
+                        {{ item.title }}
+                        <span class="notify-time">{{ item.time }}</span>
+                      </div>
+                      <div class="notify-message">{{ item.message }}</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -234,6 +250,7 @@ import { useAppState } from './composables/useAppState'
 import { formatCurrentTime } from './utils/currentTime'
 import { getBreadcrumb } from './utils/breadcrumb'
 import { logoutApi } from './api'
+import { parseLogLine } from './utils/logConsole.js'
 import classCubeApi from './api/classCube.js'
 import draggable from 'vuedraggable'
 import xxqdImage from './img/xxqd.png'
@@ -504,44 +521,176 @@ function onDragEnd() {
 // notification helpers
 const notifyVisible = ref(false)
 const notifications = ref([])
+const notifyLevelFilter = ref('ALL')
+const dndEnabled = ref(false)
 let notifySequence = 0
-const unreadCount = computed(() => notifications.value.filter(item => !item.read).length)
+const NOTIFY_STORAGE_PREFIX = 'signin_notifications'
+const NOTIFY_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const NOTIFY_LEVELS = ['INFO', 'WARNING', 'ERROR']
 
-function pushNotification(path, message) {
-  const title = path === '/class-cube/logs' ? '魔方日志' : '运行日志'
+function notifyStorageKey() {
+  let userId = ''
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || 'null')
+    if (user && user.id != null) userId = String(user.id)
+  } catch {
+    userId = ''
+  }
+  return userId ? `${NOTIFY_STORAGE_PREFIX}:${userId}` : NOTIFY_STORAGE_PREFIX
+}
+
+function pruneOldNotifications() {
+  const cutoff = Date.now() - NOTIFY_TTL_MS
+  notifications.value = notifications.value.filter(item => (item.ts || 0) >= cutoff)
+}
+
+function persistNotifications() {
+  pruneOldNotifications()
+  try {
+    localStorage.setItem(notifyStorageKey(), JSON.stringify({
+      dnd: dndEnabled.value,
+      notifications: notifications.value,
+    }))
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function loadNotifications() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(notifyStorageKey()) || 'null')
+    if (parsed && typeof parsed === 'object') {
+      dndEnabled.value = parsed.dnd === true
+      if (Array.isArray(parsed.notifications)) {
+        notifications.value = parsed.notifications
+          .filter(item => item && typeof item.path === 'string' && typeof item.message === 'string')
+          .map(item => ({
+            id: item.id,
+            path: item.path,
+            source: item.source === 'class_cube' ? 'class_cube' : 'xxqd',
+            title: typeof item.title === 'string' ? item.title : '',
+            level: NOTIFY_LEVELS.includes(item.level) ? item.level : 'INFO',
+            message: String(item.message || '').slice(0, 120),
+            time: typeof item.time === 'string' ? item.time : '',
+            ts: typeof item.ts === 'number' ? item.ts : Date.now(),
+            read: item.read === true,
+          }))
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+  pruneOldNotifications()
+  notifySequence = notifications.value.reduce((max, item) => Math.max(max, item.id || 0), 0)
+}
+
+function menuKeyForNotifyPath(path) {
+  return path === '/class-cube/logs' ? 'class_cube.logs' : 'xxqd.logs'
+}
+
+function notificationVisible(item) {
+  if (currentUser.value?.role === 'admin') return true
+  if (!menuState.loaded) return true
+  return isCurrentMenuVisible(menuKeyForNotifyPath(item.path), currentUser.value)
+}
+
+const visibleNotifications = computed(() => notifications.value.filter(item => {
+  if (notifyLevelFilter.value !== 'ALL' && item.level !== notifyLevelFilter.value) return false
+  return notificationVisible(item)
+}))
+
+const unreadCount = computed(() => notifications.value.filter(item => !item.read && notificationVisible(item)).length)
+
+const notifyGroups = computed(() => {
+  const groups = [
+    { key: 'xxqd', label: '小小签到', items: [] },
+    { key: 'class_cube', label: '班级魔方', items: [] },
+  ]
+  const index = { xxqd: groups[0], class_cube: groups[1] }
+  for (const item of visibleNotifications.value) {
+    index[item.source].items.push(item)
+  }
+  return groups.filter(group => group.items.length)
+})
+
+function pushNotification(path, rawLine) {
+  if (!notificationVisible({ path })) return
+  const parsed = parseLogLine(rawLine)
+  const isCc = path === '/class-cube/logs'
   notifySequence += 1
+  const now = Date.now()
   notifications.value.unshift({
     id: notifySequence,
     path,
-    title,
-    message: String(message || '').slice(0, 120),
-    time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-    read: false,
+    source: isCc ? 'class_cube' : 'xxqd',
+    title: isCc ? '魔方日志' : '运行日志',
+    level: NOTIFY_LEVELS.includes(parsed.level) ? parsed.level : 'INFO',
+    message: (parsed.message || String(rawLine || '')).slice(0, 120),
+    time: new Date(now).toLocaleTimeString('zh-CN', { hour12: false }),
+    ts: now,
+    read: dndEnabled.value,
   })
-  if (notifications.value.length > 50) notifications.value.pop()
+  if (notifications.value.length > 200) notifications.value.pop()
+  persistNotifications()
+}
+
+function markPathRead(path) {
+  let changed = false
+  notifications.value.forEach(item => {
+    if (item.path === path && !item.read) {
+      item.read = true
+      changed = true
+    }
+  })
+  if (changed) persistNotifications()
 }
 
 function markAllRead() {
-  notifications.value.forEach(item => { item.read = true })
+  let changed = false
+  notifications.value.forEach(item => {
+    if (!item.read) {
+      item.read = true
+      changed = true
+    }
+  })
+  if (changed) persistNotifications()
 }
 
 function clearNotifications() {
   notifications.value = []
+  persistNotifications()
 }
 
 function openNotification(item) {
-  item.read = true
+  if (!item.read) {
+    item.read = true
+    persistNotifications()
+  }
   notifyVisible.value = false
   if (item.path !== route.path) router.push(item.path)
 }
 
+function toggleDnd(value) {
+  dndEnabled.value = value
+  persistNotifications()
+}
+
 function resetNotifications() {
   notifications.value = []
+  notifyVisible.value = false
+  notifyLevelFilter.value = 'ALL'
+  dndEnabled.value = false
   xxqdLogBaselineSet = false
   lastXxqdLogKey = ''
   ccLogBaselineSet = false
   lastCcLogKey = ''
 }
+
+loadNotifications()
+
+watch(() => route.path, path => {
+  if (path === '/logs' || path === '/class-cube/logs') markPathRead(path)
+}, { immediate: true })
 
 // xxqd log badge
 let xxqdLogBaselineSet = false
@@ -936,9 +1085,32 @@ onUnmounted(() => {
 .notify-btn:hover { color: #1d4ed8; border-color: #60a5fa; }
 .notify-popper { border-radius: 14px; }
 .notify-panel { display: grid; gap: 10px; }
-.notify-header { display: flex; align-items: center; gap: 6px; font-weight: 700; color: #0f172a; }
+.notify-header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-weight: 700; color: #0f172a; }
+.notify-header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .notify-unread { color: #ef4444; font-size: 12px; font-weight: 600; }
-.notify-list { display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
+.notify-list { display: grid; gap: 8px; max-height: 340px; overflow-y: auto; }
+.notify-group { display: grid; gap: 4px; }
+.notify-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  padding: 2px 6px;
+}
+.notify-group-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: rgba(148, 163, 184, 0.18);
+  color: #475569;
+  font-size: 11px;
+}
 .notify-item {
   display: flex;
   align-items: flex-start;
@@ -950,10 +1122,13 @@ onUnmounted(() => {
 }
 .notify-item:hover { background: #eff6ff; }
 .notify-item.unread { background: rgba(219, 234, 254, 0.5); }
-.notify-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: #cbd5e1; }
-.notify-dot.unread { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15); }
+.notify-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; }
+.notify-dot-info { background: #94a3b8; }
+.notify-dot-warning { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
+.notify-dot-error { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15); }
 .notify-body { min-width: 0; flex: 1; display: grid; gap: 2px; }
-.notify-title { font-size: 13px; font-weight: 600; color: #1e293b; }
+.notify-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #1e293b; }
+.notify-item.unread .notify-title { color: #1d4ed8; }
 .notify-message {
   font-size: 12px;
   color: #64748b;
@@ -964,8 +1139,11 @@ onUnmounted(() => {
   -webkit-box-orient: vertical;
   word-break: break-all;
 }
-.notify-time { font-size: 11px; color: #94a3b8; }
+.notify-item.notify-level-warning .notify-message { color: #b45309; }
+.notify-item.notify-level-error .notify-message { color: #b91c1c; }
+.notify-time { font-size: 11px; color: #94a3b8; margin-left: auto; flex: none; }
 .notify-footer { display: flex; justify-content: flex-end; gap: 4px; border-top: 1px solid #eef2f7; padding-top: 8px; }
+
 @keyframes notifyPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.35); }
   50% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0); }
