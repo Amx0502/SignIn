@@ -30,10 +30,6 @@ def ensure_dirs() -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def deep_copy(data):
-    return json.loads(json.dumps(data, ensure_ascii=False))
-
-
 def normalize_time_text(text: str) -> str:
     text = str(text).strip()
     if not text:
