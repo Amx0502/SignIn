@@ -1,4 +1,3 @@
-import shutil
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -448,17 +447,32 @@ def delete_user(user_id: int, admin=Depends(require_admin)):
 
 
 
+UPLOAD_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+UPLOAD_MAX_SIZE = 10 * 1024 * 1024  # 10MB
+
+
 @app.post("/api/upload")
 async def upload_image(
     file: UploadFile = File(...),
     _user=Depends(require_menu("xxqd.tasks")),
 ):
+    ext = Path(file.filename or "image.jpg").suffix.lower()
+    if ext not in UPLOAD_ALLOWED_EXTENSIONS:
+        failure("不支持的文件类型，仅允许 jpg/png/webp 格式")
     config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    ext = Path(file.filename or "image.jpg").suffix
     name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
     target = config.UPLOAD_DIR / name
+    content_size = 0
     with target.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        while True:
+            chunk = await file.read(64 * 1024)
+            if not chunk:
+                break
+            content_size += len(chunk)
+            if content_size > UPLOAD_MAX_SIZE:
+                target.unlink(missing_ok=True)
+                failure("文件过大，最大支持 10MB")
+            buffer.write(chunk)
     return success({"path": str(target), "url": f"/uploads/{name}"})
 
 
