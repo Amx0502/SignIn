@@ -201,9 +201,21 @@ const form = reactive({
   notify_wechat: true
 })
 
-const timesText = computed({
-  get: () => (form.times || []).join(', '),
-  set: val => { form.times = val.split(/[\s,|;，；、]+/).map(s => s.trim()).filter(Boolean) }
+// Keep the input text independent from the normalized array.  Rebuilding the
+// input value from `form.times` on every keystroke causes the browser caret to
+// jump/reset after the first complete time (for example, after `08:00:00`).
+// The raw text stays untouched while typing and is parsed only for form data.
+const timesText = ref('')
+
+function parseTimesText(value) {
+  return String(value || '')
+    .split(/[\s,|;，；、]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+}
+
+watch(timesText, (value) => {
+  form.times = parseTimesText(value)
 })
 
 const rules = {
@@ -279,6 +291,7 @@ function createNew() {
   form.title = ''
   form.index = 1
   form.times = []
+  timesText.value = ''
   form.text = ''
   form.pic_path = []
   form.enable = true
@@ -297,6 +310,7 @@ function onSelectTask(row) {
   form.title = task.title
   form.index = task.index
   form.times = [...(task.times || [])]
+  timesText.value = form.times.join(', ')
   form.text = task.text
   const taskPicPaths = Array.isArray(task.pic_path) ? task.pic_path : (task.pic_path ? [task.pic_path] : [])
   form.pic_path = taskPicPaths
@@ -355,6 +369,9 @@ function applyProject(idx, item) {
 }
 
 async function saveTask() {
+  // Parse the latest raw value before validation/submission without rewriting
+  // what the user typed into the input.
+  form.times = parseTimesText(timesText.value)
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
   if (selectedAccountIndex.value == null) {
