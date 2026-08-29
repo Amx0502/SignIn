@@ -7,6 +7,7 @@ from sqlalchemy import URL
 
 
 DATABASE_CONFIG_FILE = Path(__file__).resolve().parent.parent / "database_config.json"
+UNIFIED_DATABASE_NAME = "SignIn"
 _DATABASE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
 _REQUIRED_FIELDS = ("host", "port", "database", "user", "password")
 
@@ -43,9 +44,19 @@ class ConnectionSettings:
 
 @dataclass(frozen=True)
 class DatabaseConfig:
-    business: ConnectionSettings
-    auth: ConnectionSettings
-    class_cube: ConnectionSettings
+    connection: ConnectionSettings
+
+    @property
+    def business(self) -> ConnectionSettings:
+        return self.connection
+
+    @property
+    def auth(self) -> ConnectionSettings:
+        return self.connection
+
+    @property
+    def class_cube(self) -> ConnectionSettings:
+        return self.connection
 
 
 def _connection_settings(data: object, section: str, path: Path) -> ConnectionSettings:
@@ -104,20 +115,30 @@ def load_database_config(
     if not isinstance(data, dict):
         raise RuntimeError(f"数据库配置文件 {config_path} 的根节点必须是对象")
 
-    for section in ("business", "auth", "class_cube"):
-        if section not in data:
-            raise RuntimeError(f"数据库配置文件 {config_path} 缺少配置段 {section}")
+    if "connection" in data:
+        settings = _connection_settings(data["connection"], "connection", config_path)
+    else:
+        legacy_sections = ("business", "auth", "class_cube")
+        for section in legacy_sections:
+            if section not in data:
+                raise RuntimeError(
+                    f"数据库配置文件 {config_path} 缺少配置段 connection"
+                )
+        legacy_settings = [
+            _connection_settings(data[section], section, config_path)
+            for section in legacy_sections
+        ]
+        if len(set(legacy_settings)) != 1:
+            raise RuntimeError(
+                f"数据库配置文件 {config_path} 的 business、auth、class_cube "
+                "必须使用完全相同的数据库连接"
+            )
+        settings = legacy_settings[0]
 
-    class_cube = _connection_settings(
-        data["class_cube"], "class_cube", config_path
-    )
-    if class_cube.name != "bjmf":
+    if settings.name != UNIFIED_DATABASE_NAME:
         raise RuntimeError(
-            f"数据库配置文件 {config_path} 的 class_cube.database 必须为 bjmf"
+            f"数据库配置文件 {config_path} 的数据库名称必须为 "
+            f"{UNIFIED_DATABASE_NAME}"
         )
 
-    return DatabaseConfig(
-        business=_connection_settings(data["business"], "business", config_path),
-        auth=_connection_settings(data["auth"], "auth", config_path),
-        class_cube=class_cube,
-    )
+    return DatabaseConfig(connection=settings)

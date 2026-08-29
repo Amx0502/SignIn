@@ -62,12 +62,13 @@ async def lifespan(app: FastAPI):
     class_cube_scheduler: ClassCubeScheduler | None = None
     try:
         database_config = load_database_config()
-        app_state.initialize_database(database_config.business)
+        database_settings = database_config.connection
+        app_state.initialize_database(database_settings)
         app_state.repository.import_legacy_json_if_empty(
             config.LEGACY_ACCOUNTS_FILE
         )
         if auth_service.repository is None:
-            auth_database = AuthDatabase(database_config.auth)
+            auth_database = AuthDatabase(database_settings)
             auth_database.initialize()
             auth_repository = AuthRepository(auth_database)
             auth_repository.initialize_users(
@@ -79,9 +80,7 @@ async def lifespan(app: FastAPI):
         menu_repository = MenuRepository(auth_service.repository.database)
         menu_repository.initialize()
 
-        class_cube_database = ClassCubeDatabase(
-            database_config.class_cube
-        )
+        class_cube_database = ClassCubeDatabase(database_settings)
         class_cube_database.initialize()
         class_cube_logger = create_class_cube_logger(class_cube_log_store)
         app.state.class_cube_log_store = class_cube_log_store

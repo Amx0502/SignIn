@@ -6,7 +6,7 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import Session, sessionmaker
 
 from .class_cube_db_models import ClassCubeBase
-from .database_config import ConnectionSettings
+from .database_config import ConnectionSettings, UNIFIED_DATABASE_NAME
 
 
 class ClassCubeDatabase:
@@ -22,8 +22,10 @@ class ClassCubeDatabase:
         return self._engine
 
     def initialize(self) -> None:
-        if self.settings.name != "bjmf":
-            raise ValueError("班级魔方数据库名称必须为 bjmf")
+        if self.settings.name != UNIFIED_DATABASE_NAME:
+            raise ValueError(
+                f"班级魔方数据库名称必须为 {UNIFIED_DATABASE_NAME}"
+            )
 
         server_engine = create_engine(
             self.settings.server_url(),
@@ -35,7 +37,7 @@ class ClassCubeDatabase:
             with server_engine.connect() as connection:
                 connection.execute(
                     text(
-                        "CREATE DATABASE IF NOT EXISTS `bjmf` "
+                        f"CREATE DATABASE IF NOT EXISTS `{UNIFIED_DATABASE_NAME}` "
                         "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
                     )
                 )
