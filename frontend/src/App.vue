@@ -825,7 +825,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.app-wrapper { min-height: 100vh; }
+.app-wrapper {
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: clip;
+}
 .sidebar {
   position: sticky; top: 0; height: 100vh; overflow: hidden auto;
   background: linear-gradient(180deg, #07111f 0%, #0f172a 46%, #111827 100%);
@@ -847,7 +851,16 @@ onUnmounted(() => {
 .sidebar-menu :deep(.el-sub-menu .el-menu) { background: rgba(255, 255, 255, 0.035); border-radius: 14px; padding: 4px; }
 .menu-custom-icon { width: 22px; height: 22px; object-fit: contain; display: block; }
 .logo-img { width: 48px; height: 48px; object-fit: contain; display: block; }
-.main-shell { min-width: 0; }
+.main-shell {
+  min-width: 0;
+  overflow-x: clip;
+}
+.main-shell :deep(.el-main) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
 .top-header { min-height: 76px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 28px; background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(226, 232, 240, 0.8); position: sticky; top: 0; z-index: 10; }
 .header-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
 .menu-btn { flex: none; margin-right: 4px; color: #2563eb; border-color: #bfdbfe; background: #eff6ff; }

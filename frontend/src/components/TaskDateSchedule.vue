@@ -432,11 +432,11 @@ const lastOccurrenceText = computed(() => {
 </script>
 
 <style scoped>
-.date-schedule { width: 100%; }
-.date-schedule__controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.date-schedule { width: 100%; min-width: 0; max-width: 100%; }
+.date-schedule__controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; max-width: 100%; margin-bottom: 12px; }
 .date-schedule__controls :deep(.el-radio-group) { flex-wrap: nowrap; }
 .date-schedule__controls :deep(.el-checkbox) { flex: none; white-space: nowrap; }
-.date-schedule__calendar { overflow: hidden; border: 1px solid #dbeafe; border-radius: 16px; background: linear-gradient(160deg, #fff, #f8fbff); box-shadow: 0 12px 30px rgb(37 99 235 / 7%); }
+.date-schedule__calendar { min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid #dbeafe; border-radius: 16px; background: linear-gradient(160deg, #fff, #f8fbff); box-shadow: 0 12px 30px rgb(37 99 235 / 7%); }
 .calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid #eaf1fb; }
 .calendar-title { display: flex; align-items: baseline; justify-content: center; gap: 10px; min-width: 0; color: #1e293b; }
 .calendar-title strong { font-size: 14px; white-space: nowrap; }

@@ -492,6 +492,23 @@ async function deleteTask() {
 </script>
 
 <style scoped>
+.page-container {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.task-layout,
+.task-layout > .el-col,
+.task-list-card,
+.task-form-card,
+.task-form-card :deep(.el-card__body),
+.task-form-card :deep(.el-form),
+.task-form-card :deep(.el-form-item),
+.task-form-card :deep(.el-form-item__content) {
+  min-width: 0;
+  max-width: 100%;
+}
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -579,13 +596,13 @@ async function deleteTask() {
     font-size: 13px;
   }
   
-  .el-form-item__label {
+  .task-form-card :deep(.el-form-item__label) {
     width: 80px !important;
     font-size: 12px;
   }
   
-  .el-form-item__content {
-    margin-left: 80px !important;
+  .task-form-card :deep(.el-form-item__content) {
+    margin-left: 0 !important;
   }
 }
 
@@ -609,13 +626,13 @@ async function deleteTask() {
     font-size: 12px;
   }
   
-  .el-form-item__label {
+  .task-form-card :deep(.el-form-item__label) {
     width: 70px !important;
     font-size: 11px;
   }
   
-  .el-form-item__content {
-    margin-left: 70px !important;
+  .task-form-card :deep(.el-form-item__content) {
+    margin-left: 0 !important;
   }
   
   .el-button {
