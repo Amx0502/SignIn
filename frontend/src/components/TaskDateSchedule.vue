@@ -95,9 +95,6 @@
       </span>
     </div>
 
-    <p class="date-schedule__hint">
-      点击星期标题可批量切换本月整列；点击单个日期可单独调整。周末跳过只暂停周末计划，关闭后会恢复原选择。
-    </p>
   </div>
 </template>
 
@@ -476,7 +473,6 @@ const lastOccurrenceText = computed(() => {
 .date-schedule__completion :deep(.el-checkbox__label) { padding-left: 7px; color: #334155; font-size: 12px; white-space: normal; }
 .date-schedule__completion > span { flex: none; text-align: right; }
 .date-schedule__completion strong { color: #2563eb; font-variant-numeric: tabular-nums; }
-.date-schedule__hint { margin: 7px 2px 0; color: #94a3b8; font-size: 11px; line-height: 1.5; }
 
 @media (max-width: 520px) {
   .date-schedule__controls { align-items: flex-start; flex-direction: column; }
