@@ -276,6 +276,8 @@ def add_task(
         return success(app_state.add_task(account_index, payload.model_dump()))
     except IndexError:
         failure("索引越界，请重新选择账号")
+    except ValueError as exc:
+        failure(str(exc))
 
 
 @app.put("/api/accounts/{account_index}/tasks/{task_index}")
@@ -289,6 +291,8 @@ def update_task(
         return success(app_state.update_task(account_index, task_index, payload.model_dump()))
     except IndexError:
         failure("索引越界，请重新选择账号或任务")
+    except ValueError as exc:
+        failure(str(exc))
 
 
 @app.delete("/api/accounts/{account_index}/tasks/{task_index}")

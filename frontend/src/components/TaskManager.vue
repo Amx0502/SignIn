@@ -58,6 +58,13 @@
             <el-table-column label="时间" min-width="80">
               <template #default="scope">{{ (scope.row.task.times || []).join(', ') }}</template>
             </el-table-column>
+            <el-table-column label="日期" min-width="92">
+              <template #default="scope">
+                {{ scope.row.task.date_mode === 'specific'
+                  ? `指定 ${(scope.row.task.run_dates || []).length} 天`
+                  : '每天' }}
+              </template>
+            </el-table-column>
             <el-table-column label="启用" width="80">
               <template #default="scope">
                 <el-tag :type="scope.row.task.enable ? 'success' : 'info'" size="small">
@@ -124,6 +131,18 @@
             <el-form-item label="执行时间" prop="times">
               <el-input v-model="timesText" placeholder="08:00:00 18:00:00（支持空格、逗号、竖线等分隔符）" />
             </el-form-item>
+            <el-form-item label="执行日期" prop="run_dates">
+              <TaskDateSchedule
+                :date-mode="form.date_mode"
+                :run-dates="form.run_dates"
+                :skip-dates="form.skip_dates"
+                :skip-weekends="form.skip_weekends"
+                @update:date-mode="form.date_mode = $event"
+                @update:run-dates="form.run_dates = $event"
+                @update:skip-dates="form.skip_dates = $event"
+                @update:skip-weekends="form.skip_weekends = $event"
+              />
+            </el-form-item>
             <el-form-item label="签到文本" prop="text">
               <el-input v-model="form.text" type="textarea" :rows="3" placeholder="请输入签到时需要提交的文本内容" />
             </el-form-item>
@@ -144,7 +163,6 @@
             </el-form-item>
             <el-form-item>
               <el-checkbox v-model="form.enable">启用任务</el-checkbox>
-              <el-checkbox v-model="form.skip_weekends">周末跳过</el-checkbox>
               <el-checkbox v-model="form.notify_wechat">发送企业微信通知</el-checkbox>
             </el-form-item>
             <el-form-item>
@@ -171,6 +189,7 @@ import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { Search, VideoPlay, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CheckinResultDialog from './CheckinResultDialog.vue'
+import TaskDateSchedule from './TaskDateSchedule.vue'
 import TaskImageUpload from './TaskImageUpload.vue'
 import { useAppState } from '../composables/useAppState'
 import { createCheckinResult } from '../utils/checkinResult'
@@ -197,6 +216,9 @@ const form = reactive({
   enable: true,
   use_location: false,
   skip_weekends: false,
+  date_mode: 'daily',
+  run_dates: [],
+  skip_dates: [],
   mode: 'normal',
   notify_wechat: true
 })
@@ -297,6 +319,9 @@ function createNew() {
   form.enable = true
   form.use_location = false
   form.skip_weekends = false
+  form.date_mode = 'daily'
+  form.run_dates = []
+  form.skip_dates = []
   form.mode = 'normal'
   form.notify_wechat = true
   locationMode.value = 'none'
@@ -317,6 +342,9 @@ function onSelectTask(row) {
   form.enable = task.enable
   form.use_location = task.use_location
   form.skip_weekends = task.skip_weekends
+  form.date_mode = task.date_mode || 'daily'
+  form.run_dates = [...(task.run_dates || [])]
+  form.skip_dates = [...(task.skip_dates || [])]
   form.mode = task.mode || (taskPicPaths.length ? 'image' : 'normal')
   form.notify_wechat = task.notify_wechat !== false
   syncLocationMode()
@@ -372,6 +400,10 @@ async function saveTask() {
   // Parse the latest raw value before validation/submission without rewriting
   // what the user typed into the input.
   form.times = parseTimesText(timesText.value)
+  if (form.date_mode === 'specific' && !form.run_dates.length) {
+    ElMessage.warning('指定日期模式下请至少选择一个执行日期')
+    return
+  }
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
   if (selectedAccountIndex.value == null) {

@@ -65,6 +65,9 @@ class TaskRow(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     pic_paths: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     skip_weekends: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    date_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="daily")
+    run_dates: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    skip_dates: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     mode: Mapped[str] = mapped_column(String(16), nullable=False, default="normal")
     notify_wechat: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 

@@ -2,7 +2,7 @@ import re
 from contextlib import contextmanager
 from typing import Iterator
 
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .database_config import ConnectionSettings
@@ -52,6 +52,44 @@ class Database:
             expire_on_commit=False,
         )
         Base.metadata.create_all(self._engine)
+        self._migrate_task_date_columns(self._engine)
+
+    @staticmethod
+    def _migrate_task_date_columns(engine: Engine) -> None:
+        columns = {
+            column["name"]: column
+            for column in inspect(engine).get_columns("tasks")
+        }
+        added_json_columns: list[str] = []
+        with engine.begin() as connection:
+            if "date_mode" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE tasks ADD COLUMN date_mode "
+                        "VARCHAR(16) NOT NULL DEFAULT 'daily'"
+                    )
+                )
+            for name in ("run_dates", "skip_dates"):
+                if name in columns:
+                    continue
+                connection.execute(
+                    text(f"ALTER TABLE tasks ADD COLUMN {name} JSON NULL")
+                )
+                added_json_columns.append(name)
+
+            for name in ("run_dates", "skip_dates"):
+                connection.execute(
+                    text(
+                        f"UPDATE tasks SET {name}=JSON_ARRAY() "
+                        f"WHERE {name} IS NULL"
+                    )
+                )
+                if name in added_json_columns or columns[name].get("nullable", True):
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE tasks MODIFY COLUMN {name} JSON NOT NULL"
+                        )
+                    )
 
     @contextmanager
     def session(self) -> Iterator[Session]:

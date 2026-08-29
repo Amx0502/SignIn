@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .database import Database
 from .db_models import AccountProjectRow, AccountRow, TaskRow
+from .task_date_schedule import normalize_task_date_rule
 
 
 class AccountIndexError(IndexError):
@@ -36,6 +37,7 @@ def _normalize_task(data: dict | None = None) -> dict:
     times = raw_times if isinstance(raw_times, list) else []
     raw_paths = data.get("pic_path", [])
     pic_paths = raw_paths if isinstance(raw_paths, list) else ([raw_paths] if raw_paths else [])
+    date_rule = normalize_task_date_rule(data)
     return {
         "index": int(data.get("index", 1) or 1),
         "title": str(data.get("title", "")).strip() or f"任务{data.get('index', 1)}",
@@ -45,6 +47,7 @@ def _normalize_task(data: dict | None = None) -> dict:
         "text": str(data.get("text", "")),
         "pic_path": [str(item) for item in pic_paths if str(item)],
         "skip_weekends": bool(data.get("skip_weekends", False)),
+        **date_rule,
         "mode": str(data.get("mode", "normal")),
         "notify_wechat": bool(data.get("notify_wechat", True)),
     }
@@ -65,6 +68,9 @@ class AccountRepository:
             "text": row.text,
             "pic_path": list(row.pic_paths or []),
             "skip_weekends": row.skip_weekends,
+            "date_mode": row.date_mode or "daily",
+            "run_dates": list(row.run_dates or []),
+            "skip_dates": list(row.skip_dates or []),
             "mode": row.mode,
             "notify_wechat": row.notify_wechat,
         }
@@ -168,6 +174,9 @@ class AccountRepository:
         row.text = task["text"]
         row.pic_paths = task["pic_path"]
         row.skip_weekends = task["skip_weekends"]
+        row.date_mode = task["date_mode"]
+        row.run_dates = task["run_dates"]
+        row.skip_dates = task["skip_dates"]
         row.mode = task["mode"]
         row.notify_wechat = task["notify_wechat"]
 

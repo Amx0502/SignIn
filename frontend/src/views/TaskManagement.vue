@@ -46,6 +46,10 @@
                 <span><el-icon><User /></el-icon>{{ task.accountName }}</span>
                 <span><el-icon><List /></el-icon>项目{{ task.index }}</span>
                 <span><el-icon><Clock /></el-icon>{{ (task.times || []).join(', ') }}</span>
+                <span>
+                  <el-icon><Calendar /></el-icon>
+                  {{ task.date_mode === 'specific' ? `指定 ${(task.run_dates || []).length} 天` : '每天执行' }}
+                </span>
                 <span v-if="task.text" class="text-content">
                   <el-icon><ChatLineSquare /></el-icon>
                   <el-tooltip :content="task.text" placement="top" :max-width="300">
@@ -87,6 +91,18 @@
                 <el-form-item label="执行时间" prop="times">
                   <el-input v-model="editTimesInputs[getTaskKey(task)]" placeholder="08:00:00 18:00:00（支持空格、逗号、竖线等分隔符）" />
                 </el-form-item>
+                <el-form-item label="执行日期" prop="run_dates">
+                  <TaskDateSchedule
+                    :date-mode="getEditForm(task).date_mode"
+                    :run-dates="getEditForm(task).run_dates"
+                    :skip-dates="getEditForm(task).skip_dates"
+                    :skip-weekends="getEditForm(task).skip_weekends"
+                    @update:date-mode="getEditForm(task).date_mode = $event"
+                    @update:run-dates="getEditForm(task).run_dates = $event"
+                    @update:skip-dates="getEditForm(task).skip_dates = $event"
+                    @update:skip-weekends="getEditForm(task).skip_weekends = $event"
+                  />
+                </el-form-item>
                 <el-form-item label="签到文本" prop="text">
                   <el-input v-model="getEditForm(task).text" type="textarea" :rows="3" placeholder="请输入签到时需要提交的文本内容" />
                 </el-form-item>
@@ -107,7 +123,6 @@
                 </el-form-item>
                 <el-form-item>
                   <el-checkbox v-model="getEditForm(task).enable">启用任务</el-checkbox>
-                  <el-checkbox v-model="getEditForm(task).skip_weekends">周末跳过</el-checkbox>
                   <el-checkbox v-model="getEditForm(task).notify_wechat">发送企业微信通知</el-checkbox>
                 </el-form-item>
                 <el-form-item>
@@ -130,6 +145,7 @@ import { reactive, ref, computed, watch } from 'vue'
 import { Edit, VideoPlay, Delete, User, List, Clock, MapLocation, Picture, Calendar, ChatLineSquare } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CheckinResultDialog from '../components/CheckinResultDialog.vue'
+import TaskDateSchedule from '../components/TaskDateSchedule.vue'
 import TaskImageUpload from '../components/TaskImageUpload.vue'
 import { useAppState } from '../composables/useAppState'
 import { createCheckinResult } from '../utils/checkinResult'
@@ -223,6 +239,9 @@ function getEditForm(task) {
       enable: task.enable !== false,
       use_location: task.use_location || false,
       skip_weekends: task.skip_weekends || false,
+      date_mode: task.date_mode || 'daily',
+      run_dates: [...(task.run_dates || [])],
+      skip_dates: [...(task.skip_dates || [])],
       mode: task.mode || 'normal',
       notify_wechat: task.notify_wechat !== false
     })
@@ -265,6 +284,9 @@ function toggleInlineEdit(task) {
       enable: task.enable !== false,
       use_location: task.use_location || false,
       skip_weekends: task.skip_weekends || false,
+      date_mode: task.date_mode || 'daily',
+      run_dates: [...(task.run_dates || [])],
+      skip_dates: [...(task.skip_dates || [])],
       mode: task.mode || 'normal',
       notify_wechat: task.notify_wechat !== false
     })
@@ -298,6 +320,10 @@ function toggleInlineEdit(task) {
 async function saveInlineEdit(task) {
   const key = getTaskKey(task)
   editForms[key].times = editTimesInputs[key].split(/[\s,|;，；、]+/).map(t => t.trim()).filter(Boolean)
+  if (editForms[key].date_mode === 'specific' && !editForms[key].run_dates.length) {
+    ElMessage.warning('指定日期模式下请至少选择一个执行日期')
+    return
+  }
   editForms[key].mode = (editForms[key].pic_path && editForms[key].pic_path.length) ? 'image' : 'normal'
   
   try {

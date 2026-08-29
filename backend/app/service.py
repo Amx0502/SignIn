@@ -24,6 +24,7 @@ from .config import (
 )
 from .database import Database, DatabaseSettings
 from .repository import AccountRepository
+from .task_date_schedule import is_task_active_on, normalize_task_date_rule
 
 
 def ensure_dirs() -> None:
@@ -70,6 +71,7 @@ def normalize_task(task: dict | None = None) -> dict:
     mode = str(task.get("mode", "")).strip() or ("image" if pic_paths else "normal")
     if mode not in {"normal", "image"}:
         mode = "normal"
+    date_rule = normalize_task_date_rule(task)
     return {
         "index": int(task.get("index", 1) or 1),
         "title": str(task.get("title", "")).strip() or f"任务{task.get('index', 1)}",
@@ -79,6 +81,7 @@ def normalize_task(task: dict | None = None) -> dict:
         "text": str(task.get("text", "")),
         "pic_path": pic_paths,
         "skip_weekends": bool(task.get("skip_weekends", False)),
+        **date_rule,
         "mode": mode,
         "notify_wechat": bool(task.get("notify_wechat", True)),
     }
@@ -748,7 +751,6 @@ class AppState:
     def process_schedule(self) -> None:
         now = dt.datetime.now()
         current_date = now.strftime("%Y-%m-%d")
-        weekday = now.weekday()
 
         with self.lock:
             auto_enabled = self.auto_enabled
@@ -776,45 +778,68 @@ class AppState:
             for task in account.get("tasks", []):
                 if not task.get("enable", True):
                     continue
-                if task.get("skip_weekends", False) and weekday in (5, 6):
-                    continue
                 for target_time in task.get("times", []):
                     hour, minute, second = map(int, target_time.split(":"))
                     target = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
-                    
-                    refresh_target = target - dt.timedelta(minutes=30)
-                    refresh_time_str = refresh_target.strftime("%H:%M:%S")
-                    
-                    self.logger.debug("[Token刷新] 用户[%s] 任务时间[%s] 刷新目标时间[%s] 当前时间[%s]", 
-                                      mobile, target_time, refresh_time_str, now.strftime("%H:%M:%S"))
-                    
-                    skip_refresh, diff_seconds = self._should_skip_task_refresh(refresh_time_str, refresh_times, now)
-                    if skip_refresh:
-                        self.logger.debug("[Token刷新] 用户[%s] 任务刷新时间[%s]与全局刷新时间差[%s秒]<=阈值[%s秒]，取消任务单独刷新", 
-                                          mobile, refresh_time_str, int(diff_seconds) if diff_seconds else 'N/A', self._REFRESH_THRESHOLD_SECONDS)
-                    elif 0 <= (now - refresh_target).total_seconds() <= 60:
+
+                    # Token refresh may belong to tomorrow's occurrence when a
+                    # task runs shortly after midnight.  Evaluate both today's
+                    # and tomorrow's occurrence and apply the date rule to the
+                    # actual run date, rather than the refresh calendar date.
+                    for occurrence_target in (target, target + dt.timedelta(days=1)):
+                        occurrence_date = occurrence_target.date()
+                        if not is_task_active_on(task, occurrence_date):
+                            continue
+                        refresh_target = occurrence_target - dt.timedelta(minutes=30)
+                        refresh_after_seconds = (now - refresh_target).total_seconds()
+                        if not 0 <= refresh_after_seconds <= 60:
+                            continue
+
+                        refresh_time_str = refresh_target.strftime("%H:%M:%S")
+                        skip_refresh, diff_seconds = self._should_skip_task_refresh(
+                            refresh_time_str, refresh_times, now
+                        )
+                        if skip_refresh:
+                            self.logger.debug(
+                                "[Token刷新] 用户[%s] 任务刷新时间[%s]与全局刷新时间差[%s秒]<=阈值[%s秒]，取消任务单独刷新",
+                                mobile,
+                                refresh_time_str,
+                                int(diff_seconds) if diff_seconds is not None else "N/A",
+                                self._REFRESH_THRESHOLD_SECONDS,
+                            )
+                            continue
+
+                        occurrence_date_key = occurrence_date.isoformat()
                         refresh_record_key = f"{mobile}_{target_time}_refresh"
-                        self.logger.debug("[Token刷新] 用户[%s] 在时间窗口内，检查是否已刷新", mobile)
                         should_refresh = False
                         with self.lock:
-                            last_refresh_date = self.token_refresh_records.get(refresh_record_key)
-                            self.logger.debug("[Token刷新] 用户[%s] 上次刷新日期[%s] 当前日期[%s]", 
-                                              mobile, last_refresh_date, current_date)
-                            if last_refresh_date != current_date:
-                                self.token_refresh_records[refresh_record_key] = current_date
+                            if (
+                                self.token_refresh_records.get(refresh_record_key)
+                                != occurrence_date_key
+                            ):
+                                self.token_refresh_records[refresh_record_key] = (
+                                    occurrence_date_key
+                                )
                                 should_refresh = True
-                                self.logger.info("[Token刷新] 用户[%s] 标记为待刷新，记录已更新", mobile)
-                            else:
-                                self.logger.debug("[Token刷新] 用户[%s] 今日已刷新，跳过", mobile)
                         if should_refresh:
-                            self.logger.info("[Token刷新] 用户[%s] 开始执行刷新，任务时间[%s]，刷新时间[%s]", 
-                                             mobile, target_time, refresh_time_str)
-                            self.executor.submit(self._refresh_single_token, mobile, account["password"])
-                    else:
-                        self.logger.debug("[Token刷新] 用户[%s] 不在时间窗口内，跳过", mobile)
-                    
+                            self.logger.info(
+                                "[Token刷新] 用户[%s] 开始执行刷新，任务日期[%s]，任务时间[%s]，刷新时间[%s]",
+                                mobile,
+                                occurrence_date_key,
+                                target_time,
+                                refresh_time_str,
+                            )
+                            self.executor.submit(
+                                self._refresh_single_token,
+                                mobile,
+                                account["password"],
+                            )
+
                     after_seconds = (now - target).total_seconds()
-                    if 0 <= after_seconds <= 60:
+                    if (
+                        is_task_active_on(task, target.date())
+                        and 0 <= after_seconds <= 60
+                    ):
                         record_key = f"{mobile}_{task.get('title')}_{target_time}"
                         should_run = False
                         with self.lock:
