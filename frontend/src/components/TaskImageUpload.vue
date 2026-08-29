@@ -106,7 +106,8 @@ function handleDrop(event) {
 </script>
 
 <style scoped>
-.task-image-upload__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; max-width: 620px; }
+.task-image-upload { width: 100%; min-width: 0; max-width: 100%; }
+.task-image-upload__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(132px, 100%), 1fr)); gap: 12px; width: 100%; min-width: 0; max-width: 620px; }
 .task-image-upload__card, .task-image-upload__trigger { position: relative; min-height: 132px; overflow: hidden; border: 1px solid #dbe7f5; border-radius: 14px; background: #f8fbff; }
 .task-image-upload__card { box-shadow: 0 8px 22px rgb(37 99 235 / 8%); }
 .task-image-upload__image { display: block; width: 100%; height: 98px; object-fit: cover; background: linear-gradient(135deg, #eef6ff, #f8fafc); }

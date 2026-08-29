@@ -509,6 +509,9 @@ async function deleteTask() {
   min-width: 0;
   max-width: 100%;
 }
+.task-form-card :deep(.el-card__body) {
+  overflow-x: hidden;
+}
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -557,6 +560,8 @@ async function deleteTask() {
   color: #334155;
 }
 .upload-tip {
+  width: 100%;
+  min-width: 0;
   font-size: 12px;
   color: #94a3b8;
   margin-top: 8px;
