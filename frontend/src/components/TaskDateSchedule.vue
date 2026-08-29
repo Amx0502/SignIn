@@ -78,11 +78,15 @@
 
       <div class="date-summary">
         <span class="date-summary__mark"></span>
-        <span>
-          本月{{ dateMode === 'daily' ? '计划' : '已选' }} {{ monthSummary.base }} 天，
-          <template v-if="monthSummary.explicitSkip">单独排除 {{ monthSummary.explicitSkip }} 天，</template>
-          <template v-if="skipWeekends">周末规则跳过 {{ monthSummary.weekendSkip }} 天，</template>
-          实际执行 <strong>{{ monthSummary.effective }}</strong> 天
+        <span v-if="dateMode === 'daily'">
+          全部计划：每天执行，单独排除 {{ planSummary.explicitSkip }} 天，
+          {{ skipWeekends ? '周末不执行' : '周末正常执行' }}
+        </span>
+        <span v-else>
+          全部计划已选 {{ planSummary.base }} 天，
+          单独排除 {{ planSummary.explicitSkip }} 天，
+          <template v-if="skipWeekends">周末规则跳过 {{ planSummary.weekendSkip }} 天，</template>
+          实际执行 <strong>{{ planSummary.effective }}</strong> 天
         </span>
       </div>
     </div>
@@ -389,21 +393,30 @@ function dateCellClass(item) {
   }
 }
 
-const monthSummary = computed(() => {
-  const base = props.dateMode === 'daily'
-    ? monthDates.value.length
-    : monthDates.value.filter(item => isBaseSelected(item.key)).length
-  const explicitSkip = monthDates.value.filter(item => (
-    isExplicitSkip(item.key)
-  )).length
+function dateFromKey(key) {
+  const [year, month, day] = key.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+const planSummary = computed(() => {
+  if (props.dateMode === 'daily') {
+    return {
+      base: null,
+      explicitSkip: skipDateSet.value.size,
+      weekendSkip: null,
+      effective: null,
+    }
+  }
+
+  const allRunDates = sortDates(props.runDates || [])
+  const explicitSkip = allRunDates.filter(key => skipDateSet.value.has(key)).length
   const weekendSkip = props.skipWeekends
-    ? monthDates.value.filter(item => (
-      isBaseSelected(item.key)
-      && !skipDateSet.value.has(item.key)
-      && isWeekend(item.date)
+    ? allRunDates.filter(key => (
+      !skipDateSet.value.has(key) && isWeekend(dateFromKey(key))
     )).length
     : 0
-  const effective = monthDates.value.filter(isEffective).length
+  const base = allRunDates.length
+  const effective = base - explicitSkip - weekendSkip
   return { base, explicitSkip, weekendSkip, effective }
 })
 
@@ -430,9 +443,7 @@ function normalizePreviewTime(value) {
 const lastOccurrenceText = computed(() => {
   const effectiveDates = sortDates(props.runDates || []).filter(key => {
     if (skipDateSet.value.has(key)) return false
-    const [year, month, day] = key.split('-').map(Number)
-    const date = new Date(year, month - 1, day)
-    return !(props.skipWeekends && isWeekend(date))
+    return !(props.skipWeekends && isWeekend(dateFromKey(key)))
   })
   const validTimes = (props.times || []).map(normalizePreviewTime).filter(Boolean).sort()
   if (!effectiveDates.length || !validTimes.length) return '请先设置有效日期和时间'
