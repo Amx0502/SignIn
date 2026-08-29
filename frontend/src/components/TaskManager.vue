@@ -1,6 +1,6 @@
 <template>
   <div class="page-container">
-    <el-row :gutter="16">
+    <el-row :gutter="16" class="task-layout">
       <el-col :xs="24" :lg="14">
         <el-card shadow="hover" class="task-list-card">
           <template #header>
@@ -519,6 +519,25 @@ async function deleteTask() {
   font-size: 12px;
   color: #94a3b8;
   margin-top: 8px;
+}
+
+/* The sidebar reduces the real content width considerably.  Keep the two
+   cards stacked until there is enough room for the form labels and calendar. */
+@media (max-width: 1600px) {
+  .task-layout {
+    row-gap: 16px;
+  }
+
+  .task-layout > .el-col {
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
+
+  .task-form-card :deep(.el-form) {
+    width: 100%;
+    max-width: 980px;
+    margin: 0 auto;
+  }
 }
 
 @media (max-width: 768px) {

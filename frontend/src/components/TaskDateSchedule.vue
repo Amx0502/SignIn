@@ -379,12 +379,14 @@ const clearActionLabel = computed(() => (
 
 <style scoped>
 .date-schedule { width: 100%; }
-.date-schedule__controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.date-schedule__controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.date-schedule__controls :deep(.el-radio-group) { flex-wrap: nowrap; }
+.date-schedule__controls :deep(.el-checkbox) { flex: none; white-space: nowrap; }
 .date-schedule__calendar { overflow: hidden; border: 1px solid #dbeafe; border-radius: 16px; background: linear-gradient(160deg, #fff, #f8fbff); box-shadow: 0 12px 30px rgb(37 99 235 / 7%); }
 .calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid #eaf1fb; }
-.calendar-title { display: flex; align-items: baseline; gap: 8px; color: #1e293b; }
-.calendar-title strong { font-size: 14px; }
-.calendar-title button { padding: 0; border: 0; color: #3b82f6; background: transparent; cursor: pointer; font-size: 11px; }
+.calendar-title { display: flex; align-items: baseline; justify-content: center; gap: 10px; min-width: 0; color: #1e293b; }
+.calendar-title strong { font-size: 14px; white-space: nowrap; }
+.calendar-title button { padding: 0; border: 0; color: #3b82f6; background: transparent; cursor: pointer; font-size: 11px; white-space: nowrap; }
 .weekday-grid, .date-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .weekday-grid { padding: 8px 8px 3px; }
 .weekday-button { display: grid; min-width: 0; padding: 5px 1px 4px; place-items: center; gap: 3px; border: 0; color: #64748b; background: transparent; cursor: pointer; font-size: 11px; }
