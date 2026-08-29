@@ -36,7 +36,7 @@
                   :aria-label="`选择任务 ${task.title}`"
                   @change="checked => toggleTaskSelection(task, checked)"
                 />
-                <el-tag :type="task.enable ? 'success' : 'info'" size="small">{{ task.enable ? '启用' : '禁用' }}</el-tag>
+                <el-tag :type="taskStatusType(task)" size="small">{{ taskStatusText(task) }}</el-tag>
                 <span class="task-title">{{ task.title }}</span>
                 <el-tag :type="task.mode === 'image' ? 'warning' : 'primary'" size="small">
                   {{ task.mode === 'image' ? '图片签到' : '普通签到' }}
@@ -60,6 +60,9 @@
                 <span v-if="task.pic_path && task.pic_path.length"><el-icon><Picture /></el-icon>{{ task.pic_path.length }}张图</span>
                 <span v-if="task.skip_weekends"><el-icon><Calendar /></el-icon>周末跳过</span>
                 <span v-if="task.notify_wechat !== false"><el-icon><VideoPlay /></el-icon>企微通知</span>
+                <span v-if="task.completed_at" :title="formatDateTime(task.completed_scheduled_for)">
+                  <el-icon><Calendar /></el-icon>完成于 {{ formatDateTime(task.completed_at) }}
+                </span>
               </div>
             </div>
             <div class="task-actions">
@@ -97,10 +100,13 @@
                     :run-dates="getEditForm(task).run_dates"
                     :skip-dates="getEditForm(task).skip_dates"
                     :skip-weekends="getEditForm(task).skip_weekends"
+                    :times="getEditForm(task).times"
+                    :auto-disable-after-finish="getEditForm(task).auto_disable_after_finish"
                     @update:date-mode="getEditForm(task).date_mode = $event"
                     @update:run-dates="getEditForm(task).run_dates = $event"
                     @update:skip-dates="getEditForm(task).skip_dates = $event"
                     @update:skip-weekends="getEditForm(task).skip_weekends = $event"
+                    @update:auto-disable-after-finish="getEditForm(task).auto_disable_after_finish = $event"
                   />
                 </el-form-item>
                 <el-form-item label="签到文本" prop="text">
@@ -198,6 +204,20 @@ function getTaskKey(task) {
   return `${task.accountIndex}-${task.taskIndex}`
 }
 
+function taskStatusText(task) {
+  if (task.completed_at) return task.completion_result === 'failed' ? '已结束·失败' : '已完成'
+  return task.enable ? '启用' : '禁用'
+}
+
+function taskStatusType(task) {
+  if (task.completed_at) return task.completion_result === 'failed' ? 'warning' : 'primary'
+  return task.enable ? 'success' : 'info'
+}
+
+function formatDateTime(value) {
+  return String(value || '').replace('T', ' ')
+}
+
 function toggleTaskSelection(task, checked) {
   const nextKeys = new Set(selectedTaskKeys.value)
   const key = getTaskKey(task)
@@ -242,6 +262,7 @@ function getEditForm(task) {
       date_mode: task.date_mode || 'daily',
       run_dates: [...(task.run_dates || [])],
       skip_dates: [...(task.skip_dates || [])],
+      auto_disable_after_finish: task.auto_disable_after_finish === true,
       mode: task.mode || 'normal',
       notify_wechat: task.notify_wechat !== false
     })
@@ -287,6 +308,7 @@ function toggleInlineEdit(task) {
       date_mode: task.date_mode || 'daily',
       run_dates: [...(task.run_dates || [])],
       skip_dates: [...(task.skip_dates || [])],
+      auto_disable_after_finish: task.auto_disable_after_finish === true,
       mode: task.mode || 'normal',
       notify_wechat: task.notify_wechat !== false
     })

@@ -71,3 +71,35 @@ def is_task_active_on(task: dict, run_date: dt.date) -> bool:
     if task.get("skip_weekends", False) and run_date.weekday() >= 5:
         return False
     return True
+
+
+def get_last_effective_occurrence(task: dict) -> dt.datetime | None:
+    """Return the final runnable date/time for a specific-date task."""
+    if (
+        str(task.get("date_mode", DATE_MODE_DAILY)).strip().lower()
+        != DATE_MODE_SPECIFIC
+    ):
+        return None
+
+    run_dates = normalize_date_list(task.get("run_dates", []), "指定执行日期")
+    effective_dates = [
+        dt.date.fromisoformat(value)
+        for value in run_dates
+        if is_task_active_on(task, dt.date.fromisoformat(value))
+    ]
+    if not effective_dates:
+        return None
+
+    parsed_times: list[dt.time] = []
+    for value in task.get("times", []) or []:
+        text = str(value).strip()
+        try:
+            parsed_times.append(dt.time.fromisoformat(text))
+        except ValueError:
+            continue
+    if not parsed_times:
+        return None
+
+    return dt.datetime.combine(max(effective_dates), max(parsed_times)).replace(
+        microsecond=0
+    )

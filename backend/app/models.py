@@ -15,6 +15,7 @@ class Task(BaseModel):
     date_mode: str = Field(default="daily", pattern="^(daily|specific)$")
     run_dates: List[str] = Field(default_factory=list, max_length=730)
     skip_dates: List[str] = Field(default_factory=list, max_length=730)
+    auto_disable_after_finish: bool = Field(default=False)
     mode: str = Field(default="normal", pattern="^(normal|image)$")
     notify_wechat: bool = Field(default=True)
 
@@ -53,6 +54,7 @@ class TaskCreate(BaseModel):
     date_mode: str = Field(default="daily", pattern="^(daily|specific)$")
     run_dates: List[str] = Field(default_factory=list, max_length=730)
     skip_dates: List[str] = Field(default_factory=list, max_length=730)
+    auto_disable_after_finish: bool = False
     mode: str = "normal"
     notify_wechat: bool = True
 

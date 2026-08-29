@@ -65,10 +65,14 @@
                   : '每天' }}
               </template>
             </el-table-column>
-            <el-table-column label="启用" width="80">
+            <el-table-column label="状态" width="88">
               <template #default="scope">
-                <el-tag :type="scope.row.task.enable ? 'success' : 'info'" size="small">
-                  {{ scope.row.task.enable ? '是' : '否' }}
+                <el-tag
+                  :type="taskStatusType(scope.row.task)"
+                  size="small"
+                  :title="scope.row.task.completed_at ? `完成于 ${formatDateTime(scope.row.task.completed_at)}` : ''"
+                >
+                  {{ taskStatusText(scope.row.task) }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -137,10 +141,13 @@
                 :run-dates="form.run_dates"
                 :skip-dates="form.skip_dates"
                 :skip-weekends="form.skip_weekends"
+                :times="form.times"
+                :auto-disable-after-finish="form.auto_disable_after_finish"
                 @update:date-mode="form.date_mode = $event"
                 @update:run-dates="form.run_dates = $event"
                 @update:skip-dates="form.skip_dates = $event"
                 @update:skip-weekends="form.skip_weekends = $event"
+                @update:auto-disable-after-finish="form.auto_disable_after_finish = $event"
               />
             </el-form-item>
             <el-form-item label="签到文本" prop="text">
@@ -219,6 +226,7 @@ const form = reactive({
   date_mode: 'daily',
   run_dates: [],
   skip_dates: [],
+  auto_disable_after_finish: true,
   mode: 'normal',
   notify_wechat: true
 })
@@ -277,6 +285,20 @@ function locationTagText(task) {
   return task.use_location ? '自动' : '无'
 }
 
+function taskStatusText(task) {
+  if (task.completed_at) return task.completion_result === 'failed' ? '已结束' : '已完成'
+  return task.enable ? '启用' : '禁用'
+}
+
+function taskStatusType(task) {
+  if (task.completed_at) return task.completion_result === 'failed' ? 'warning' : 'primary'
+  return task.enable ? 'success' : 'info'
+}
+
+function formatDateTime(value) {
+  return String(value || '').replace('T', ' ')
+}
+
 const accountTasks = computed(() => {
   if (!currentAccount.value) return []
   return (currentAccount.value.tasks || []).map((task, actualIndex) => ({ task, actualIndex }))
@@ -322,6 +344,7 @@ function createNew() {
   form.date_mode = 'daily'
   form.run_dates = []
   form.skip_dates = []
+  form.auto_disable_after_finish = true
   form.mode = 'normal'
   form.notify_wechat = true
   locationMode.value = 'none'
@@ -345,6 +368,7 @@ function onSelectTask(row) {
   form.date_mode = task.date_mode || 'daily'
   form.run_dates = [...(task.run_dates || [])]
   form.skip_dates = [...(task.skip_dates || [])]
+  form.auto_disable_after_finish = task.auto_disable_after_finish === true
   form.mode = task.mode || (taskPicPaths.length ? 'image' : 'normal')
   form.notify_wechat = task.notify_wechat !== false
   syncLocationMode()

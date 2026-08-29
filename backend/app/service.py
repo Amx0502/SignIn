@@ -61,6 +61,7 @@ def parse_time_list(value) -> list[str]:
 
 def normalize_task(task: dict | None = None) -> dict:
     task = task or {}
+    raw_task_id = task.get("id")
     raw_pic = task.get("pic_path", [])
     if isinstance(raw_pic, str):
         pic_paths = [raw_pic.strip()] if raw_pic.strip() else []
@@ -73,6 +74,7 @@ def normalize_task(task: dict | None = None) -> dict:
         mode = "normal"
     date_rule = normalize_task_date_rule(task)
     return {
+        "id": int(raw_task_id) if raw_task_id not in (None, "") else None,
         "index": int(task.get("index", 1) or 1),
         "title": str(task.get("title", "")).strip() or f"任务{task.get('index', 1)}",
         "times": parse_time_list(task.get("times", [])),
@@ -82,6 +84,9 @@ def normalize_task(task: dict | None = None) -> dict:
         "pic_path": pic_paths,
         "skip_weekends": bool(task.get("skip_weekends", False)),
         **date_rule,
+        "auto_disable_after_finish": bool(
+            task.get("auto_disable_after_finish", False)
+        ),
         "mode": mode,
         "notify_wechat": bool(task.get("notify_wechat", True)),
     }
@@ -425,6 +430,8 @@ class AppState:
                 line += f"（📍位置：{result['location'].get('address', '')}）"
             if not success and result.get("error"):
                 line += f" → {result['error']}"
+            if result.get("plan_completion"):
+                line += f"（📅{result['plan_completion']}）"
             content += line + "\n"
         
         with self.lock:
@@ -607,8 +614,21 @@ class AppState:
         self.repository.delete_task(account_index, task_index)
         self.logger.info("[%s] 已删除任务：%s", account_name, task["title"])
 
-    def enqueue_task(self, account: dict, task: dict) -> None:
-        self.executor.submit(self._execute_task, normalize_account(account), normalize_task(task))
+    def enqueue_task(
+        self,
+        account: dict,
+        task: dict,
+        *,
+        source: str = "manual",
+        scheduled_for: dt.datetime | None = None,
+    ) -> None:
+        self.executor.submit(
+            self._execute_task,
+            normalize_account(account),
+            normalize_task(task),
+            source,
+            scheduled_for,
+        )
 
     def run_task(self, account_index: int, task_index: int) -> dict:
         account = self.repository.list_accounts()[account_index]
@@ -664,14 +684,26 @@ class AppState:
                     queued_count += 1
         return {"queued_count": queued_count}
 
-    def _execute_task(self, account: dict, task: dict) -> None:
+    def _execute_task(
+        self,
+        account: dict,
+        task: dict,
+        source: str = "manual",
+        scheduled_for: dt.datetime | None = None,
+    ) -> None:
+        name = account.get("name") or account.get("mobile")
+        task_title = task.get("title", "未命名任务")
+        success = False
+        result = {"title": task_title}
         try:
             delay = random.uniform(0, 18)
             time.sleep(delay)
-            name = account.get("name") or account.get("mobile")
-            task_title = task.get("title", "未命名任务")
             self.logger.info("[%s] 任务《%s》随机延迟 %.2f 秒后执行", name, task_title, delay)
             ok, result = self.service.execute_task(account, task)
+            if not isinstance(result, dict):
+                result = {"title": task_title, "error": "签到接口返回结果格式无效"}
+                ok = False
+            success = bool(ok)
             if ok:
                 real_title = result.get("real_title", "未知项目")
                 message = f"[{name}] 任务《{task_title}》签到成功，实际项目：{real_title}"
@@ -682,25 +714,42 @@ class AppState:
                 if result.get("location"):
                     message += f"，位置：{result['location'].get('address', '')}"
                 self.logger.info(message)
-                try:
-                    if task.get("notify_wechat", True):
-                        self._cache_wechat_notification(name, result, success=True)
-                    else:
-                        self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task_title)
-                except Exception:
-                    pass
             else:
                 error_msg = result.get("error", f"[{name}] 任务《{task_title}》签到失败")
                 self.logger.error(error_msg)
-                try:
-                    if task.get("notify_wechat", True):
-                        self._cache_wechat_notification(name, result, success=False)
-                    else:
-                        self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task_title)
-                except Exception:
-                    pass
         except Exception as exc:
-            self.logger.error("[%s] 执行任务异常：%s", account.get("name") or account.get("mobile"), exc)
+            result = {"title": task_title, "error": str(exc)}
+            self.logger.error("[%s] 执行任务异常：%s", name, exc)
+
+        if (
+            source == "schedule"
+            and scheduled_for is not None
+            and task.get("id") is not None
+        ):
+            try:
+                completed_task = self.repository.complete_task_if_final_occurrence(
+                    task["id"],
+                    scheduled_for,
+                    "success" if success else "failed",
+                )
+                if completed_task is not None:
+                    if success:
+                        completion_note = "指定日期计划已全部执行，任务已自动关闭"
+                        self.logger.info("[%s] 任务《%s》%s", name, task_title, completion_note)
+                    else:
+                        completion_note = "最后一次计划执行失败，任务已自动关闭，可手动重试"
+                        self.logger.warning("[%s] 任务《%s》%s", name, task_title, completion_note)
+                    result["plan_completion"] = completion_note
+            except Exception as exc:
+                self.logger.error("[%s] 任务《%s》自动关闭失败：%s", name, task_title, exc)
+
+        try:
+            if task.get("notify_wechat", True):
+                self._cache_wechat_notification(name, result, success=success)
+            else:
+                self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task_title)
+        except Exception as exc:
+            self.logger.error("任务《%s》缓存企业微信通知失败：%s", task_title, exc)
 
     def scheduler_loop(self) -> None:
         while not self.stop_event.is_set():
@@ -847,4 +896,9 @@ class AppState:
                                 self.run_records[record_key] = current_date
                                 should_run = True
                         if should_run:
-                            self.enqueue_task(account, task)
+                            self.enqueue_task(
+                                account,
+                                task,
+                                source="schedule",
+                                scheduled_for=target,
+                            )

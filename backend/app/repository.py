@@ -1,12 +1,14 @@
+import datetime as dt
 import json
 from pathlib import Path
+
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Database
 from .db_models import AccountProjectRow, AccountRow, TaskRow
-from .task_date_schedule import normalize_task_date_rule
+from .task_date_schedule import get_last_effective_occurrence, normalize_task_date_rule
 
 
 class AccountIndexError(IndexError):
@@ -48,6 +50,9 @@ def _normalize_task(data: dict | None = None) -> dict:
         "pic_path": [str(item) for item in pic_paths if str(item)],
         "skip_weekends": bool(data.get("skip_weekends", False)),
         **date_rule,
+        "auto_disable_after_finish": bool(
+            data.get("auto_disable_after_finish", False)
+        ),
         "mode": str(data.get("mode", "normal")),
         "notify_wechat": bool(data.get("notify_wechat", True)),
     }
@@ -60,6 +65,7 @@ class AccountRepository:
     @staticmethod
     def _task_to_dict(row: TaskRow) -> dict:
         return {
+            "id": row.id,
             "index": row.project_index,
             "title": row.title,
             "times": list(row.times or []),
@@ -71,6 +77,16 @@ class AccountRepository:
             "date_mode": row.date_mode or "daily",
             "run_dates": list(row.run_dates or []),
             "skip_dates": list(row.skip_dates or []),
+            "auto_disable_after_finish": row.auto_disable_after_finish,
+            "completed_at": (
+                row.completed_at.isoformat(timespec="seconds")
+                if row.completed_at else None
+            ),
+            "completion_result": row.completion_result or "",
+            "completed_scheduled_for": (
+                row.completed_scheduled_for.isoformat(timespec="seconds")
+                if row.completed_scheduled_for else None
+            ),
             "mode": row.mode,
             "notify_wechat": row.notify_wechat,
         }
@@ -177,8 +193,45 @@ class AccountRepository:
         row.date_mode = task["date_mode"]
         row.run_dates = task["run_dates"]
         row.skip_dates = task["skip_dates"]
+        row.auto_disable_after_finish = task["auto_disable_after_finish"]
         row.mode = task["mode"]
         row.notify_wechat = task["notify_wechat"]
+        if row.enable:
+            row.completed_at = None
+            row.completion_result = ""
+            row.completed_scheduled_for = None
+
+    def complete_task_if_final_occurrence(
+        self,
+        task_id: int,
+        scheduled_for: dt.datetime,
+        completion_result: str,
+    ) -> dict | None:
+        scheduled_for = scheduled_for.replace(microsecond=0, tzinfo=None)
+        result_value = "success" if completion_result == "success" else "failed"
+        with self.database.session() as session:
+            row = session.scalar(
+                select(TaskRow).where(TaskRow.id == task_id).with_for_update()
+            )
+            if (
+                row is None
+                or not row.enable
+                or not row.auto_disable_after_finish
+                or (row.date_mode or "daily") != "specific"
+            ):
+                return None
+
+            current_task = self._task_to_dict(row)
+            last_occurrence = get_last_effective_occurrence(current_task)
+            if last_occurrence is None or last_occurrence != scheduled_for:
+                return None
+
+            row.enable = False
+            row.completed_at = dt.datetime.now()
+            row.completion_result = result_value
+            row.completed_scheduled_for = scheduled_for
+            session.flush()
+            return self._task_to_dict(row)
 
     def add_task(self, account_index: int, data: dict) -> dict:
         task = _normalize_task(data)

@@ -67,6 +67,13 @@
         <el-button size="small" plain @click="applyWorkdays">{{ workdayActionLabel }}</el-button>
         <el-button size="small" plain @click="applyWholeMonth">{{ monthActionLabel }}</el-button>
         <el-button size="small" plain type="danger" @click="clearMonth">{{ clearActionLabel }}</el-button>
+        <el-button
+          v-if="dateMode === 'specific'"
+          size="small"
+          type="danger"
+          :disabled="!runDates.length"
+          @click="clearAllDates"
+        >清空全部</el-button>
       </div>
 
       <div class="date-summary">
@@ -80,6 +87,16 @@
       </div>
     </div>
 
+    <div v-if="dateMode === 'specific'" class="date-schedule__completion">
+      <el-checkbox
+        :model-value="autoDisableAfterFinish"
+        @change="emit('update:autoDisableAfterFinish', Boolean($event))"
+      >最后一次计划执行完成后自动关闭任务</el-checkbox>
+      <span>
+        最后一次计划：<strong>{{ lastOccurrenceText }}</strong>
+      </span>
+    </div>
+
     <p class="date-schedule__hint">
       点击星期标题可批量切换本月整列；点击单个日期可单独调整。周末跳过只暂停周末计划，关闭后会恢复原选择。
     </p>
@@ -89,12 +106,15 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
 
 const props = defineProps({
   dateMode: { type: String, default: 'daily' },
   runDates: { type: Array, default: () => [] },
   skipDates: { type: Array, default: () => [] },
   skipWeekends: { type: Boolean, default: false },
+  times: { type: Array, default: () => [] },
+  autoDisableAfterFinish: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -102,6 +122,7 @@ const emit = defineEmits([
   'update:runDates',
   'update:skipDates',
   'update:skipWeekends',
+  'update:autoDisableAfterFinish',
 ])
 
 const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
@@ -308,6 +329,26 @@ function clearMonth() {
   updateSkipDates([...next])
 }
 
+async function clearAllDates() {
+  const count = props.runDates.length
+  if (!count) return
+  try {
+    await ElMessageBox.confirm(
+      `将清空全部 ${count} 个指定执行日期，是否继续？`,
+      '清空全部指定日期',
+      {
+        type: 'warning',
+        confirmButtonText: '确认清空',
+        cancelButtonText: '取消',
+      },
+    )
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    throw error
+  }
+  updateRunDates([])
+}
+
 function moveMonth(offset) {
   visibleMonth.value = new Date(
     visibleYear.value,
@@ -375,6 +416,28 @@ const monthActionLabel = computed(() => (
 const clearActionLabel = computed(() => (
   props.dateMode === 'specific' ? '清空本月' : '本月全不签到'
 ))
+
+function normalizePreviewTime(value) {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/)
+  if (!match) return null
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  const second = Number(match[3] || 0)
+  if (hour > 23 || minute > 59 || second > 59) return null
+  return [hour, minute, second].map(part => String(part).padStart(2, '0')).join(':')
+}
+
+const lastOccurrenceText = computed(() => {
+  const effectiveDates = sortDates(props.runDates || []).filter(key => {
+    if (skipDateSet.value.has(key)) return false
+    const [year, month, day] = key.split('-').map(Number)
+    const date = new Date(year, month - 1, day)
+    return !(props.skipWeekends && isWeekend(date))
+  })
+  const validTimes = (props.times || []).map(normalizePreviewTime).filter(Boolean).sort()
+  if (!effectiveDates.length || !validTimes.length) return '请先设置有效日期和时间'
+  return `${effectiveDates[effectiveDates.length - 1]} ${validTimes[validTimes.length - 1]}`
+})
 </script>
 
 <style scoped>
@@ -414,6 +477,11 @@ const clearActionLabel = computed(() => (
 .date-summary { display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px 11px; color: #64748b; background: #eff6ff; font-size: 11px; line-height: 1.55; }
 .date-summary strong { color: #1d4ed8; }
 .date-summary__mark { width: 7px; height: 7px; flex: none; margin-top: 5px; border-radius: 50%; background: #3b82f6; box-shadow: 0 0 0 4px rgb(59 130 246 / 12%); }
+.date-schedule__completion { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 9px; padding: 10px 12px; border: 1px solid #dbeafe; border-radius: 12px; color: #64748b; background: #f8fbff; font-size: 11px; }
+.date-schedule__completion :deep(.el-checkbox) { height: auto; min-width: 0; }
+.date-schedule__completion :deep(.el-checkbox__label) { padding-left: 7px; color: #334155; font-size: 12px; white-space: normal; }
+.date-schedule__completion > span { flex: none; text-align: right; }
+.date-schedule__completion strong { color: #2563eb; font-variant-numeric: tabular-nums; }
 .date-schedule__hint { margin: 7px 2px 0; color: #94a3b8; font-size: 11px; line-height: 1.5; }
 
 @media (max-width: 520px) {
@@ -421,5 +489,7 @@ const clearActionLabel = computed(() => (
   .date-cell { min-height: 40px; border-radius: 8px; }
   .date-cell small { display: none; }
   .calendar-actions :deep(.el-button) { flex: 1; padding-right: 7px; padding-left: 7px; }
+  .date-schedule__completion { align-items: flex-start; flex-direction: column; }
+  .date-schedule__completion > span { text-align: left; }
 }
 </style>

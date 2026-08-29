@@ -68,6 +68,16 @@ class TaskRow(Base):
     date_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="daily")
     run_dates: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     skip_dates: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    auto_disable_after_finish: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completion_result: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=""
+    )
+    completed_scheduled_for: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
     mode: Mapped[str] = mapped_column(String(16), nullable=False, default="normal")
     notify_wechat: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 

@@ -52,10 +52,10 @@ class Database:
             expire_on_commit=False,
         )
         Base.metadata.create_all(self._engine)
-        self._migrate_task_date_columns(self._engine)
+        self._migrate_task_columns(self._engine)
 
     @staticmethod
-    def _migrate_task_date_columns(engine: Engine) -> None:
+    def _migrate_task_columns(engine: Engine) -> None:
         columns = {
             column["name"]: column
             for column in inspect(engine).get_columns("tasks")
@@ -90,6 +90,32 @@ class Database:
                             f"ALTER TABLE tasks MODIFY COLUMN {name} JSON NOT NULL"
                         )
                     )
+
+            if "auto_disable_after_finish" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE tasks ADD COLUMN auto_disable_after_finish "
+                        "TINYINT(1) NOT NULL DEFAULT 0"
+                    )
+                )
+            if "completed_at" not in columns:
+                connection.execute(
+                    text("ALTER TABLE tasks ADD COLUMN completed_at DATETIME NULL")
+                )
+            if "completion_result" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE tasks ADD COLUMN completion_result "
+                        "VARCHAR(16) NOT NULL DEFAULT ''"
+                    )
+                )
+            if "completed_scheduled_for" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE tasks ADD COLUMN completed_scheduled_for "
+                        "DATETIME NULL"
+                    )
+                )
 
     @contextmanager
     def session(self) -> Iterator[Session]:
