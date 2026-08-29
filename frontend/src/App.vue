@@ -161,53 +161,26 @@
         </button>
         <div class="tabs-scroll" ref="tabsScrollRef">
           <div class="tabs-track">
-            <draggable
-              v-model="tabs"
-              item-key="path"
-              :animation="180"
-              ghost-class="tab-ghost"
-              drag-class="tab-drag"
-              chosen-class="tab-chosen"
-              @end="onDragEnd"
+            <div
+              v-for="element in tabs"
+              :key="element.path"
+              class="tab-item"
+              :class="{ active: element.path === route.path }"
+              :title="element.parentTitle ? element.parentTitle + ' / ' + element.title : element.title"
+              @click="activateTab(element.path)"
+              @click.middle.prevent="closeTab(element.path)"
             >
-              <template #item="{ element }">
-                <div
-                  class="tab-item"
-                  :class="{ active: element.path === route.path }"
-                  :title="element.parentTitle ? element.parentTitle + ' / ' + element.title : element.title"
-                  @click="activateTab(element.path)"
-                  @click.middle.prevent="closeTab(element.path)"
-                >
-                  <el-icon class="tab-icon"><component :is="tabIcon(element)" /></el-icon>
-                  <span class="tab-title">{{ element.title }}</span>
-                  <span
-                    v-if="element.pinned"
-                    class="tab-pin"
-                    :title="'取消固定'"
-                    @click.stop="togglePin(element.path)"
-                  >
-                    <el-icon><Lock /></el-icon>
-                  </span>
-                  <template v-else>
-                    <span
-                      class="tab-pin-action"
-                      :title="'固定标签'"
-                      @click.stop="togglePin(element.path)"
-                    >
-                      <el-icon><Lock /></el-icon>
-                    </span>
-                    <span
-                      v-if="tabs.length > 1"
-                      class="tab-close"
-                      :aria-label="'关闭标签'"
-                      @click.stop="closeTab(element.path)"
-                    >
-                      <el-icon><Close /></el-icon>
-                    </span>
-                  </template>
-                </div>
-              </template>
-            </draggable>
+              <el-icon class="tab-icon"><component :is="tabIcon(element)" /></el-icon>
+              <span class="tab-title">{{ element.title }}</span>
+              <span
+                v-if="tabs.length > 1"
+                class="tab-close"
+                :aria-label="'关闭标签'"
+                @click.stop="closeTab(element.path)"
+              >
+                <el-icon><Close /></el-icon>
+              </span>
+            </div>
           </div>
         </div>
         <button
@@ -244,7 +217,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Odometer, User, Document, Timer, List, Menu, UserFilled, Grid, Setting, Close, Lock, Bell, ArrowLeft, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Timer, List, Menu, UserFilled, Grid, Setting, Close, Bell, ArrowLeft, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAppState } from './composables/useAppState'
 import { formatCurrentTime } from './utils/currentTime'
@@ -252,7 +225,6 @@ import { getBreadcrumb } from './utils/breadcrumb'
 import { logoutApi } from './api'
 import { parseLogLine } from './utils/logConsole.js'
 import classCubeApi from './api/classCube.js'
-import draggable from 'vuedraggable'
 import xxqdImage from './img/xxqd.png'
 import classCubeImage from './img/bjmf.png'
 import {
@@ -326,7 +298,6 @@ function loadTabs() {
             path: item.path,
             title: item.title,
             parentTitle: typeof item.parentTitle === 'string' ? item.parentTitle : '',
-            pinned: item.pinned === true,
             lastUsedAt: typeof item.lastUsedAt === 'number' ? item.lastUsedAt : Date.now() - index * 1000,
           }))
       : []
@@ -359,7 +330,6 @@ function addTab(target) {
     path: target.path,
     title: target.meta.title,
     parentTitle: target.meta.parentTitle || '',
-    pinned: false,
     lastUsedAt: Date.now(),
   })
   if (tabs.value.length > MAX_TABS) evictLeastUsed()
@@ -368,7 +338,7 @@ function addTab(target) {
 }
 
 function evictLeastUsed() {
-  const candidates = tabs.value.filter(item => !item.pinned)
+  const candidates = [...tabs.value]
   if (!candidates.length) return
   candidates.sort((a, b) => (a.lastUsedAt || 0) - (b.lastUsedAt || 0))
   const victim = candidates[0]
@@ -392,17 +362,9 @@ function activateTab(path) {
   if (path !== route.path) router.push(path)
 }
 
-function togglePin(path) {
-  const item = tabs.value.find(t => t.path === path)
-  if (!item) return
-  item.pinned = !item.pinned
-  persistTabs()
-}
-
 function closeTab(path) {
   const index = tabs.value.findIndex(item => item.path === path)
   if (index === -1) return
-  if (tabs.value[index].pinned) return
   const wasActive = path === route.path
   tabs.value.splice(index, 1)
   persistTabs()
@@ -432,14 +394,14 @@ function handleTabMenuCommand(command) {
   const currentIndex = tabs.value.findIndex(item => item.path === route.path)
   if (command === 'close-left') {
     if (currentIndex <= 0) return
-    removeTabs(tabs.value.slice(0, currentIndex).filter(t => !t.pinned).map(t => t.path))
+    removeTabs(tabs.value.slice(0, currentIndex).map(t => t.path))
   } else if (command === 'close-right') {
     if (currentIndex === -1 || currentIndex === tabs.value.length - 1) return
-    removeTabs(tabs.value.slice(currentIndex + 1).filter(t => !t.pinned).map(t => t.path))
+    removeTabs(tabs.value.slice(currentIndex + 1).map(t => t.path))
   } else if (command === 'close-others') {
-    removeTabs(tabs.value.filter(t => t.path !== route.path && !t.pinned).map(t => t.path))
+    removeTabs(tabs.value.filter(t => t.path !== route.path).map(t => t.path))
   } else if (command === 'close-all') {
-    removeTabs(tabs.value.filter(t => !t.pinned).map(t => t.path))
+    removeTabs(tabs.value.map(t => t.path))
   }
 }
 
@@ -511,11 +473,6 @@ function iconNameForTab(tab) {
     }
   }
   return ''
-}
-
-function onDragEnd() {
-  persistTabs()
-  nextTick(updateTabsOverflow)
 }
 
 // notification helpers
@@ -755,15 +712,13 @@ function stopCcLogPolling() {
 // menu command availability
 const currentTabIndex = computed(() => tabs.value.findIndex(item => item.path === route.path))
 const canCloseLeft = computed(() => {
-  if (currentTabIndex.value <= 0) return false
-  return tabs.value.slice(0, currentTabIndex.value).some(item => !item.pinned)
+  return currentTabIndex.value > 0
 })
 const canCloseRight = computed(() => {
-  if (currentTabIndex.value === -1 || currentTabIndex.value === tabs.value.length - 1) return false
-  return tabs.value.slice(currentTabIndex.value + 1).some(item => !item.pinned)
+  return currentTabIndex.value !== -1 && currentTabIndex.value < tabs.value.length - 1
 })
-const canCloseOthers = computed(() => tabs.value.some(item => item.path !== route.path && !item.pinned))
-const canCloseAll = computed(() => tabs.value.some(item => !item.pinned))
+const canCloseOthers = computed(() => tabs.value.some(item => item.path !== route.path))
+const canCloseAll = computed(() => tabs.value.length > 0)
 
 let lastEvictNoticeAt = 0
 
@@ -977,6 +932,11 @@ onUnmounted(() => {
   scrollbar-width: none;
   -ms-overflow-style: none;
   padding: 0 2px 6px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
+  touch-action: pan-x;
 }
 .tabs-scroll::-webkit-scrollbar { display: none; }
 .tabs-track { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -997,6 +957,7 @@ onUnmounted(() => {
   white-space: nowrap;
   transition: all 0.22s ease;
   animation: tabIn 0.25s cubic-bezier(0.34, 1.3, 0.64, 1);
+  scroll-snap-align: start;
 }
 .tab-item .tab-icon { color: #60a5fa; font-size: 15px; transition: color 0.22s ease; }
 .tab-item:hover {
@@ -1025,9 +986,7 @@ onUnmounted(() => {
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
   animation: tabActivePulse 2.4s ease-in-out infinite;
 }
-.tab-close,
-.tab-pin,
-.tab-pin-action {
+.tab-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1037,13 +996,8 @@ onUnmounted(() => {
   font-size: 11px;
   transition: all 0.18s ease;
 }
-.tab-pin { color: #f59e0b; }
-.tab-item.active .tab-pin { color: #fde68a; }
-.tab-pin-action { opacity: 0.85; color: #94a3b8; }
-.tab-pin-action:hover { opacity: 1; color: #2563eb; background: rgba(37, 99, 235, 0.12); }
 .tab-close { opacity: 0.85; margin-left: 1px; }
-.tab-item.active .tab-close,
-.tab-item.active .tab-pin-action { color: #e0f2fe; }
+.tab-item.active .tab-close { color: #e0f2fe; }
 .tab-close:hover {
   opacity: 1 !important;
   color: #fff;
@@ -1069,10 +1023,6 @@ onUnmounted(() => {
   box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
 }
 .tabs-nav-btn:active { transform: scale(0.95); }
-.tab-ghost { opacity: 0.45; background: #dbeafe; border: 1px dashed #3b82f6; }
-.tab-drag { opacity: 0.9; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.35); }
-.tab-chosen { border-color: #60a5fa; }
-
 .notify-badge { display: inline-flex; align-items: center; }
 .notify-badge.pulse .notify-btn { animation: notifyPulse 1.6s ease-in-out infinite; }
 .notify-btn {
