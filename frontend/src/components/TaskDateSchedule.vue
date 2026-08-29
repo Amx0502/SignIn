@@ -26,23 +26,18 @@
       </div>
 
       <div class="weekday-grid">
-        <el-tooltip
+        <button
           v-for="(label, index) in weekdays"
           :key="label"
-          :content="weekdayTip(index)"
-          placement="top"
+          type="button"
+          class="weekday-button"
+          :class="columnClass(index)"
+          :disabled="skipWeekends && index >= 5"
+          @click="toggleWeekday(index)"
         >
-          <button
-            type="button"
-            class="weekday-button"
-            :class="columnClass(index)"
-            :disabled="skipWeekends && index >= 5"
-            @click="toggleWeekday(index)"
-          >
-            <span>{{ label }}</span>
-            <i></i>
-          </button>
-        </el-tooltip>
+          <span>{{ label }}</span>
+          <i></i>
+        </button>
       </div>
 
       <div class="date-grid">
@@ -54,7 +49,6 @@
             :class="dateCellClass(cell)"
             :disabled="skipWeekends && isWeekend(cell.date)"
             :aria-pressed="isBaseSelected(cell.key)"
-            :title="dateCellTitle(cell)"
             @click="toggleDate(cell.key)"
           >
             <span>{{ cell.day }}</span>
@@ -365,21 +359,10 @@ function goToday() {
   visibleMonth.value = new Date(today.getFullYear(), today.getMonth(), 1)
 }
 
-function weekdayTip(index) {
-  if (props.skipWeekends && index >= 5) return '当前已启用周末跳过，关闭后可安排周末日期'
-  if (props.dateMode === 'specific') return `选择或取消本月全部${weekdays[index]}`
-  return `批量设置或恢复本月${weekdays[index]}的签到计划`
-}
-
 function dateCellStatus(item) {
   if (isExplicitSkip(item.key)) return '不签到'
   if (props.skipWeekends && isWeekend(item.date) && isBaseSelected(item.key)) return '周末跳过'
   return isBaseSelected(item.key) ? '执行' : ''
-}
-
-function dateCellTitle(item) {
-  const status = dateCellStatus(item) || '不执行'
-  return `${item.key} · ${status}`
 }
 
 function dateCellClass(item) {
