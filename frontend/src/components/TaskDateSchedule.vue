@@ -16,45 +16,61 @@
     </div>
 
     <div class="date-schedule__calendar">
-      <div class="calendar-head">
-        <el-button circle plain size="small" :icon="ArrowLeft" aria-label="上个月" @click="moveMonth(-1)" />
-        <div class="calendar-title">
-          <strong>{{ visibleYear }} 年 {{ visibleMonthNumber }} 月</strong>
-          <button type="button" @click="goToday">回到本月</button>
+      <div
+        :key="monthViewKey"
+        class="calendar-month-view"
+        :class="[
+          monthAnimationClass,
+          { 'is-swiping': isSwiping, 'is-resetting': isSwipeResetting },
+        ]"
+        :style="monthSwipeStyle"
+        @pointerdown="onMonthPointerDown"
+        @pointermove="onMonthPointerMove"
+        @pointerup="onMonthPointerUp"
+        @pointercancel="onMonthPointerCancel"
+        @lostpointercapture="onMonthPointerCancel"
+        @click.capture="onMonthClickCapture"
+      >
+        <div class="calendar-head">
+          <el-button circle plain size="small" :icon="ArrowLeft" aria-label="上个月" @click="moveMonth(-1)" />
+          <div class="calendar-title">
+            <strong aria-live="polite">{{ visibleYear }} 年 {{ visibleMonthNumber }} 月</strong>
+            <button type="button" @click="goToday">回到本月</button>
+          </div>
+          <el-button circle plain size="small" :icon="ArrowRight" aria-label="下个月" @click="moveMonth(1)" />
         </div>
-        <el-button circle plain size="small" :icon="ArrowRight" aria-label="下个月" @click="moveMonth(1)" />
-      </div>
 
-      <div class="weekday-grid">
-        <button
-          v-for="(label, index) in weekdays"
-          :key="label"
-          type="button"
-          class="weekday-button"
-          :class="columnClass(index)"
-          :disabled="skipWeekends && index >= 5"
-          @click="toggleWeekday(index)"
-        >
-          <span>{{ label }}</span>
-          <i></i>
-        </button>
-      </div>
-
-      <div class="date-grid">
-        <span v-for="cell in calendarCells" :key="cell.id" class="date-cell-wrap">
+        <div class="weekday-grid">
           <button
-            v-if="!cell.blank"
+            v-for="(label, index) in weekdays"
+            :key="label"
             type="button"
-            class="date-cell"
-            :class="dateCellClass(cell)"
-            :disabled="skipWeekends && isWeekend(cell.date)"
-            :aria-pressed="isBaseSelected(cell.key)"
-            @click="toggleDate(cell.key)"
+            class="weekday-button"
+            :class="columnClass(index)"
+            :disabled="skipWeekends && index >= 5"
+            @click="toggleWeekday(index)"
           >
-            <span>{{ cell.day }}</span>
-            <small>{{ dateCellStatus(cell) }}</small>
+            <span>{{ label }}</span>
+            <i></i>
           </button>
-        </span>
+        </div>
+
+        <div class="date-grid">
+          <span v-for="cell in calendarCells" :key="cell.id" class="date-cell-wrap">
+            <button
+              v-if="!cell.blank"
+              type="button"
+              class="date-cell"
+              :class="dateCellClass(cell)"
+              :disabled="skipWeekends && isWeekend(cell.date)"
+              :aria-pressed="isBaseSelected(cell.key)"
+              @click="toggleDate(cell.key)"
+            >
+              <span>{{ cell.day }}</span>
+              <small>{{ dateCellStatus(cell) }}</small>
+            </button>
+          </span>
+        </div>
       </div>
 
       <div class="calendar-actions">
@@ -99,7 +115,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 
@@ -127,8 +143,29 @@ const visibleMonth = ref(new Date(today.getFullYear(), today.getMonth(), 1))
 const visibleYear = computed(() => visibleMonth.value.getFullYear())
 const visibleMonthIndex = computed(() => visibleMonth.value.getMonth())
 const visibleMonthNumber = computed(() => visibleMonthIndex.value + 1)
+const monthViewKey = computed(() => `${visibleYear.value}-${visibleMonthIndex.value}`)
 const runDateSet = computed(() => new Set(props.runDates || []))
 const skipDateSet = computed(() => new Set(props.skipDates || []))
+
+const SWIPE_AXIS_LOCK = 8
+const SWIPE_MIN_DISTANCE = 44
+const SWIPE_MAX_DRAG_RATIO = 0.42
+const monthAnimationClass = ref('')
+const swipeOffset = ref(0)
+const isSwiping = ref(false)
+const isSwipeResetting = ref(false)
+const monthSwipeStyle = computed(() => ({
+  transform: `translate3d(${swipeOffset.value}px, 0, 0)`,
+}))
+
+let activePointerId = null
+let pointerStartX = 0
+let pointerStartY = 0
+let pointerStartTime = 0
+let pointerAxis = ''
+let swipeAnimationTimer = null
+let swipeResetTimer = null
+let suppressClickUntil = 0
 
 function dateKey(date) {
   const year = date.getFullYear()
@@ -344,17 +381,160 @@ async function clearAllDates() {
   updateRunDates([])
 }
 
+function clearSwipeResetTimer() {
+  if (swipeResetTimer) clearTimeout(swipeResetTimer)
+  swipeResetTimer = null
+}
+
+function releasePointer(event) {
+  const target = event?.currentTarget
+  if (!target || activePointerId == null) return
+  try {
+    if (target.hasPointerCapture?.(activePointerId)) {
+      target.releasePointerCapture(activePointerId)
+    }
+  } catch {
+    // The browser may have released capture automatically after pointercancel.
+  }
+}
+
+function resetPointerTracking() {
+  activePointerId = null
+  pointerAxis = ''
+  pointerStartX = 0
+  pointerStartY = 0
+  pointerStartTime = 0
+}
+
+function settleSwipe() {
+  clearSwipeResetTimer()
+  isSwiping.value = false
+  isSwipeResetting.value = true
+  swipeOffset.value = 0
+  swipeResetTimer = setTimeout(() => {
+    isSwipeResetting.value = false
+    swipeResetTimer = null
+  }, 190)
+}
+
 function moveMonth(offset) {
+  if (!offset) return
+  clearSwipeResetTimer()
+  if (swipeAnimationTimer) clearTimeout(swipeAnimationTimer)
+  isSwiping.value = false
+  isSwipeResetting.value = false
+  swipeOffset.value = 0
+  monthAnimationClass.value = offset > 0 ? 'is-entering-next' : 'is-entering-previous'
   visibleMonth.value = new Date(
     visibleYear.value,
     visibleMonthIndex.value + offset,
     1,
   )
+  swipeAnimationTimer = setTimeout(() => {
+    monthAnimationClass.value = ''
+    swipeAnimationTimer = null
+  }, 260)
 }
 
 function goToday() {
-  visibleMonth.value = new Date(today.getFullYear(), today.getMonth(), 1)
+  const monthOffset = (
+    (today.getFullYear() - visibleYear.value) * 12
+    + today.getMonth()
+    - visibleMonthIndex.value
+  )
+  if (monthOffset) moveMonth(monthOffset)
 }
+
+function onMonthPointerDown(event) {
+  if (!['touch', 'pen'].includes(event.pointerType) || event.isPrimary === false) return
+  clearSwipeResetTimer()
+  activePointerId = event.pointerId
+  pointerStartX = event.clientX
+  pointerStartY = event.clientY
+  pointerStartTime = performance.now()
+  pointerAxis = ''
+  isSwiping.value = false
+  isSwipeResetting.value = false
+  swipeOffset.value = 0
+}
+
+function onMonthPointerMove(event) {
+  if (event.pointerId !== activePointerId) return
+  const deltaX = event.clientX - pointerStartX
+  const deltaY = event.clientY - pointerStartY
+  const absX = Math.abs(deltaX)
+  const absY = Math.abs(deltaY)
+
+  if (!pointerAxis) {
+    if (Math.max(absX, absY) < SWIPE_AXIS_LOCK) return
+    pointerAxis = absX > absY * 1.1 ? 'horizontal' : 'vertical'
+    if (pointerAxis === 'vertical') {
+      resetPointerTracking()
+      return
+    }
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+    } catch {
+      // Pointer capture is an enhancement; the gesture still works without it.
+    }
+  }
+
+  if (pointerAxis !== 'horizontal') return
+  if (event.cancelable) event.preventDefault()
+  isSwiping.value = true
+  const maxDrag = event.currentTarget.clientWidth * SWIPE_MAX_DRAG_RATIO
+  swipeOffset.value = Math.max(-maxDrag, Math.min(maxDrag, deltaX))
+}
+
+function onMonthPointerUp(event) {
+  if (event.pointerId !== activePointerId) return
+  const deltaX = event.clientX - pointerStartX
+  const elapsed = Math.max(performance.now() - pointerStartTime, 1)
+  const velocity = Math.abs(deltaX) / elapsed
+  const threshold = Math.min(
+    64,
+    Math.max(SWIPE_MIN_DISTANCE, event.currentTarget.clientWidth * 0.13),
+  )
+  const wasHorizontal = pointerAxis === 'horizontal'
+  const shouldChangeMonth = wasHorizontal && (
+    Math.abs(deltaX) >= threshold
+    || (Math.abs(deltaX) >= 28 && velocity >= 0.45)
+  )
+
+  if (wasHorizontal) {
+    suppressClickUntil = Date.now() + 350
+    if (event.cancelable) event.preventDefault()
+  }
+  releasePointer(event)
+  resetPointerTracking()
+
+  if (shouldChangeMonth) {
+    moveMonth(deltaX < 0 ? 1 : -1)
+  } else if (wasHorizontal) {
+    settleSwipe()
+  } else {
+    swipeOffset.value = 0
+    isSwiping.value = false
+  }
+}
+
+function onMonthPointerCancel(event) {
+  if (event.pointerId !== activePointerId) return
+  releasePointer(event)
+  resetPointerTracking()
+  settleSwipe()
+}
+
+function onMonthClickCapture(event) {
+  if (Date.now() >= suppressClickUntil) return
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+onUnmounted(() => {
+  if (swipeAnimationTimer) clearTimeout(swipeAnimationTimer)
+  clearSwipeResetTimer()
+})
 
 function dateCellStatus(item) {
   if (isExplicitSkip(item.key)) return '不签到'
@@ -437,6 +617,11 @@ const lastOccurrenceText = computed(() => {
 .date-schedule__controls :deep(.el-radio-group) { flex-wrap: nowrap; }
 .date-schedule__controls :deep(.el-checkbox) { flex: none; white-space: nowrap; }
 .date-schedule__calendar { min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid #dbeafe; border-radius: 16px; background: linear-gradient(160deg, #fff, #f8fbff); box-shadow: 0 12px 30px rgb(37 99 235 / 7%); }
+.calendar-month-view { position: relative; touch-action: pan-y; user-select: none; will-change: transform, opacity; }
+.calendar-month-view.is-swiping { transition: none; }
+.calendar-month-view.is-resetting { transition: transform .19s cubic-bezier(.22, 1, .36, 1); }
+.calendar-month-view.is-entering-next { animation: calendar-enter-next .24s cubic-bezier(.22, 1, .36, 1); }
+.calendar-month-view.is-entering-previous { animation: calendar-enter-previous .24s cubic-bezier(.22, 1, .36, 1); }
 .calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid #eaf1fb; }
 .calendar-title { display: flex; align-items: baseline; justify-content: center; gap: 10px; min-width: 0; color: #1e293b; }
 .calendar-title strong { font-size: 14px; white-space: nowrap; }
@@ -473,6 +658,25 @@ const lastOccurrenceText = computed(() => {
 .date-schedule__completion :deep(.el-checkbox__label) { padding-left: 7px; color: #334155; font-size: 12px; white-space: normal; }
 .date-schedule__completion > span { flex: none; text-align: right; }
 .date-schedule__completion strong { color: #2563eb; font-variant-numeric: tabular-nums; }
+
+@keyframes calendar-enter-next {
+  from { opacity: .42; transform: translate3d(18%, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes calendar-enter-previous {
+  from { opacity: .42; transform: translate3d(-18%, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-month-view.is-resetting,
+  .calendar-month-view.is-entering-next,
+  .calendar-month-view.is-entering-previous {
+    animation: none;
+    transition: none;
+  }
+}
 
 @media (max-width: 520px) {
   .date-schedule__controls { align-items: flex-start; flex-direction: column; }
