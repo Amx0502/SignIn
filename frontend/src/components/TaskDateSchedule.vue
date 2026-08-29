@@ -29,6 +29,10 @@
         @pointerup="onMonthPointerUp"
         @pointercancel="onMonthPointerCancel"
         @lostpointercapture="onMonthPointerCancel"
+        @touchstart="onMonthTouchStart"
+        @touchmove="onMonthTouchMove"
+        @touchend="onMonthTouchEnd"
+        @touchcancel="onMonthTouchCancel"
         @click.capture="onMonthClickCapture"
       >
         <div class="calendar-head">
@@ -150,6 +154,7 @@ const skipDateSet = computed(() => new Set(props.skipDates || []))
 const SWIPE_AXIS_LOCK = 8
 const SWIPE_MIN_DISTANCE = 44
 const SWIPE_MAX_DRAG_RATIO = 0.42
+const TOUCH_POINTER_ID = 'touch-fallback'
 const monthAnimationClass = ref('')
 const swipeOffset = ref(0)
 const isSwiping = ref(false)
@@ -446,7 +451,9 @@ function goToday() {
 }
 
 function onMonthPointerDown(event) {
-  if (!['touch', 'pen'].includes(event.pointerType) || event.isPrimary === false) return
+  if (event.pointerType === 'touch') return
+  if (event.isPrimary === false) return
+  if (event.pointerType === 'mouse' && event.button !== 0) return
   clearSwipeResetTimer()
   activePointerId = event.pointerId
   pointerStartX = event.clientX
@@ -529,6 +536,48 @@ function onMonthClickCapture(event) {
   if (Date.now() >= suppressClickUntil) return
   event.preventDefault()
   event.stopPropagation()
+}
+
+function touchPoint(event, changed = false) {
+  const points = changed ? event.changedTouches : event.touches
+  return points?.[0] || null
+}
+
+function touchPointerEvent(event, point) {
+  return {
+    pointerId: TOUCH_POINTER_ID,
+    pointerType: 'touch-fallback',
+    isPrimary: true,
+    button: 0,
+    clientX: point?.clientX || 0,
+    clientY: point?.clientY || 0,
+    currentTarget: event.currentTarget,
+    cancelable: event.cancelable,
+    preventDefault: () => event.preventDefault(),
+  }
+}
+
+function onMonthTouchStart(event) {
+  if (event.touches?.length !== 1) return
+  const point = touchPoint(event)
+  if (point) onMonthPointerDown(touchPointerEvent(event, point))
+}
+
+function onMonthTouchMove(event) {
+  if (activePointerId !== TOUCH_POINTER_ID || event.touches?.length !== 1) return
+  const point = touchPoint(event)
+  if (point) onMonthPointerMove(touchPointerEvent(event, point))
+}
+
+function onMonthTouchEnd(event) {
+  if (activePointerId !== TOUCH_POINTER_ID) return
+  const point = touchPoint(event, true)
+  if (point) onMonthPointerUp(touchPointerEvent(event, point))
+}
+
+function onMonthTouchCancel(event) {
+  if (activePointerId !== TOUCH_POINTER_ID) return
+  onMonthPointerCancel(touchPointerEvent(event, touchPoint(event, true)))
 }
 
 onUnmounted(() => {
