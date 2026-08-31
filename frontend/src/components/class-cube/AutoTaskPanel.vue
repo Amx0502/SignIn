@@ -87,7 +87,6 @@
                 @location-acquired="applyLocatedAccuracy"
               />
             </el-form-item>
-            <el-form-item label="定位精度（米）"><el-input-number v-model="draft.accuracy" :min="0" :precision="1" :controls="false" /></el-form-item>
             <el-form-item label="预设密码">
               <el-input v-model="draft.password" type="text" autocomplete="new-password" placeholder="密码签到使用" />
             </el-form-item>
