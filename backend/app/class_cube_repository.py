@@ -566,7 +566,7 @@ class ClassCubeRepository:
                         ),
                     )
             rows = session.scalars(
-                statement.order_by(ClassCubeCheckinItemRow.id)
+                statement.order_by(ClassCubeCheckinItemRow.id.desc())
             ).all()
             return [self._item_record(row) for row in rows]
 

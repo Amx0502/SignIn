@@ -601,7 +601,21 @@ function removePhoto() {
 .account-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .sync-actions { display: grid; grid-template-columns: repeat(3, max-content); align-items: center; justify-content: end; gap: 8px; }
 .sync-actions .el-button { min-width: 0; margin-left: 0; white-space: nowrap; }
-.account-list,.item-list { display: grid; gap: 9px; max-height: 480px; overflow-y: auto; overflow-x: hidden; }
+.account-list,.item-list { display: grid; gap: 9px; overflow-y: auto; overflow-x: hidden; }
+.account-list { max-height: 480px; }
+.item-list {
+  max-height: 150px;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+  scrollbar-color: #93c5fd #eff6ff;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.item-list::-webkit-scrollbar { width: 7px; }
+.item-list::-webkit-scrollbar-track { border-radius: 999px; background: #eff6ff; }
+.item-list::-webkit-scrollbar-thumb { border: 2px solid #eff6ff; border-radius: 999px; background: #93c5fd; }
+.item-list::-webkit-scrollbar-thumb:hover { background: #60a5fa; }
 .account-row,.item-row { align-items: center; padding: 12px; margin-top: 5px; border: 1px solid #e2e8f0; border-radius: 15px; background: #f8fafc; cursor: pointer; transition: .2s ease; }
 .account-row { display: grid; grid-template-columns: auto 39px minmax(0, 1fr) auto auto; gap: 8px; }
 .item-row { display: flex; gap: 10px; }
