@@ -70,14 +70,6 @@
           <div class="section-head">
             <div><strong>课程签到中心</strong><small>选择课程后同步当前签到项</small></div>
             <div class="sync-actions">
-              <el-tag
-                v-if="itemsSyncing"
-                type="primary"
-                effect="plain"
-                size="small"
-                :icon="Loading"
-                class="sync-tag"
-              >同步中…</el-tag>
               <el-button
                 type="primary"
                 plain
@@ -151,9 +143,6 @@
                   v-model="form.coordinateInput"
                   @location-acquired="applyLocatedAccuracy"
                 />
-              </el-form-item>
-              <el-form-item label="定位精度（米）">
-                <el-input-number v-model="form.accuracy" :min="0" :precision="1" :controls="false" />
               </el-form-item>
             </div>
             <el-alert v-if="selectedItem.mode === 'gps_photo'" title="照片将在提交签到时上传，实际 res 会记录在运行记录中。" type="info" :closable="false" show-icon />
@@ -247,7 +236,7 @@
 import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import {
   Aim, Camera, Cellphone, CircleCheck, CircleCheckFilled, CircleCloseFilled,
-  Delete, Key, Loading, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, Upload, User, WarningFilled,
+  Delete, Key, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, Upload, User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { buildManualCheckinPayload, shouldShowManualCheckinForm } from '../../utils/classCubeCheckin.js'
@@ -610,9 +599,8 @@ function removePhoto() {
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.section-head strong,.section-head small { display: block; }.section-head strong { color: #172033; font-size: 16px; }.section-head small { margin-top: 4px; color: #64748b; font-size: 11px; }
 .checkin-card .section-head > div:first-child { min-width: 9em; flex: none; }
 .account-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.sync-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.sync-actions .el-button + .el-button { margin-left: 0; }
-.sync-tag { margin: 0; }
+.sync-actions { display: grid; grid-template-columns: repeat(3, max-content); align-items: center; justify-content: end; gap: 8px; }
+.sync-actions .el-button { min-width: 0; margin-left: 0; white-space: nowrap; }
 .account-list,.item-list { display: grid; gap: 9px; max-height: 480px; overflow-y: auto; overflow-x: hidden; }
 .account-row,.item-row { align-items: center; padding: 12px; margin-top: 5px; border: 1px solid #e2e8f0; border-radius: 15px; background: #f8fafc; cursor: pointer; transition: .2s ease; }
 .account-row { display: grid; grid-template-columns: auto 39px minmax(0, 1fr) auto auto; gap: 8px; }
@@ -631,10 +619,12 @@ function removePhoto() {
 .result-content { display:grid;justify-items:center;padding:16px 10px;text-align:center }.result-icon { display:grid;width:70px;height:70px;place-items:center;color:#fff;border-radius:24px;background:linear-gradient(135deg,#2563eb,#0ea5e9);font-size:38px;box-shadow:0 18px 35px rgb(37 99 235 / 24%) }.result-content.is-success .result-icon,.result-content.is-already_signed .result-icon { background:linear-gradient(135deg,#059669,#10b981) }.result-content.is-failed .result-icon { background:linear-gradient(135deg,#dc2626,#f87171) }.result-content small { margin-top:17px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.14em }.result-content h2 { margin:6px 0;color:#172033 }.result-content p { max-width:390px;margin:0 0 14px;color:#64748b;line-height:1.7 }
 @container(max-width:720px){
   .checkin-card .section-head{align-items:stretch;flex-direction:column}
-  .sync-actions{align-items:flex-start;flex-direction:column;justify-content:flex-start;width:100%}
-  .sync-actions .el-button{margin-left:0;white-space:nowrap}
+  .sync-actions{grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
+  .sync-actions .el-button{width:100%;padding-inline:10px}
 }
 @container(max-width:480px){
+  .sync-actions{gap:6px}
+  .sync-actions .el-button{padding-inline:6px;font-size:12px}
   .manual-form{padding:14px}
   .manual-form__head,.manual-form__head>div,.manual-actions{align-items:stretch;flex-direction:column}
   .manual-form__head>div,.location-grid .el-form-item{min-width:0}
