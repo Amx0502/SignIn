@@ -41,46 +41,23 @@
         {{ searchError }}
         <button type="button" @click="searchAddress">重试</button>
       </p>
-      <div v-if="results.length" class="search-results-panel">
-        <header class="search-results-summary">
-          <strong>搜索结果</strong>
-          <span>{{ results.length }} 条</span>
-        </header>
-        <ul
-          ref="resultList"
-          class="search-results"
-          aria-label="地址搜索结果"
-          @scroll.passive="updateResultScroll"
-        >
-          <li v-for="result in results" :key="result.id" class="result-item">
-            <button
-              type="button"
-              class="result-row"
-              :class="{ active: selectedResultId === result.id }"
-              @click="selectResult(result)"
-            >
-              <span class="result-copy">
-                <strong>{{ result.name }}</strong>
-                <small>{{ result.address }}</small>
-                <em>{{ resultMeta(result) }}</em>
-              </span>
-              <code>{{ formatCoordinate(result.latitude) }}, {{ formatCoordinate(result.longitude) }}</code>
-            </button>
-          </li>
-        </ul>
-        <button
-          v-if="remainingResults > 0"
-          type="button"
-          class="results-more"
-          @click="scrollMoreResults"
-        >
-          <span aria-hidden="true">↓</span>
-          向下滚动查看更多 {{ remainingResults }} 条
-        </button>
-        <p v-else-if="results.length > 2" class="results-complete">
-          <span aria-hidden="true">✓</span> 已显示全部 {{ results.length }} 条结果
-        </p>
-      </div>
+      <ul v-if="results.length" class="search-results" aria-label="地址搜索结果">
+        <li v-for="result in results" :key="result.id" class="result-item">
+          <button
+            type="button"
+            class="result-row"
+            :class="{ active: selectedResultId === result.id }"
+            @click="selectResult(result)"
+          >
+            <span class="result-copy">
+              <strong>{{ result.name }}</strong>
+              <small>{{ result.address }}</small>
+              <em>{{ resultMeta(result) }}</em>
+            </span>
+            <code>{{ formatCoordinate(result.latitude) }}, {{ formatCoordinate(result.longitude) }}</code>
+          </button>
+        </li>
+      </ul>
       <el-empty
         v-else-if="searched && !searching && !searchError"
         description="没有找到匹配地址，请补充城市或区县后重试"
@@ -222,10 +199,8 @@ const coordinateValue = computed({
   set: value => emit('update:modelValue', value || ''),
 })
 const mapElement = ref(null)
-const resultList = ref(null)
 const query = ref('')
 const results = ref([])
-const remainingResults = ref(0)
 const searching = ref(false)
 const searched = ref(false)
 const searchError = ref('')
@@ -392,41 +367,6 @@ function resultMeta(result) {
   return [...new Set(parts)].join(' · ')
 }
 
-function updateResultScroll() {
-  const list = resultList.value
-  if (!list || !results.value.length) {
-    remainingResults.value = 0
-    return
-  }
-  if (list.scrollTop + list.clientHeight >= list.scrollHeight - 2) {
-    remainingResults.value = 0
-    return
-  }
-  const listBottom = list.getBoundingClientRect().bottom
-  const rows = [...list.querySelectorAll('.result-item')]
-  const visibleCount = rows.reduce((count, row, index) => (
-    row.getBoundingClientRect().bottom <= listBottom + 2 ? index + 1 : count
-  ), 0)
-  remainingResults.value = Math.max(results.value.length - visibleCount, 0)
-}
-
-function resetResultScroll() {
-  remainingResults.value = Math.max(results.value.length - 2, 0)
-  nextTick(() => {
-    if (resultList.value) resultList.value.scrollTop = 0
-    updateResultScroll()
-  })
-}
-
-function scrollMoreResults() {
-  const list = resultList.value
-  if (!list) return
-  list.scrollBy({
-    top: Math.max(list.clientHeight + 3, 1),
-    behavior: reducedMotion.value ? 'auto' : 'smooth',
-  })
-}
-
 async function searchAddress() {
   const normalizedQuery = query.value.trim().replace(/\s+/g, ' ')
   if (normalizedQuery.length < 2) {
@@ -448,12 +388,10 @@ async function searchAddress() {
     if (sequence !== requestSequence) return
     results.value = Array.isArray(response.data) ? response.data : []
     selectedResultId.value = ''
-    resetResultScroll()
     announce(results.value.length ? `找到 ${results.value.length} 个地址结果` : '没有找到匹配地址')
   } catch (error) {
     if (sequence !== requestSequence || error.code === 'ERR_CANCELED' || error.name === 'CanceledError') return
     results.value = []
-    remainingResults.value = 0
     searchError.value = error.message || '地址搜索失败，请稍后重试'
     announce(searchError.value)
   } finally {
@@ -792,7 +730,7 @@ onBeforeUnmount(() => {
 @media(max-width:720px){.location-entry-row{grid-template-columns:1fr}}
 @media(max-width:640px){.location-search-panel{padding:10px}.coordinate-editor,.address-search{grid-template-columns:1fr}.coordinate-editor .el-button,.address-search .el-button{width:100%;min-height:42px}.result-row{grid-template-columns:1fr}.result-row code{white-space:normal}.selection-card,.location-confirm{align-items:stretch;flex-direction:column}.selection-actions,.location-confirm>div:last-child{display:grid;grid-template-columns:1fr 1fr}.selection-actions button,.location-confirm .el-button{width:100%;min-height:42px;margin:0}.location-map{height:clamp(280px,48vh,420px);min-height:260px}.map-instructions,.field-tip,.privacy-tip{font-size:12px}}
 .search-results{max-height:155px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.result-row{height:72px;min-height:72px;padding-block:8px;overflow:hidden}.result-copy small{-webkit-line-clamp:1}
-.search-results-panel{display:grid;gap:7px;min-width:0}.search-results-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 3px}.search-results-summary strong{color:#172033;font-size:13px}.search-results-summary span{padding:3px 9px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:700}.search-results{scrollbar-width:auto;scrollbar-color:#60a5fa #eff6ff}.search-results::-webkit-scrollbar{width:10px}.search-results::-webkit-scrollbar-track{border-radius:999px;background:#eff6ff}.search-results::-webkit-scrollbar-thumb{border:2px solid #eff6ff;border-radius:999px;background:#60a5fa}.results-more,.results-complete{display:flex;align-items:center;justify-content:center;gap:6px;min-height:34px;margin:0;padding:7px 12px;border-radius:10px;font-size:12px;font-weight:700}.results-more{border:1px dashed #60a5fa;background:linear-gradient(90deg,#eff6ff,#dbeafe,#eff6ff);color:#1d4ed8;cursor:pointer;transition:border-color .18s,background .18s,transform .18s}.results-more:hover{border-color:#2563eb;background:#dbeafe;transform:translateY(-1px)}.results-more span{font-size:16px;line-height:1}.results-complete{border:1px solid #d1fae5;background:#ecfdf5;color:#047857;font-weight:600}
+.search-results{scrollbar-width:auto;scrollbar-color:#60a5fa #eff6ff}.search-results::-webkit-scrollbar{width:10px}.search-results::-webkit-scrollbar-track{border-radius:999px;background:#eff6ff}.search-results::-webkit-scrollbar-thumb{border:2px solid #eff6ff;border-radius:999px;background:#60a5fa}
 @media(max-width:640px){.search-results{max-height:199px}.result-row{height:94px;min-height:94px}}
-@media(prefers-reduced-motion:reduce){.result-row,.results-more,.location-search-panel :deep(.location-marker){transition:none}.map-skeleton span{animation:none}}
+@media(prefers-reduced-motion:reduce){.result-row,.location-search-panel :deep(.location-marker){transition:none}.map-skeleton span{animation:none}}
 </style>
