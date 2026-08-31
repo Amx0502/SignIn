@@ -23,6 +23,10 @@ from .class_cube_client import (
     ClassCubeSubmissionUnknown,
     QrSessionNotFound,
 )
+from .class_cube_geocoder import (
+    ClassCubeGeocoder,
+    ClassCubeGeocoderError,
+)
 from .class_cube_models import (
     account_view,
     course_view,
@@ -291,12 +295,17 @@ class ClassCubeService:
         logger,
         clock: Callable[[], float] | None = None,
         notifier: ClassCubeNotifier | None = None,
+        geocoder: ClassCubeGeocoder | None = None,
     ):
         self.repository = repository
         self.client = client
         self.logger = logger
         self._clock = clock or time.monotonic
         self.notifier = notifier or ClassCubeNotifier()
+        self.geocoder = geocoder or ClassCubeGeocoder(
+            base_url=config.CLASS_CUBE_GEOCODER_URL,
+            user_agent=config.CLASS_CUBE_GEOCODER_USER_AGENT,
+        )
         self._qr_targets: dict[str, _QrTarget] = {}
         self._qr_lock = RLock()
         self._execution_lock = RLock()
@@ -658,6 +667,33 @@ class ClassCubeService:
             self._closed = True
             self._qr_targets.clear()
         self.client.close()
+        self.geocoder.close()
+
+    def search_locations(
+        self,
+        query: str,
+        limit: int,
+        actor: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        self._actor_scope(actor)
+        normalized_query = " ".join(str(query or "").strip().split())
+        if len(normalized_query) < 2:
+            raise ClassCubeValidationError(
+                "请至少输入 2 个字符搜索地址"
+            )
+        try:
+            return self.geocoder.search(normalized_query, limit)
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
+        except ClassCubeGeocoderError as exc:
+            self.logger.warning(
+                "班级魔方地址搜索失败（%s）",
+                type(exc).__name__,
+            )
+            raise ClassCubeRemoteError(
+                str(exc),
+                retryable=True,
+            ) from exc
 
     def sync_courses(
         self,

@@ -60,7 +60,7 @@
       <template #empty><el-empty description="暂无自动任务" :image-size="90" /></template>
     </el-table>
 
-    <el-dialog v-model="editorVisible" :title="editingId ? '编辑自动任务' : '新增自动任务'" width="min(960px, 94vw)" class="task-editor-dialog" align-center append-to-body>
+    <el-dialog v-model="editorVisible" :title="editingId ? '编辑自动任务' : '新增自动任务'" width="min(1180px, 96vw)" class="task-editor-dialog" align-center append-to-body>
       <el-form label-position="top" class="task-editor-form">
         <div class="editor-layout">
           <section class="editor-section">
@@ -82,11 +82,7 @@
           <section class="editor-section">
             <header><span class="section-index">02</span><div><strong>签到参数</strong><small>配置不同签到方式的预设值</small></div></header>
             <el-form-item label="签到位置">
-              <div class="coordinate-row">
-                <el-input v-model="draft.coordinateInput" placeholder="119.21, 26.03" />
-                <el-button tag="a" href="https://www.lddgo.net/convert/position" target="_blank" rel="noopener noreferrer">拾取</el-button>
-              </div>
-              <small class="field-tip">自动识别经纬度顺序及常见分隔符</small>
+              <LocationSearchPanel v-model="draft.coordinateInput" />
             </el-form-item>
             <el-form-item label="定位精度（米）"><el-input-number v-model="draft.accuracy" :min="0" :precision="1" :controls="false" /></el-form-item>
             <el-form-item label="预设密码">
@@ -149,6 +145,7 @@ import { reactive, ref } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { coordinateText, normalizeScheduleTimes, parseCoordinates } from '../../utils/classCubeTaskForm.js'
+import LocationSearchPanel from './LocationSearchPanel.vue'
 import TaskImageUpload from '../TaskImageUpload.vue'
 
 const props = defineProps({
@@ -276,8 +273,8 @@ async function removeSelected() {
 <style scoped>
 .task-panel { border:1px solid rgb(191 219 254 / 58%);border-radius:22px;background:rgb(255 255 255 / 84%);box-shadow:0 18px 42px rgb(15 23 42 / 7%);backdrop-filter:blur(18px) }
 .panel-head { display:flex;align-items:center;justify-content:space-between;gap:14px }.panel-head strong,.panel-head small,.task-name strong,.task-name small { display:block }.panel-head strong{font-size:16px}.panel-head small,.task-name small,.muted{margin-top:4px;color:#64748b;font-size:11px}.task-name strong{color:#172033}
-.task-editor-form{max-height:min(68vh,680px);overflow-x:hidden;overflow-y:auto;padding:2px 4px 4px}.editor-layout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.editor-section{min-width:0;overflow:hidden;padding:16px 16px 6px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);box-shadow:0 10px 28px rgb(37 99 235 / 6%)}.editor-section :deep(.el-form-item__content){min-width:0}.editor-section header{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:12px;border-bottom:1px solid #e8eef8}.editor-section header strong,.editor-section header small{display:block}.editor-section header strong{color:#172033;font-size:15px}.editor-section header small{margin-top:2px;color:#8492a6;font-size:11px}.section-index{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-size:11px;font-weight:800;box-shadow:0 7px 16px rgb(37 99 235 / 22%)}.el-select,.el-input-number{width:100%}.coordinate-row{display:flex;align-items:center;gap:8px;width:100%;min-width:0}.coordinate-row .el-input{flex:1;min-width:0}.field-tip{display:block;margin-top:7px;color:#64748b;font-size:11px}.schedule-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.date-range{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.schedule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;min-width:0}.schedule-row :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.date-range :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.switch-options{display:grid;gap:8px;padding:12px;border-radius:12px;background:#eff6ff}.switch-options .el-checkbox{margin-right:0}
+.task-editor-form{max-height:min(80vh,860px);overflow-x:hidden;overflow-y:auto;padding:2px 4px 4px}.editor-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"basic strategy" "location location";align-items:stretch;gap:14px}.editor-section:nth-child(1){grid-area:basic}.editor-section:nth-child(2){grid-area:location}.editor-section:nth-child(3){grid-area:strategy}.editor-section{min-width:0;overflow:hidden;padding:16px 16px 6px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);box-shadow:0 10px 28px rgb(37 99 235 / 6%)}.editor-section :deep(.el-form-item__content){min-width:0}.editor-section header{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:12px;border-bottom:1px solid #e8eef8}.editor-section header strong,.editor-section header small{display:block}.editor-section header strong{color:#172033;font-size:15px}.editor-section header small{margin-top:2px;color:#8492a6;font-size:11px}.section-index{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-size:11px;font-weight:800;box-shadow:0 7px 16px rgb(37 99 235 / 22%)}.el-select,.el-input-number{width:100%}.field-tip{display:block;margin-top:7px;color:#64748b;font-size:11px}.schedule-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.date-range{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.schedule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;min-width:0}.schedule-row :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.date-range :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.switch-options{display:grid;gap:8px;padding:12px;border-radius:12px;background:#eff6ff}.switch-options .el-checkbox{margin-right:0}
 .photo-input{display:none}.photo-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-@media(max-width:900px){.editor-layout{grid-template-columns:repeat(2,minmax(0,1fr))}.editor-section:last-child{grid-column:1/-1}.task-editor-form{max-height:72vh}}
-@media(max-width:760px){.panel-head{align-items:stretch;flex-direction:column}.panel-head :deep(.el-space),.panel-head :deep(.el-space__item),.panel-head .el-button{width:100%}.editor-layout{grid-template-columns:1fr}.editor-section:last-child{grid-column:auto}.date-range{grid-template-columns:1fr}.task-editor-form{max-height:70vh}.editor-section{padding:14px 13px 4px}}
+@media(max-width:900px){.task-editor-form{max-height:76vh}}
+@media(max-width:680px){.panel-head{align-items:stretch;flex-direction:column}.panel-head :deep(.el-space),.panel-head :deep(.el-space__item),.panel-head .el-button{width:100%}.editor-layout{grid-template-columns:1fr;grid-template-areas:"basic" "strategy" "location"}.date-range{grid-template-columns:1fr}.task-editor-form{max-height:72vh}.editor-section{padding:14px 13px 4px}}
 </style>

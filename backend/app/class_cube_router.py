@@ -116,6 +116,28 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
         ))
         if menu_dependency else auth_dependency
     )
+    access_locations = (
+        menu_dependency((
+            "class_cube.accounts",
+            "class_cube.tasks",
+        ))
+        if menu_dependency else auth_dependency
+    )
+
+    @router.get("/locations/search")
+    def search_locations(
+        request: Request,
+        q: str = Query(min_length=2, max_length=200),
+        limit: int = Query(default=5, ge=1, le=8),
+        actor=Depends(access_locations),
+    ):
+        return _invoke(
+            request,
+            _service(request).search_locations,
+            q,
+            limit,
+            actor,
+        )
 
     @router.get("/settings")
     def get_settings(
