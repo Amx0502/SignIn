@@ -729,5 +729,7 @@ onBeforeUnmount(() => {
 @container(min-width:900px){.location-search-panel{grid-template-columns:minmax(310px,350px) minmax(0,1fr);align-items:start}.location-map{height:440px}.search-results{max-height:330px}}
 @media(max-width:720px){.location-entry-row{grid-template-columns:1fr}}
 @media(max-width:640px){.location-search-panel{padding:10px}.coordinate-editor,.address-search{grid-template-columns:1fr}.coordinate-editor .el-button,.address-search .el-button{width:100%;min-height:42px}.result-row{grid-template-columns:1fr}.result-row code{white-space:normal}.selection-card,.location-confirm{align-items:stretch;flex-direction:column}.selection-actions,.location-confirm>div:last-child{display:grid;grid-template-columns:1fr 1fr}.selection-actions button,.location-confirm .el-button{width:100%;min-height:42px;margin:0}.location-map{height:clamp(280px,48vh,420px);min-height:260px}.map-instructions,.field-tip,.privacy-tip{font-size:12px}}
+.search-results{max-height:155px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.result-row{height:72px;min-height:72px;padding-block:8px;overflow:hidden}.result-copy small{-webkit-line-clamp:1}
+@media(max-width:640px){.search-results{max-height:199px}.result-row{height:94px;min-height:94px}}
 @media(prefers-reduced-motion:reduce){.result-row,.location-search-panel :deep(.location-marker){transition:none}.map-skeleton span{animation:none}}
 </style>
