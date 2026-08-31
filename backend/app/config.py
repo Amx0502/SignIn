@@ -37,13 +37,18 @@ CLASS_CUBE_SUBMIT_COORDINATE_SYSTEM = os.getenv(
 )
 
 _DEFAULT_CLASS_CUBE_MAP_LAYERS = [{
-    "id": "openstreetmap",
-    "name": "标准地图",
-    "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    "attribution": (
-        '&copy; <a href="https://www.openstreetmap.org/copyright" '
-        'target="_blank">OpenStreetMap</a> contributors'
+    "id": "amap",
+    "name": "国内地图",
+    "url": (
+        "https://webrd0{s}.is.autonavi.com/appmaptile"
+        "?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
     ),
+    "attribution": (
+        '&copy; <a href="https://www.amap.com/" '
+        'target="_blank">高德地图</a>'
+    ),
+    "coordinate_system": "gcj02",
+    "subdomains": "1234",
     "max_zoom": 19,
 }]
 
@@ -75,6 +80,12 @@ def class_cube_map_layers() -> list[dict]:
             "name": str(layer.get("name") or f"地图 {index + 1}")[:64],
             "url": url,
             "attribution": str(layer.get("attribution") or "")[:2048],
+            "coordinate_system": (
+                "gcj02"
+                if str(layer.get("coordinate_system") or "").lower() == "gcj02"
+                else "wgs84"
+            ),
+            "subdomains": str(layer.get("subdomains") or "")[:16],
             "max_zoom": max_zoom,
         })
     return layers or [dict(layer) for layer in _DEFAULT_CLASS_CUBE_MAP_LAYERS]

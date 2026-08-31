@@ -172,6 +172,10 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import classCubeApi from '../../api/classCube.js'
+import {
+  gcj02ToWgs84,
+  wgs84ToGcj02,
+} from '../../utils/classCubeMapCoordinates.js'
 import { parseCoordinates } from '../../utils/classCubeTaskForm.js'
 
 const props = defineProps({
@@ -181,10 +185,12 @@ const emit = defineEmits(['update:modelValue', 'location-acquired'])
 
 const DEFAULT_MAP_CONFIG = {
   layers: [{
-    id: 'openstreetmap',
-    name: '标准地图',
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors',
+    id: 'amap',
+    name: '国内地图',
+    url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+    attribution: '&copy; <a href="https://www.amap.com/" target="_blank">高德地图</a>',
+    coordinate_system: 'gcj02',
+    subdomains: '1234',
     max_zoom: 19,
   }],
   default_center: { latitude: 35.8617, longitude: 104.1954 },
@@ -276,6 +282,25 @@ function parsedModelValue() {
   }
 }
 
+function layerUsesGcj02(layer = null) {
+  const selectedLayer = layer || layerById(activeLayerId.value)
+  return String(selectedLayer?.coordinate_system || '').toLowerCase() === 'gcj02'
+}
+
+function coordinateForMap(coordinate, layer = null) {
+  const normalized = normalizeCoordinate(coordinate.latitude, coordinate.longitude)
+  return layerUsesGcj02(layer)
+    ? wgs84ToGcj02(normalized.latitude, normalized.longitude)
+    : normalized
+}
+
+function coordinateFromMap(coordinate, layer = null) {
+  const normalized = normalizeCoordinate(coordinate.latitude, coordinate.longitude)
+  return layerUsesGcj02(layer)
+    ? gcj02ToWgs84(normalized.latitude, normalized.longitude)
+    : normalized
+}
+
 function announce(message) {
   liveMessage.value = ''
   nextTick(() => { liveMessage.value = message })
@@ -321,13 +346,16 @@ function updateMapPosition(coordinate, { recenter = false, zoom = 16 } = {}) {
 }
 
 function applyCoordinate(latitude, longitude, options = {}) {
-  const coordinate = normalizeCoordinate(latitude, longitude)
+  const sourceCoordinate = normalizeCoordinate(latitude, longitude)
+  const coordinate = options.fromMap
+    ? coordinateFromMap(sourceCoordinate)
+    : sourceCoordinate
   emit(
     'update:modelValue',
     `${formatCoordinate(coordinate.latitude)}, ${formatCoordinate(coordinate.longitude)}`,
   )
   selectedResultId.value = options.resultId || ''
-  updateMapPosition(coordinate, {
+  updateMapPosition(coordinateForMap(coordinate), {
     recenter: options.recenter !== false,
     zoom: options.zoom || 16,
   })
@@ -343,7 +371,7 @@ function focusCoordinate() {
     return
   }
   searchError.value = ''
-  updateMapPosition(coordinate, { recenter: true, zoom: 16 })
+  updateMapPosition(coordinateForMap(coordinate), { recenter: true, zoom: 16 })
   announce('地图已定位到输入坐标')
 }
 
@@ -359,7 +387,10 @@ function resultTypeLabel(result) {
 function resultMeta(result) {
   const parts = [result.city, result.district, resultTypeLabel(result)].filter(Boolean)
   if (currentCoordinate.value) {
-    parts.push(`距当前点 ${formatDistance(coordinateDistance(currentCoordinate.value, result))}`)
+    parts.push(`距当前点 ${formatDistance(coordinateDistance(
+      currentCoordinate.value,
+      coordinateForMap(result),
+    ))}`)
   }
   return [...new Set(parts)].join(' · ')
 }
@@ -462,7 +493,8 @@ function locateDevice() {
 function showDeviceAccuracy(location) {
   if (!map || !Leaflet) return
   if (accuracyLayer) accuracyLayer.remove()
-  const point = Leaflet.latLng(location.latitude, location.longitude)
+  const mapLocation = coordinateForMap(location)
+  const point = Leaflet.latLng(mapLocation.latitude, mapLocation.longitude)
   const circle = Leaflet.circle(point, {
     radius: Math.max(location.accuracy, 8),
     color: location.accuracy > 200 ? '#d97706' : '#2563eb',
@@ -517,7 +549,18 @@ function normalizedMapConfig(response) {
   return {
     ...DEFAULT_MAP_CONFIG,
     ...data,
-    layers: data.layers.filter(layer => layer?.url && layer?.id).slice(0, 4),
+    layers: data.layers
+      .filter(layer => layer?.url && layer?.id)
+      .slice(0, 4)
+      .map(layer => ({
+        ...layer,
+        coordinate_system: (
+          String(layer.coordinate_system || '').toLowerCase() === 'gcj02'
+            ? 'gcj02'
+            : 'wgs84'
+        ),
+        subdomains: String(layer.subdomains || ''),
+      })),
     default_center: data.default_center || DEFAULT_MAP_CONFIG.default_center,
   }
 }
@@ -544,6 +587,7 @@ function activateLayer(layerId, { automatic = false } = {}) {
   tileLayer = Leaflet.tileLayer(layer.url, {
     maxZoom: Number(layer.max_zoom) || 19,
     attribution: layer.attribution || '',
+    subdomains: layer.subdomains || 'abc',
     updateWhenIdle: constrainedNetwork.value,
     updateWhenZooming: !constrainedNetwork.value,
     keepBuffer: constrainedNetwork.value ? 1 : 3,
@@ -574,6 +618,10 @@ function activateLayer(layerId, { automatic = false } = {}) {
   })
   tileLayer.addTo(map)
   map.setMaxZoom(Number(layer.max_zoom) || 19)
+  const coordinate = parsedModelValue()
+  if (coordinate) {
+    updateMapPosition(coordinateForMap(coordinate, layer), { recenter: false })
+  }
 }
 
 function retryMapTiles() {
@@ -638,7 +686,10 @@ async function initializeMap() {
   }
   if (destroyed || !mapElement.value || !Leaflet) return
   mapConfig.value = normalizedMapConfig(configResponse)
-  const center = mapConfig.value.default_center
+  const center = coordinateForMap(
+    mapConfig.value.default_center,
+    mapConfig.value.layers[0],
+  )
   mapDraggingEnabled.value = !coarsePointer.value
   map = Leaflet.map(mapElement.value, {
     center: [center.latitude, center.longitude],
@@ -655,13 +706,19 @@ async function initializeMap() {
   map.on('click', event => {
     applyCoordinate(event.latlng.lat, event.latlng.lng, {
       recenter: false,
+      fromMap: true,
       announceText: '已通过地图点击选择位置',
     })
   })
   mapElement.value.addEventListener('wheel', handleMapWheel, { passive: false })
   activateLayer(mapConfig.value.layers[0]?.id)
   const initialCoordinate = parsedModelValue()
-  if (initialCoordinate) updateMapPosition(initialCoordinate, { recenter: true, zoom: 16 })
+  if (initialCoordinate) {
+    updateMapPosition(
+      coordinateForMap(initialCoordinate),
+      { recenter: true, zoom: 16 },
+    )
+  }
   resizeObserver = new ResizeObserver(() => map?.invalidateSize({ pan: false }))
   resizeObserver.observe(mapElement.value)
   mapReady.value = true
@@ -680,9 +737,10 @@ watch(
       }
       return
     }
-    if (!coordinatesEqual(currentCoordinate.value, coordinate)) {
+    const mapCoordinate = coordinateForMap(coordinate)
+    if (!coordinatesEqual(currentCoordinate.value, mapCoordinate)) {
       selectedResultId.value = ''
-      updateMapPosition(coordinate, { recenter: true, zoom: 16 })
+      updateMapPosition(mapCoordinate, { recenter: true, zoom: 16 })
     }
   },
 )
