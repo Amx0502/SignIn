@@ -325,6 +325,8 @@ class ClassCubeService:
         self.geocoder = geocoder or ClassCubeGeocoder(
             base_url=config.CLASS_CUBE_GEOCODER_URL,
             user_agent=config.CLASS_CUBE_GEOCODER_USER_AGENT,
+            provider=config.CLASS_CUBE_GEOCODER_PROVIDER,
+            api_key=config.CLASS_CUBE_GEOCODER_KEY,
             shared_rate_file=config.CLASS_CUBE_GEOCODER_RATE_FILE,
         )
         configured_coordinate_system = (
@@ -727,7 +729,7 @@ class ClassCubeService:
             )
             raise ClassCubeRemoteError(
                 str(exc),
-                retryable=True,
+                retryable=exc.retryable,
             ) from exc
 
     def get_location_config(
@@ -743,7 +745,9 @@ class ClassCubeService:
             },
             "default_zoom": 4,
             "coordinate_system": "WGS84",
-            "search_provider": "nominatim",
+            "search_provider": str(
+                config.CLASS_CUBE_GEOCODER_PROVIDER or "amap"
+            ).lower(),
             "search_notice": (
                 "地址搜索由地图服务处理，请勿输入个人住宅等敏感信息"
             ),

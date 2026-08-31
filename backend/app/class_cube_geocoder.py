@@ -11,7 +11,9 @@ import requests
 
 
 class ClassCubeGeocoderError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, retryable: bool = True):
+        super().__init__(message)
+        self.retryable = bool(retryable)
 
 
 class ClassCubeGeocoder:
@@ -22,6 +24,8 @@ class ClassCubeGeocoder:
         *,
         base_url: str,
         user_agent: str,
+        provider: str = "nominatim",
+        api_key: str = "",
         cache_ttl_seconds: float = 24 * 60 * 60,
         cache_limit: int = 512,
         minimum_interval_seconds: float = 1.0,
@@ -31,6 +35,10 @@ class ClassCubeGeocoder:
     ):
         self.base_url = str(base_url).rstrip("/")
         self.user_agent = str(user_agent).strip()
+        self.provider = str(provider or "nominatim").strip().lower()
+        if self.provider not in {"amap", "nominatim"}:
+            self.provider = "amap"
+        self.api_key = str(api_key or "").strip()
         self.cache_ttl_seconds = max(float(cache_ttl_seconds), 0.0)
         self.cache_limit = max(int(cache_limit), 1)
         self.minimum_interval_seconds = max(
@@ -164,7 +172,9 @@ class ClassCubeGeocoder:
         return self._copy_results(results)
 
     @staticmethod
-    def _normalize_results(payload: Any) -> tuple[dict[str, Any], ...]:
+    def _normalize_nominatim_results(
+        payload: Any,
+    ) -> tuple[dict[str, Any], ...]:
         if not isinstance(payload, list):
             raise ClassCubeGeocoderError("地址搜索服务返回了无效数据")
         normalized: list[dict[str, Any]] = []
@@ -232,6 +242,145 @@ class ClassCubeGeocoder:
             })
         return tuple(normalized)
 
+    @staticmethod
+    def _text(value: Any) -> str:
+        if isinstance(value, list):
+            return ""
+        return str(value or "").strip()
+
+    @classmethod
+    def _normalize_amap_results(
+        cls,
+        payload: Any,
+    ) -> tuple[dict[str, Any], ...]:
+        if not isinstance(payload, dict):
+            raise ClassCubeGeocoderError("国内地址搜索服务返回了无效数据")
+        if str(payload.get("status") or "") != "1":
+            info = cls._text(payload.get("info"))
+            info_code = cls._text(payload.get("infocode"))
+            message = "国内地址搜索服务暂时不可用"
+            if info_code in {"10001", "10002", "10003", "10007"}:
+                message = "高德 Web 服务 Key 无效或无搜索权限"
+            elif info_code in {
+                "10004", "10005", "10009", "10010", "10019", "10020",
+                "10021",
+            }:
+                message = "高德地址搜索调用额度或频率已受限"
+            elif info:
+                message = f"国内地址搜索失败：{info}"
+            raise ClassCubeGeocoderError(message, retryable=False)
+
+        rows = payload.get("pois")
+        if not isinstance(rows, list):
+            raise ClassCubeGeocoderError("国内地址搜索服务返回了无效数据")
+        normalized: list[dict[str, Any]] = []
+        seen: set[tuple[float, float, str]] = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            location = cls._text(row.get("location"))
+            try:
+                longitude_text, latitude_text = location.split(",", 1)
+                latitude = float(latitude_text)
+                longitude = float(longitude_text)
+            except (TypeError, ValueError):
+                continue
+            if (
+                not math.isfinite(latitude)
+                or not math.isfinite(longitude)
+                or not -90 <= latitude <= 90
+                or not -180 <= longitude <= 180
+            ):
+                continue
+            name = cls._text(row.get("name")) or "搜索结果"
+            address = cls._text(row.get("address"))
+            province = cls._text(row.get("pname"))
+            city = cls._text(row.get("cityname"))
+            district = cls._text(row.get("adname"))
+            address_parts = []
+            for part in (province, city, district, address):
+                if part and (not address_parts or part != address_parts[-1]):
+                    address_parts.append(part)
+            full_address = "".join(address_parts) or name
+            dedupe_key = (
+                round(latitude, 7),
+                round(longitude, 7),
+                name.casefold(),
+            )
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            normalized.append({
+                "id": f"amap:{cls._text(row.get('id')) or len(normalized)}",
+                "name": name,
+                "address": full_address,
+                "latitude": latitude,
+                "longitude": longitude,
+                "category": cls._text(row.get("type")),
+                "type": cls._text(row.get("typecode")),
+                "province": province,
+                "city": city,
+                "district": district,
+                "provider": "amap",
+                "coordinate_system": "GCJ02",
+            })
+        return tuple(normalized)
+
+    def _request_amap(
+        self,
+        query: str,
+        limit: int,
+    ) -> tuple[dict[str, Any], ...]:
+        if not self.api_key:
+            raise ClassCubeGeocoderError(
+                "尚未配置高德 Web 服务 Key，无法使用国内地址搜索",
+                retryable=False,
+            )
+        response = self._session.get(
+            f"{self.base_url}/text",
+            params={
+                "key": self.api_key,
+                "keywords": query,
+                "offset": limit,
+                "page": 1,
+                "extensions": "all",
+                "output": "JSON",
+            },
+            headers={
+                "User-Agent": self.user_agent,
+                "Accept": "application/json",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        return self._normalize_amap_results(response.json())
+
+    def _request_nominatim(
+        self,
+        query: str,
+        limit: int,
+    ) -> tuple[dict[str, Any], ...]:
+        response = self._session.get(
+            f"{self.base_url}/search",
+            params={
+                "q": query,
+                "format": "jsonv2",
+                "addressdetails": 1,
+                "limit": limit,
+                "countrycodes": "cn",
+                "accept-language": "zh-CN,zh,en",
+            },
+            headers={
+                "User-Agent": self.user_agent,
+                "Accept": "application/json",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.5",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        return self._normalize_nominatim_results(response.json())
+
     def search(
         self,
         query: str,
@@ -252,32 +401,23 @@ class ClassCubeGeocoder:
             self._wait_for_rate_slot()
 
             try:
-                response = self._session.get(
-                    f"{self.base_url}/search",
-                    params={
-                        "q": normalized_query,
-                        "format": "jsonv2",
-                        "addressdetails": 1,
-                        "limit": normalized_limit,
-                        "countrycodes": "cn",
-                        "accept-language": "zh-CN,zh,en",
-                    },
-                    headers={
-                        "User-Agent": self.user_agent,
-                        "Accept": "application/json",
-                        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.5",
-                    },
-                    timeout=10,
+                results = (
+                    self._request_amap(normalized_query, normalized_limit)
+                    if self.provider == "amap"
+                    else self._request_nominatim(
+                        normalized_query,
+                        normalized_limit,
+                    )
                 )
-                response.raise_for_status()
-                results = self._normalize_results(response.json())
+            except ClassCubeGeocoderError:
+                raise
             except (
                 requests.RequestException,
                 ValueError,
                 TypeError,
             ) as exc:
                 raise ClassCubeGeocoderError(
-                    "地址搜索服务暂时不可用"
+                    "国内地址搜索服务暂时不可用"
                 ) from exc
 
             stored_at = self._clock()

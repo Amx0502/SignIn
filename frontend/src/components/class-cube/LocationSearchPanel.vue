@@ -300,6 +300,17 @@ function coordinateFromMap(coordinate, layer = null) {
     : normalized
 }
 
+function coordinateFromSource(coordinate, coordinateSystem = 'wgs84') {
+  const normalized = normalizeCoordinate(coordinate.latitude, coordinate.longitude)
+  return String(coordinateSystem || '').toLowerCase() === 'gcj02'
+    ? gcj02ToWgs84(normalized.latitude, normalized.longitude)
+    : normalized
+}
+
+function resultCoordinateForMap(result) {
+  return coordinateForMap(coordinateFromSource(result, result.coordinate_system))
+}
+
 function announce(message) {
   liveMessage.value = ''
   nextTick(() => { liveMessage.value = message })
@@ -348,7 +359,7 @@ function applyCoordinate(latitude, longitude, options = {}) {
   const sourceCoordinate = normalizeCoordinate(latitude, longitude)
   const coordinate = options.fromMap
     ? coordinateFromMap(sourceCoordinate)
-    : sourceCoordinate
+    : coordinateFromSource(sourceCoordinate, options.sourceCoordinateSystem)
   emit(
     'update:modelValue',
     `${formatCoordinate(coordinate.latitude)}, ${formatCoordinate(coordinate.longitude)}`,
@@ -380,7 +391,10 @@ function resultTypeLabel(result) {
     residential: '住宅区', building: '建筑', road: '道路', street: '道路',
     commercial: '商业区', station: '车站', bus_stop: '公交站',
   }
-  return labels[result.type] || labels[result.category] || '地点'
+  return labels[result.type]
+    || labels[result.category]
+    || String(result.category || '').split(';').filter(Boolean).at(-1)
+    || '地点'
 }
 
 function resultMeta(result) {
@@ -388,7 +402,7 @@ function resultMeta(result) {
   if (currentCoordinate.value) {
     parts.push(`距当前点 ${formatDistance(coordinateDistance(
       currentCoordinate.value,
-      coordinateForMap(result),
+      resultCoordinateForMap(result),
     ))}`)
   }
   return [...new Set(parts)].join(' · ')
@@ -428,6 +442,7 @@ async function searchAddress() {
 
 function selectResult(result) {
   applyCoordinate(result.latitude, result.longitude, {
+    sourceCoordinateSystem: result.coordinate_system,
     resultId: result.id,
     recenter: true,
     zoom: 17,
