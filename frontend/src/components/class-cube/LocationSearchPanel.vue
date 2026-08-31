@@ -187,10 +187,9 @@ const DEFAULT_MAP_CONFIG = {
   layers: [{
     id: 'amap',
     name: '国内地图',
-    url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+    url: 'https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
     attribution: '&copy; <a href="https://www.amap.com/" target="_blank">高德地图</a>',
     coordinate_system: 'gcj02',
-    subdomains: '1234',
     max_zoom: 19,
   }],
   default_center: { latitude: 35.8617, longitude: 104.1954 },
@@ -554,12 +553,15 @@ function normalizedMapConfig(response) {
       .slice(0, 4)
       .map(layer => ({
         ...layer,
+        url: String(layer.url).replace(
+          'webrd0{s}.is.autonavi.com',
+          'webrd01.is.autonavi.com',
+        ),
         coordinate_system: (
           String(layer.coordinate_system || '').toLowerCase() === 'gcj02'
             ? 'gcj02'
             : 'wgs84'
         ),
-        subdomains: String(layer.subdomains || ''),
       })),
     default_center: data.default_center || DEFAULT_MAP_CONFIG.default_center,
   }
@@ -587,7 +589,6 @@ function activateLayer(layerId, { automatic = false } = {}) {
   tileLayer = Leaflet.tileLayer(layer.url, {
     maxZoom: Number(layer.max_zoom) || 19,
     attribution: layer.attribution || '',
-    subdomains: layer.subdomains || 'abc',
     updateWhenIdle: constrainedNetwork.value,
     updateWhenZooming: !constrainedNetwork.value,
     keepBuffer: constrainedNetwork.value ? 1 : 3,

@@ -40,7 +40,7 @@ _DEFAULT_CLASS_CUBE_MAP_LAYERS = [{
     "id": "amap",
     "name": "国内地图",
     "url": (
-        "https://webrd0{s}.is.autonavi.com/appmaptile"
+        "https://webrd01.is.autonavi.com/appmaptile"
         "?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
     ),
     "attribution": (
@@ -48,7 +48,6 @@ _DEFAULT_CLASS_CUBE_MAP_LAYERS = [{
         'target="_blank">高德地图</a>'
     ),
     "coordinate_system": "gcj02",
-    "subdomains": "1234",
     "max_zoom": 19,
 }]
 
@@ -85,7 +84,6 @@ def class_cube_map_layers() -> list[dict]:
                 if str(layer.get("coordinate_system") or "").lower() == "gcj02"
                 else "wgs84"
             ),
-            "subdomains": str(layer.get("subdomains") or "")[:16],
             "max_zoom": max_zoom,
         })
     return layers or [dict(layer) for layer in _DEFAULT_CLASS_CUBE_MAP_LAYERS]
