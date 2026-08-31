@@ -313,7 +313,7 @@ function updateMapPosition(coordinate, { recenter = false, zoom = 16 } = {}) {
       alt: '当前签到位置标记',
       icon: markerIcon(),
     }).addTo(map)
-  } else if (!marker.getLatLng().equals(point, 0.01)) {
+  } else if (!marker.getLatLng().equals(point)) {
     marker.setLatLng(point)
   }
   if (recenter || !map.getBounds().contains(point)) {
