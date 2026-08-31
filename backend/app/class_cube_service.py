@@ -23,6 +23,12 @@ from .class_cube_client import (
     ClassCubeSubmissionUnknown,
     QrSessionNotFound,
 )
+from .class_cube_coordinates import (
+    GCJ02,
+    coordinate_distance_meters,
+    normalize_coordinate_system,
+    transform_wgs84_for_target,
+)
 from .class_cube_geocoder import (
     ClassCubeGeocoder,
     ClassCubeGeocoderError,
@@ -144,6 +150,7 @@ def build_submission_fields(
     parameters: CheckinParameters,
     remote_item_id: str = "",
     remote_photo_value: str = "",
+    target_coordinate_system: str = GCJ02,
 ) -> dict[str, str]:
     if form.mode not in {
         "qr",
@@ -189,8 +196,20 @@ def build_submission_fields(
             -180,
             180,
         )
-        fields[form.latitude_field] = _number_text(latitude)
-        fields[form.longitude_field] = _number_text(longitude)
+        try:
+            coordinate = transform_wgs84_for_target(
+                latitude,
+                longitude,
+                target_coordinate_system,
+            )
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
+        fields[form.latitude_field] = _number_text(
+            coordinate.latitude
+        )
+        fields[form.longitude_field] = _number_text(
+            coordinate.longitude
+        )
         if form.accuracy_field:
             accuracy = _validated_number(
                 parameters.accuracy,
@@ -296,6 +315,7 @@ class ClassCubeService:
         clock: Callable[[], float] | None = None,
         notifier: ClassCubeNotifier | None = None,
         geocoder: ClassCubeGeocoder | None = None,
+        submit_coordinate_system: str | None = None,
     ):
         self.repository = repository
         self.client = client
@@ -307,6 +327,20 @@ class ClassCubeService:
             user_agent=config.CLASS_CUBE_GEOCODER_USER_AGENT,
             shared_rate_file=config.CLASS_CUBE_GEOCODER_RATE_FILE,
         )
+        configured_coordinate_system = (
+            submit_coordinate_system
+            if submit_coordinate_system is not None
+            else config.CLASS_CUBE_SUBMIT_COORDINATE_SYSTEM
+        )
+        try:
+            self._submit_coordinate_system = normalize_coordinate_system(
+                configured_coordinate_system
+            )
+        except ValueError:
+            self.logger.warning(
+                "班级魔方提交坐标系配置无效，已回退为 gcj02"
+            )
+            self._submit_coordinate_system = GCJ02
         self._qr_targets: dict[str, _QrTarget] = {}
         self._qr_lock = RLock()
         self._execution_lock = RLock()
@@ -1965,6 +1999,55 @@ class ClassCubeService:
             "details": details,
         }
 
+    def _log_submission_coordinate_transform(
+        self,
+        form: ParsedForm,
+        parameters: CheckinParameters,
+        fields: dict[str, str],
+        *,
+        item_id: int,
+        account_id: int,
+    ) -> None:
+        logger = getattr(self, "logger", None)
+        target_coordinate_system = getattr(
+            self,
+            "_submit_coordinate_system",
+            GCJ02,
+        )
+        if (
+            logger is None
+            or form.mode not in {"gps", "gps_photo"}
+            or not form.latitude_field
+            or not form.longitude_field
+            or parameters.latitude is None
+            or parameters.longitude is None
+        ):
+            return
+        try:
+            distance = coordinate_distance_meters(
+                float(parameters.latitude),
+                float(parameters.longitude),
+                float(fields[form.latitude_field]),
+                float(fields[form.longitude_field]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return
+        if distance >= 0.05:
+            logger.info(
+                "[坐标转换] item=%s account=%s WGS84->%s delta=%.1fm",
+                item_id,
+                account_id,
+                target_coordinate_system.upper(),
+                distance,
+            )
+        elif target_coordinate_system == GCJ02:
+            logger.info(
+                "[坐标转换] item=%s account=%s "
+                "位于GCJ-02适用范围外，保持WGS84",
+                item_id,
+                account_id,
+            )
+
     def manual_checkin(
         self,
         item_id: int,
@@ -2084,6 +2167,11 @@ class ClassCubeService:
                 parameters,
                 remote_item_id=str(item["remote_item_id"]),
                 remote_photo_value=remote_photo_value,
+                target_coordinate_system=getattr(
+                    self,
+                    "_submit_coordinate_system",
+                    GCJ02,
+                ),
             )
         except ClassCubeValidationError as exc:
             return self._checkin_view(
@@ -2091,6 +2179,13 @@ class ClassCubeService:
                 str(exc),
             )
         photo_res_value = fields.get(form.photo_resource_field, "")
+        self._log_submission_coordinate_transform(
+            form,
+            parameters,
+            fields,
+            item_id=int(item["id"]),
+            account_id=int(account["id"]),
+        )
 
         try:
             mark_submitting()

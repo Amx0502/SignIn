@@ -31,6 +31,10 @@ CLASS_CUBE_MAP_LAYERS_JSON = os.getenv(
     "CLASS_CUBE_MAP_LAYERS_JSON",
     "",
 )
+CLASS_CUBE_SUBMIT_COORDINATE_SYSTEM = os.getenv(
+    "CLASS_CUBE_SUBMIT_COORDINATE_SYSTEM",
+    "gcj02",
+)
 
 _DEFAULT_CLASS_CUBE_MAP_LAYERS = [{
     "id": "openstreetmap",
