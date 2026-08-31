@@ -95,6 +95,11 @@ class ClassCubeSettingsUpdate(BaseModel):
     class_cube_webhook_url: str = Field(default="", max_length=2048)
 
 
+class ClassCubeLocationSearchRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=200)
+    limit: int = Field(default=6, ge=1, le=8)
+
+
 def task_view(task: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": task.get("id"),

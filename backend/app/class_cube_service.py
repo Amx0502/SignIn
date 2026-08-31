@@ -305,6 +305,7 @@ class ClassCubeService:
         self.geocoder = geocoder or ClassCubeGeocoder(
             base_url=config.CLASS_CUBE_GEOCODER_URL,
             user_agent=config.CLASS_CUBE_GEOCODER_USER_AGENT,
+            shared_rate_file=config.CLASS_CUBE_GEOCODER_RATE_FILE,
         )
         self._qr_targets: dict[str, _QrTarget] = {}
         self._qr_lock = RLock()
@@ -694,6 +695,25 @@ class ClassCubeService:
                 str(exc),
                 retryable=True,
             ) from exc
+
+    def get_location_config(
+        self,
+        actor: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._actor_scope(actor)
+        return {
+            "layers": config.class_cube_map_layers(),
+            "default_center": {
+                "latitude": 35.8617,
+                "longitude": 104.1954,
+            },
+            "default_zoom": 4,
+            "coordinate_system": "WGS84",
+            "search_provider": "nominatim",
+            "search_notice": (
+                "地址搜索由地图服务处理，请勿输入个人住宅等敏感信息"
+            ),
+        }
 
     def sync_courses(
         self,

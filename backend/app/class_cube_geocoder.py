@@ -1,5 +1,8 @@
 from collections import OrderedDict
+from contextlib import contextmanager
 import math
+import os
+from pathlib import Path
 import threading
 import time
 from typing import Any, Callable
@@ -22,6 +25,7 @@ class ClassCubeGeocoder:
         cache_ttl_seconds: float = 24 * 60 * 60,
         cache_limit: int = 512,
         minimum_interval_seconds: float = 1.0,
+        shared_rate_file: str | Path | None = None,
         clock: Callable[[], float] | None = None,
         session: requests.Session | None = None,
     ):
@@ -33,6 +37,10 @@ class ClassCubeGeocoder:
             float(minimum_interval_seconds),
             1.0,
         )
+        self.shared_rate_file = (
+            Path(shared_rate_file)
+            if shared_rate_file else None
+        )
         self._clock = clock or time.monotonic
         self._session = session or requests.Session()
         self._owns_session = session is None
@@ -42,6 +50,93 @@ class ClassCubeGeocoder:
         ] = OrderedDict()
         self._lock = threading.RLock()
         self._last_request_at: float | None = None
+
+    @contextmanager
+    def _shared_rate_slot(self):
+        if self.shared_rate_file is None:
+            yield False
+            return
+        handle = None
+        locked = False
+        try:
+            self.shared_rate_file.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            handle = self.shared_rate_file.open("a+b")
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"0\n")
+                handle.flush()
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            locked = True
+            handle.seek(0)
+            try:
+                last_started_at = float(
+                    handle.read().decode("ascii", "ignore").strip()
+                    or 0
+                )
+            except (TypeError, ValueError):
+                last_started_at = 0
+            wait_seconds = (
+                self.minimum_interval_seconds
+                - (time.time() - last_started_at)
+            )
+            if wait_seconds > 0:
+                time.sleep(wait_seconds)
+            handle.seek(0)
+            handle.truncate()
+            handle.write(f"{time.time():.6f}\n".encode("ascii"))
+            handle.flush()
+            yield True
+        except OSError:
+            yield False
+        finally:
+            if handle is not None:
+                if locked:
+                    try:
+                        handle.seek(0)
+                        if os.name == "nt":
+                            import msvcrt
+
+                            msvcrt.locking(
+                                handle.fileno(),
+                                msvcrt.LK_UNLCK,
+                                1,
+                            )
+                        else:
+                            import fcntl
+
+                            fcntl.flock(
+                                handle.fileno(),
+                                fcntl.LOCK_UN,
+                            )
+                    except OSError:
+                        pass
+                handle.close()
+
+    def _wait_for_rate_slot(self) -> None:
+        with self._shared_rate_slot() as used_shared_slot:
+            if used_shared_slot:
+                self._last_request_at = self._clock()
+                return
+            now = self._clock()
+            if self._last_request_at is not None:
+                wait_seconds = (
+                    self.minimum_interval_seconds
+                    - (now - self._last_request_at)
+                )
+                if wait_seconds > 0:
+                    time.sleep(wait_seconds)
+            self._last_request_at = self._clock()
 
     @staticmethod
     def _query_key(query: str) -> str:
@@ -103,6 +198,22 @@ class ClassCubeGeocoder:
             name = str(row.get("name") or "").strip()
             if not name:
                 name = address.split(",", 1)[0].strip()
+            address_parts = row.get("address")
+            if not isinstance(address_parts, dict):
+                address_parts = {}
+            city = str(
+                address_parts.get("city")
+                or address_parts.get("municipality")
+                or address_parts.get("town")
+                or address_parts.get("village")
+                or ""
+            ).strip()
+            district = str(
+                address_parts.get("city_district")
+                or address_parts.get("county")
+                or address_parts.get("suburb")
+                or ""
+            ).strip()
             normalized.append({
                 "id": f"nominatim:{row.get('place_id', len(normalized))}",
                 "name": name or "搜索结果",
@@ -113,6 +224,9 @@ class ClassCubeGeocoder:
                     row.get("category") or row.get("class") or ""
                 ),
                 "type": str(row.get("type") or ""),
+                "province": str(address_parts.get("state") or "").strip(),
+                "city": city,
+                "district": district,
                 "provider": "nominatim",
                 "coordinate_system": "WGS84",
             })
@@ -135,13 +249,7 @@ class ClassCubeGeocoder:
             if cached is not None:
                 return cached
 
-            if self._last_request_at is not None:
-                wait_seconds = (
-                    self.minimum_interval_seconds
-                    - (now - self._last_request_at)
-                )
-                if wait_seconds > 0:
-                    time.sleep(wait_seconds)
+            self._wait_for_rate_slot()
 
             try:
                 response = self._session.get(
@@ -161,7 +269,6 @@ class ClassCubeGeocoder:
                     },
                     timeout=10,
                 )
-                self._last_request_at = self._clock()
                 response.raise_for_status()
                 results = self._normalize_results(response.json())
             except (
@@ -169,7 +276,6 @@ class ClassCubeGeocoder:
                 ValueError,
                 TypeError,
             ) as exc:
-                self._last_request_at = self._clock()
                 raise ClassCubeGeocoderError(
                     "地址搜索服务暂时不可用"
                 ) from exc

@@ -20,6 +20,7 @@ from .class_cube_models import (
     ClassCubeTaskUpdate,
     ClassCubeTaskBatchDelete,
     ClassCubeSettingsUpdate,
+    ClassCubeLocationSearchRequest,
 )
 from .class_cube_repository import ClassCubeNotFound
 from .class_cube_service import (
@@ -124,18 +125,28 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
         if menu_dependency else auth_dependency
     )
 
-    @router.get("/locations/search")
-    def search_locations(
+    @router.get("/locations/config")
+    def get_location_config(
         request: Request,
-        q: str = Query(min_length=2, max_length=200),
-        limit: int = Query(default=5, ge=1, le=8),
+        actor=Depends(access_locations),
+    ):
+        return _invoke(
+            request,
+            _service(request).get_location_config,
+            actor,
+        )
+
+    @router.post("/locations/search")
+    def search_locations(
+        payload: ClassCubeLocationSearchRequest,
+        request: Request,
         actor=Depends(access_locations),
     ):
         return _invoke(
             request,
             _service(request).search_locations,
-            q,
-            limit,
+            payload.query,
+            payload.limit,
             actor,
         )
 

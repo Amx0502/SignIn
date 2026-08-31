@@ -147,7 +147,10 @@
           <el-form label-position="top">
             <div v-if="['gps', 'gps_photo'].includes(selectedItem.mode)" class="location-grid">
               <el-form-item class="location-search-item" label="签到位置">
-                <LocationSearchPanel v-model="form.coordinateInput" />
+                <LocationSearchPanel
+                  v-model="form.coordinateInput"
+                  @location-acquired="applyLocatedAccuracy"
+                />
               </el-form-item>
               <el-form-item label="定位精度（米）">
                 <el-input-number v-model="form.accuracy" :min="0" :precision="1" :controls="false" />
@@ -241,7 +244,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import {
   Aim, Camera, Cellphone, CircleCheck, CircleCheckFilled, CircleCloseFilled,
   Delete, Key, Loading, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, Upload, User, WarningFilled,
@@ -249,8 +252,15 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { buildManualCheckinPayload, shouldShowManualCheckinForm } from '../../utils/classCubeCheckin.js'
 import { decodeQrImage } from '../../utils/qrImageDecode.js'
-import LocationSearchPanel from './LocationSearchPanel.vue'
+import LocationPanelLoading from './LocationPanelLoading.vue'
 import TaskImageUpload from '../TaskImageUpload.vue'
+
+const LocationSearchPanel = defineAsyncComponent({
+  loader: () => import('./LocationSearchPanel.vue'),
+  loadingComponent: LocationPanelLoading,
+  delay: 80,
+  timeout: 20_000,
+})
 
 const props = defineProps({
   accounts: { type: Array, default: () => [] },
@@ -290,6 +300,11 @@ const resultVisible = ref(false)
 const result = ref(null)
 const batchDetails = ref([])
 const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', qrUrl: '', notify_wecom: false })
+
+function applyLocatedAccuracy(location) {
+  const accuracy = Number(location?.accuracy)
+  if (Number.isFinite(accuracy) && accuracy >= 0) form.accuracy = accuracy
+}
 
 function resetManualState() {
   Object.assign(form, {

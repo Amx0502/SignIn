@@ -1,5 +1,7 @@
+import json
 import os
 from pathlib import Path
+import tempfile
 
 APP_DIR = Path(__file__).resolve().parent.parent
 LEGACY_ACCOUNTS_FILE = APP_DIR / "accounts.json"
@@ -21,6 +23,57 @@ CLASS_CUBE_GEOCODER_USER_AGENT = os.getenv(
     "CLASS_CUBE_GEOCODER_USER_AGENT",
     "SignIn-ClassCube/1.0",
 )
+CLASS_CUBE_GEOCODER_RATE_FILE = os.getenv(
+    "CLASS_CUBE_GEOCODER_RATE_FILE",
+    str(Path(tempfile.gettempdir()) / "signin-class-cube-geocoder.rate"),
+)
+CLASS_CUBE_MAP_LAYERS_JSON = os.getenv(
+    "CLASS_CUBE_MAP_LAYERS_JSON",
+    "",
+)
+
+_DEFAULT_CLASS_CUBE_MAP_LAYERS = [{
+    "id": "openstreetmap",
+    "name": "标准地图",
+    "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "attribution": (
+        '&copy; <a href="https://www.openstreetmap.org/copyright" '
+        'target="_blank">OpenStreetMap</a> contributors'
+    ),
+    "max_zoom": 19,
+}]
+
+
+def class_cube_map_layers() -> list[dict]:
+    raw_value = str(CLASS_CUBE_MAP_LAYERS_JSON or "").strip()
+    if not raw_value:
+        return [dict(layer) for layer in _DEFAULT_CLASS_CUBE_MAP_LAYERS]
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError):
+        return [dict(layer) for layer in _DEFAULT_CLASS_CUBE_MAP_LAYERS]
+    if not isinstance(parsed, list):
+        return [dict(layer) for layer in _DEFAULT_CLASS_CUBE_MAP_LAYERS]
+
+    layers = []
+    for index, layer in enumerate(parsed[:4]):
+        if not isinstance(layer, dict):
+            continue
+        url = str(layer.get("url") or "").strip()
+        if not url or "{z}" not in url or "{x}" not in url or "{y}" not in url:
+            continue
+        try:
+            max_zoom = min(max(int(layer.get("max_zoom", 19)), 3), 22)
+        except (TypeError, ValueError):
+            max_zoom = 19
+        layers.append({
+            "id": str(layer.get("id") or f"layer-{index + 1}")[:64],
+            "name": str(layer.get("name") or f"地图 {index + 1}")[:64],
+            "url": url,
+            "attribution": str(layer.get("attribution") or "")[:2048],
+            "max_zoom": max_zoom,
+        })
+    return layers or [dict(layer) for layer in _DEFAULT_CLASS_CUBE_MAP_LAYERS]
 
 
 PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
