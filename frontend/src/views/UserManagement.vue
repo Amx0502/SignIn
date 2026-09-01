@@ -63,92 +63,121 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="userDialog" :title="editingId ? '编辑用户' : '新增用户'" width="560px">
-      <el-form ref="userFormRef" :model="userForm" :rules="userRules" label-position="top">
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="userForm.username" />
-        </el-form-item>
-        <el-form-item v-if="!editingId" label="初始密码" prop="password">
-          <el-input v-model="userForm.password" type="password" show-password />
-        </el-form-item>
-        <el-form-item label="角色" prop="role">
-          <el-select v-model="userForm.role" style="width: 100%">
-            <el-option label="管理员" value="admin" />
-            <el-option label="普通用户" value="user" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-switch v-model="userForm.is_active" active-text="启用" inactive-text="禁用" />
-        </el-form-item>
-        <el-form-item v-if="userForm.role === 'user'" label="账号到期时间">
-          <el-date-picker
-            v-model="userForm.expires_at"
-            type="datetime"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            format="YYYY-MM-DD HH:mm:ss"
-            placeholder="留空表示永不过期"
-            :disabled-date="disablePastDate"
-            clearable
-            style="width: 100%"
-          />
-          <div class="field-help">到期后账号会自动变为禁用，已登录会话也会失效；清空表示永不过期。</div>
-        </el-form-item>
-        <div v-else class="admin-expiry-note">管理员账号不设置到期时间，避免系统失去可用管理员。</div>
-        <template v-if="userForm.role === 'user'">
-          <el-form-item label="班级魔方单用户">
-            <el-switch
-              v-model="userForm.class_cube_only"
-              active-text="仅显示班级魔方"
-              inactive-text="使用自定义菜单权限"
-              @change="handleClassCubeOnlyChange"
-            />
-            <div class="field-help">开启后会一键隐藏“小小签到”一级菜单及全部子菜单，并显示班级魔方菜单。</div>
-          </el-form-item>
-          <el-form-item label="班级魔方账号额度">
-            <div class="quota-row">
-              <el-switch v-model="accountQuotaUnlimited" active-text="不限额度" />
-              <el-input-number
-                v-if="!accountQuotaUnlimited"
-                v-model="userForm.class_cube_account_limit"
-                :min="0"
-                :max="999"
-                controls-position="right"
+    <el-dialog
+      v-model="userDialog"
+      :title="editingId ? '编辑用户' : '新增用户'"
+      width="min(780px, 94vw)"
+      class="user-editor-dialog"
+      align-center
+    >
+      <el-form ref="userFormRef" :model="userForm" :rules="userRules" label-position="top" class="user-editor-form">
+        <section class="user-form-section">
+          <header class="user-form-section__head">
+            <span>01</span>
+            <div><strong>账号信息</strong><small>设置登录身份、状态和有效期</small></div>
+          </header>
+          <div class="user-form-grid">
+            <el-form-item label="用户名" prop="username">
+              <el-input v-model="userForm.username" />
+            </el-form-item>
+            <el-form-item label="角色" prop="role">
+              <el-select v-model="userForm.role" style="width: 100%">
+                <el-option label="管理员" value="admin" />
+                <el-option label="普通用户" value="user" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="!editingId" label="初始密码" prop="password">
+              <el-input v-model="userForm.password" type="password" show-password />
+            </el-form-item>
+            <el-form-item label="账号状态" class="status-form-item">
+              <div class="status-switch-card">
+                <span>{{ userForm.is_active ? '允许登录并执行任务' : '禁止登录并停止使用' }}</span>
+                <el-switch v-model="userForm.is_active" active-text="启用" inactive-text="禁用" />
+              </div>
+            </el-form-item>
+            <el-form-item v-if="userForm.role === 'user'" label="账号到期时间" class="user-form-grid__full">
+              <el-date-picker
+                v-model="userForm.expires_at"
+                type="datetime"
+                value-format="YYYY-MM-DD HH:mm:ss"
+                format="YYYY-MM-DD HH:mm:ss"
+                placeholder="留空表示永不过期"
+                :disabled-date="disablePastDate"
+                clearable
+                style="width: 100%"
               />
-            </div>
-          </el-form-item>
-          <el-form-item label="每日地址搜索额度">
-            <div class="quota-row">
-              <el-switch v-model="locationQuotaUnlimited" active-text="不限次数" />
-              <el-input-number
-                v-if="!locationQuotaUnlimited"
-                v-model="userForm.location_search_daily_limit"
-                :min="0"
-                :max="100000"
-                controls-position="right"
+              <div class="field-help">到期后账号会自动变为禁用，已登录会话也会失效；清空表示永不过期。</div>
+            </el-form-item>
+            <div v-else class="admin-expiry-note user-form-grid__full">管理员账号不设置到期时间，避免系统失去可用管理员。</div>
+          </div>
+        </section>
+
+        <section v-if="userForm.role === 'user'" class="user-form-section">
+          <header class="user-form-section__head">
+            <span>02</span>
+            <div><strong>功能与额度</strong><small>控制菜单范围、账号数量和地址搜索次数</small></div>
+          </header>
+          <div class="policy-grid">
+            <div class="policy-card policy-card--wide">
+              <div class="policy-card__title"><strong>班级魔方单用户</strong><small>快速套用仅班级魔方的菜单权限</small></div>
+              <el-switch
+                v-model="userForm.class_cube_only"
+                active-text="仅显示班级魔方"
+                inactive-text="使用自定义菜单权限"
+                @change="handleClassCubeOnlyChange"
               />
+              <p>开启后会一键隐藏“小小签到”一级菜单及全部子菜单，并显示班级魔方菜单。</p>
             </div>
-            <div class="field-help">
-              按服务器自然日统计，设置为 100 表示该用户每天最多搜索 100 次；0 表示禁止搜索，第二天自动重新计数。
+
+            <div class="policy-card">
+              <div class="policy-card__title"><strong>班级魔方账号额度</strong><small>限制该用户可绑定的账号数量</small></div>
+              <div class="quota-row">
+                <el-switch v-model="accountQuotaUnlimited" active-text="不限额度" />
+                <el-input-number
+                  v-if="!accountQuotaUnlimited"
+                  v-model="userForm.class_cube_account_limit"
+                  :min="0"
+                  :max="999"
+                  controls-position="right"
+                />
+              </div>
             </div>
-          </el-form-item>
-          <el-form-item v-if="!editingId && userForm.class_cube_only" label="初始班级魔方账号">
-            <el-select
-              v-model="userForm.initial_class_cube_account_id"
-              clearable
-              filterable
-              placeholder="可不选择，用户之后扫码添加"
-              style="width: 100%"
-            >
-              <el-option
-                v-for="account in accountPool"
-                :key="account.id"
-                :label="accountLabel(account)"
-                :value="account.id"
-              />
-            </el-select>
-            <div class="field-help">选择后将绑定现有账号作为该用户的第一个默认账号，不会复制 Cookie。</div>
-          </el-form-item>
-        </template>
+
+            <div class="policy-card">
+              <div class="policy-card__title"><strong>每日地址搜索额度</strong><small>按服务器自然日自动重新计数</small></div>
+              <div class="quota-row">
+                <el-switch v-model="locationQuotaUnlimited" active-text="不限次数" />
+                <el-input-number
+                  v-if="!locationQuotaUnlimited"
+                  v-model="userForm.location_search_daily_limit"
+                  :min="0"
+                  :max="100000"
+                  controls-position="right"
+                />
+              </div>
+              <p>例如设置 100 表示每天最多搜索 100 次；0 表示禁止搜索。</p>
+            </div>
+
+            <div v-if="!editingId && userForm.class_cube_only" class="policy-card policy-card--wide">
+              <div class="policy-card__title"><strong>初始班级魔方账号</strong><small>可不选择，用户之后自行扫码添加</small></div>
+              <el-select
+                v-model="userForm.initial_class_cube_account_id"
+                clearable
+                filterable
+                placeholder="请选择现有班级魔方账号"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="account in accountPool"
+                  :key="account.id"
+                  :label="accountLabel(account)"
+                  :value="account.id"
+                />
+              </el-select>
+              <p>选择后绑定现有账号作为该用户的第一个默认账号，不会复制 Cookie。</p>
+            </div>
+          </div>
+        </section>
       </el-form>
       <template #footer>
         <el-button @click="userDialog = false">取消</el-button>
@@ -353,6 +382,86 @@ onBeforeUnmount(() => {
 .table-card { border-radius: 18px; }
 .field-help { width: 100%; margin-top: 6px; color: #64748b; font-size: 12px; line-height: 1.5; }
 .quota-row { display: flex; align-items: center; gap: 16px; width: 100%; }
+.user-editor-form {
+  display: grid;
+  gap: 14px;
+  max-height: min(72vh, 720px);
+  padding: 2px 3px 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.user-form-section {
+  min-width: 0;
+  padding: 16px 16px 4px;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+}
+.user-form-section__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid #e5edf8;
+}
+.user-form-section__head > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  box-shadow: 0 7px 16px rgb(37 99 235 / 20%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+.user-form-section__head strong,
+.user-form-section__head small,
+.policy-card__title strong,
+.policy-card__title small {
+  display: block;
+}
+.user-form-section__head strong { color: #172033; font-size: 15px; line-height: 1.35; }
+.user-form-section__head small { margin-top: 2px; color: #8492a6; font-size: 11px; }
+.user-form-grid,
+.policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+}
+.user-form-grid__full,
+.policy-card--wide { grid-column: 1 / -1; }
+.status-switch-card {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.status-switch-card > span { color: #64748b; font-size: 12px; }
+.policy-grid { gap: 12px; padding-bottom: 12px; }
+.policy-card {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid #dbeafe;
+  border-radius: 13px;
+  background: rgb(248 251 255 / 88%);
+}
+.policy-card__title strong { color: #24324a; font-size: 13px; line-height: 1.4; }
+.policy-card__title small { margin-top: 2px; color: #8a98aa; font-size: 11px; line-height: 1.45; }
+.policy-card p { margin: 0; color: #64748b; font-size: 11px; line-height: 1.5; }
+.policy-card .quota-row { justify-content: space-between; }
+.policy-card :deep(.el-input-number) { width: 140px; }
+.user-form-section :deep(.el-form-item) { margin-bottom: 14px; }
+.user-form-section :deep(.el-form-item__content) { min-width: 0; }
 .expired-time { color: #d97706; }
 .admin-expiry-note {
   margin: -2px 0 18px;
@@ -365,5 +474,17 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 640px) {
   .page-heading { align-items: flex-start; flex-direction: column; }
+  .user-editor-form { max-height: 76vh; }
+  .user-form-section { padding: 14px 12px 3px; }
+  .user-form-grid,
+  .policy-grid { grid-template-columns: minmax(0, 1fr); }
+  .user-form-grid__full,
+  .policy-card--wide { grid-column: auto; }
+  .status-switch-card,
+  .quota-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .policy-card :deep(.el-input-number) { width: 100%; }
 }
 </style>
