@@ -22,6 +22,7 @@ from .class_cube_parser import (
     PASSWORD_FIELD_ALIASES,
     ParsedCourse,
 )
+from .task_date_schedule import get_last_effective_occurrence
 
 
 class ClassCubeNotFound(LookupError):
@@ -167,6 +168,13 @@ class ClassCubeRepository:
             )
         except (TypeError, json.JSONDecodeError):
             record["schedule_times"] = []
+        record["date_mode"] = record.get("date_mode") or "daily"
+        record["run_dates"] = list(record.get("run_dates") or [])
+        record["skip_dates"] = list(record.get("skip_dates") or [])
+        record["skip_weekends"] = bool(record.get("skip_weekends", False))
+        record["auto_disable_after_finish"] = bool(
+            record.get("auto_disable_after_finish", False)
+        )
         return record
 
     @staticmethod
@@ -1158,6 +1166,8 @@ class ClassCubeRepository:
                     "account_id", "course_id", "name", "enabled",
                     "latitude", "longitude", "accuracy", "photo_path", "photo_res",
                     "password", "start_date", "end_date",
+                    "date_mode", "run_dates", "skip_dates",
+                    "skip_weekends", "auto_disable_after_finish",
                     "notify_wecom",
                 }:
                     setattr(row, key, value)
@@ -1171,6 +1181,34 @@ class ClassCubeRepository:
             row.updated_at = datetime.now()
             session.flush()
             return self._task_record(row)
+
+    def complete_task_if_final_occurrence(
+        self, task_id, scheduled_for, completion_result
+    ):
+        scheduled_for = scheduled_for.replace(microsecond=0, tzinfo=None)
+        with self.database.session() as session:
+            row = session.scalar(
+                select(ClassCubeTaskRow)
+                .where(ClassCubeTaskRow.id == task_id)
+                .with_for_update()
+            )
+            if (
+                row is None
+                or not row.enabled
+                or not row.auto_disable_after_finish
+                or (row.date_mode or "daily") != "specific"
+            ):
+                return None
+            task = self._task_record(row)
+            last_occurrence = get_last_effective_occurrence(task)
+            if last_occurrence is None or last_occurrence != scheduled_for:
+                return None
+            row.enabled = False
+            row.updated_at = datetime.now()
+            session.flush()
+            result = self._task_record(row)
+            result["completion_result"] = completion_result
+            return result
 
     def claim_task_schedule(self, task_id, schedule_key, now=None):
         now = now or datetime.now()

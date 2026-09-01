@@ -43,6 +43,10 @@ from .class_cube_repository import (
     ClassCubeRepository,
 )
 from .class_cube_schedule import due_schedule_key, normalize_schedule_times
+from .task_date_schedule import (
+    get_last_effective_occurrence,
+    normalize_task_date_rule,
+)
 from .class_cube_notifier import ClassCubeNotifier
 from .class_cube_settings import (
     ClassCubeSettingsError,
@@ -956,6 +960,23 @@ class ClassCubeService:
             raise ClassCubeValidationError(
                 "开始日期不能晚于结束日期"
             )
+        try:
+            values.update(normalize_task_date_rule(values))
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
+        values["skip_weekends"] = bool(
+            values.get("skip_weekends", False)
+        )
+        values["auto_disable_after_finish"] = bool(
+            values.get("auto_disable_after_finish", False)
+        )
+        if (
+            values["date_mode"] == "specific"
+            and get_last_effective_occurrence(values) is None
+        ):
+            raise ClassCubeValidationError(
+                "指定日期计划至少需要保留一个实际执行日期"
+            )
         values["schedule_times"] = normalized
         values["notify_wecom"] = bool(
             values.get("notify_wecom", True)
@@ -1051,7 +1072,9 @@ class ClassCubeService:
             parts.append("密码：已配置")
         return parts
 
-    def execute_task(self, task_id, trigger="scheduled"):
+    def execute_task(
+        self, task_id, trigger="scheduled", schedule_key=None
+    ):
         task_id = int(task_id)
         with self._execution_lock:
             if task_id in self._running_task_ids:
@@ -1136,6 +1159,7 @@ class ClassCubeService:
             "unknown": 0,
             "details": [],
         }
+        completed_normally = False
         task_parameters = self._task_parameters(task)
         notification = {
             **result,
@@ -1192,6 +1216,7 @@ class ClassCubeService:
                     "任务「%s」执行完成：当前课程没有可执行签到项",
                     task.get("name", ""),
                 )
+                completed_normally = True
                 return result
             eligible_items = _eligible_task_items(
                 task,
@@ -1320,6 +1345,7 @@ class ClassCubeService:
                 result["failed"],
                 result["unknown"],
             )
+            completed_normally = True
             return result
         except Exception as exc:
             result["status"] = "failed"
@@ -1347,13 +1373,43 @@ class ClassCubeService:
             )
             return result
         finally:
+            if completed_normally and trigger == "scheduled" and schedule_key:
+                try:
+                    scheduled_for = datetime.strptime(
+                        schedule_key, "%Y-%m-%dT%H:%M:%S"
+                    )
+                    completed_task = (
+                        self.repository.complete_task_if_final_occurrence(
+                            task_id,
+                            scheduled_for,
+                            result.get("status", "unknown"),
+                        )
+                    )
+                    if completed_task is not None:
+                        result["plan_completion"] = (
+                            "指定日期计划已全部执行，任务已自动关闭"
+                        )
+                        self.logger.info(
+                            "任务「%s」指定日期计划已完成，已自动关闭",
+                            task.get("name", ""),
+                        )
+                except Exception as exc:
+                    self.logger.error(
+                        "任务「%s」计划完成状态更新失败：%s",
+                        task.get("name", ""),
+                        type(exc).__name__,
+                    )
             notification.update(result)
             self._send_task_notification(task, notification)
             with self._execution_lock:
                 self._running_task_ids.discard(task_id)
 
-    def run_scheduled_task(self, task_id):
-        return self.execute_task(task_id, trigger="scheduled")
+    def run_scheduled_task(self, task_id, schedule_key=None):
+        return self.execute_task(
+            task_id,
+            trigger="scheduled",
+            schedule_key=schedule_key,
+        )
 
     def _send_task_notification(self, task, summary):
         if not task.get("notify_wecom", True):

@@ -66,7 +66,7 @@
               type="button"
               class="date-cell"
               :class="dateCellClass(cell)"
-              :disabled="skipWeekends && isWeekend(cell.date)"
+              :disabled="isDateDisabled(cell)"
               :aria-pressed="isBaseSelected(cell.key)"
               @click="toggleDate(cell.key)"
             >
@@ -130,6 +130,8 @@ const props = defineProps({
   skipWeekends: { type: Boolean, default: false },
   times: { type: Array, default: () => [] },
   autoDisableAfterFinish: { type: Boolean, default: false },
+  minDate: { type: String, default: '' },
+  maxDate: { type: String, default: '' },
 })
 
 const emit = defineEmits([
@@ -195,6 +197,18 @@ function isWeekend(date) {
   return date.getDay() === 0 || date.getDay() === 6
 }
 
+function isOutOfRange(key) {
+  return Boolean(
+    (props.minDate && key < props.minDate)
+    || (props.maxDate && key > props.maxDate)
+  )
+}
+
+function isDateDisabled(item) {
+  return isOutOfRange(item.key)
+    || (props.skipWeekends && isWeekend(item.date))
+}
+
 const monthDates = computed(() => {
   const lastDay = new Date(
     visibleYear.value,
@@ -231,6 +245,7 @@ function isBaseSelected(key) {
 }
 
 function isEffective(item) {
+  if (isOutOfRange(item.key)) return false
   if (!isBaseSelected(item.key)) return false
   if (skipDateSet.value.has(item.key)) return false
   return !(props.skipWeekends && isWeekend(item.date))
@@ -246,6 +261,7 @@ function isToday(item) {
 }
 
 function toggleDate(key) {
+  if (isOutOfRange(key)) return
   if (props.dateMode === 'specific') {
     const nextRunDates = new Set(props.runDates || [])
     if (nextRunDates.has(key)) {
@@ -267,7 +283,9 @@ function toggleDate(key) {
 }
 
 function datesInColumn(index) {
-  return monthDates.value.filter(item => item.weekday === index)
+  return monthDates.value.filter(
+    item => item.weekday === index && !isOutOfRange(item.key),
+  )
 }
 
 function columnSelection(index) {
@@ -333,7 +351,7 @@ function restoreDailyDates(keys) {
 
 function applyWorkdays() {
   const keys = monthDates.value
-    .filter(item => item.weekday < 5)
+    .filter(item => item.weekday < 5 && !isOutOfRange(item.key))
     .map(item => item.key)
   if (props.dateMode === 'specific') {
     setSpecificDates(keys, true)
@@ -345,7 +363,10 @@ function applyWorkdays() {
 
 function applyWholeMonth() {
   const keys = monthDates.value
-    .filter(item => !(props.skipWeekends && isWeekend(item.date)))
+    .filter(item => (
+      !isOutOfRange(item.key)
+      && !(props.skipWeekends && isWeekend(item.date))
+    ))
     .map(item => item.key)
   if (props.dateMode === 'specific') {
     setSpecificDates(keys, true)
@@ -356,7 +377,9 @@ function applyWholeMonth() {
 }
 
 function clearMonth() {
-  const keys = monthDates.value.map(item => item.key)
+  const keys = monthDates.value
+    .filter(item => !isOutOfRange(item.key))
+    .map(item => item.key)
   if (props.dateMode === 'specific') {
     setSpecificDates(keys, false)
     return
@@ -598,7 +621,8 @@ function dateCellClass(item) {
     'is-weekend-suppressed': props.skipWeekends && isWeekend(item.date) && isBaseSelected(item.key),
     'is-today': isToday(item),
     'is-weekend': isWeekend(item.date),
-    'is-disabled': props.skipWeekends && isWeekend(item.date),
+    'is-disabled': isDateDisabled(item),
+    'is-out-of-range': isOutOfRange(item.key),
   }
 }
 
@@ -617,7 +641,9 @@ const planSummary = computed(() => {
     }
   }
 
-  const allRunDates = sortDates(props.runDates || [])
+  const allRunDates = sortDates(props.runDates || []).filter(
+    key => !isOutOfRange(key),
+  )
   const explicitSkip = allRunDates.filter(key => skipDateSet.value.has(key)).length
   const weekendSkip = props.skipWeekends
     ? allRunDates.filter(key => (
@@ -651,6 +677,7 @@ function normalizePreviewTime(value) {
 
 const lastOccurrenceText = computed(() => {
   const effectiveDates = sortDates(props.runDates || []).filter(key => {
+    if (isOutOfRange(key)) return false
     if (skipDateSet.value.has(key)) return false
     return !(props.skipWeekends && isWeekend(dateFromKey(key)))
   })
@@ -696,6 +723,7 @@ const lastOccurrenceText = computed(() => {
 .date-cell.is-selected.is-weekend { color: #fff; background: linear-gradient(145deg, #6366f1, #4f46e5); }
 .date-cell.is-explicit-skip { border-color: #fecaca; color: #dc2626; background: #fff1f2; }
 .date-cell.is-weekend-suppressed { border-color: #d8dee8; color: #8b95a5; background: repeating-linear-gradient(135deg, #f8fafc, #f8fafc 5px, #eef2f7 5px, #eef2f7 10px); box-shadow: none; }
+.date-cell.is-out-of-range { border-color: transparent; color: #cbd5e1; background: #f8fafc; box-shadow: none; opacity: .62; }
 .date-cell.is-today::after { position: absolute; inset: 2px; border: 1px solid #0ea5e9; border-radius: 8px; content: ''; pointer-events: none; }
 .calendar-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid #eaf1fb; }
 .calendar-actions :deep(.el-button + .el-button) { margin-left: 0; }

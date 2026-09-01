@@ -64,6 +64,11 @@ class ClassCubeTaskCreate(BaseModel):
     schedule_times: list[str] = Field(default_factory=list, max_length=24)
     start_date: date | None = None
     end_date: date | None = None
+    date_mode: str = Field(default="daily", pattern="^(daily|specific)$")
+    run_dates: list[str] = Field(default_factory=list, max_length=730)
+    skip_dates: list[str] = Field(default_factory=list, max_length=730)
+    skip_weekends: bool = False
+    auto_disable_after_finish: bool = False
     notify_wecom: bool = True
 
 
@@ -84,6 +89,13 @@ class ClassCubeTaskUpdate(BaseModel):
     )
     start_date: date | None = None
     end_date: date | None = None
+    date_mode: str | None = Field(
+        default=None, pattern="^(daily|specific)$"
+    )
+    run_dates: list[str] | None = Field(default=None, max_length=730)
+    skip_dates: list[str] | None = Field(default=None, max_length=730)
+    skip_weekends: bool | None = None
+    auto_disable_after_finish: bool | None = None
     notify_wecom: bool | None = None
 
 
@@ -119,6 +131,13 @@ def task_view(task: dict[str, Any]) -> dict[str, Any]:
         "schedule_times": task.get("schedule_times", []),
         "start_date": _iso(task.get("start_date")),
         "end_date": _iso(task.get("end_date")),
+        "date_mode": task.get("date_mode") or "daily",
+        "run_dates": list(task.get("run_dates") or []),
+        "skip_dates": list(task.get("skip_dates") or []),
+        "skip_weekends": bool(task.get("skip_weekends", False)),
+        "auto_disable_after_finish": bool(
+            task.get("auto_disable_after_finish", False)
+        ),
         "notify_wecom": bool(task.get("notify_wecom", True)),
         "has_password": bool(task.get("password")),
         "last_scan_at": _iso(task.get("last_scan_at")),

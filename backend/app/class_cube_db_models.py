@@ -275,6 +275,21 @@ class ClassCubeTaskRow(ClassCubeBase):
     )
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    date_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="daily"
+    )
+    run_dates: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    skip_dates: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    skip_weekends: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    auto_disable_after_finish: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     notify_wecom: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )

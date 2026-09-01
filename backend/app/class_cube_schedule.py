@@ -1,5 +1,7 @@
 from datetime import date, datetime
 
+from .task_date_schedule import is_task_active_on
+
 
 def normalize_schedule_times(values) -> list[str]:
     normalized = set()
@@ -32,6 +34,8 @@ def due_schedule_key(
     start = _as_date(task.get("start_date"))
     end = _as_date(task.get("end_date"))
     if (start and today < start) or (end and today > end):
+        return None
+    if not is_task_active_on(task, today):
         return None
     seconds = now.hour * 3600 + now.minute * 60 + now.second
     for value in normalize_schedule_times(task.get("schedule_times", [])):

@@ -82,16 +82,36 @@ def get_last_effective_occurrence(task: dict) -> dt.datetime | None:
         return None
 
     run_dates = normalize_date_list(task.get("run_dates", []), "指定执行日期")
+    start_date = task.get("start_date")
+    end_date = task.get("end_date")
+    start = (
+        dt.date.fromisoformat(str(start_date)) if start_date else None
+    )
+    end = dt.date.fromisoformat(str(end_date)) if end_date else None
     effective_dates = [
         dt.date.fromisoformat(value)
         for value in run_dates
-        if is_task_active_on(task, dt.date.fromisoformat(value))
+        if (
+            is_task_active_on(task, dt.date.fromisoformat(value))
+            and (
+                start is None
+                or dt.date.fromisoformat(value) >= start
+            )
+            and (
+                end is None
+                or dt.date.fromisoformat(value) <= end
+            )
+        )
     ]
     if not effective_dates:
         return None
 
     parsed_times: list[dt.time] = []
-    for value in task.get("times", []) or []:
+    for value in (
+        task.get("times")
+        or task.get("schedule_times")
+        or []
+    ):
         text = str(value).strip()
         try:
             parsed_times.append(dt.time.fromisoformat(text))

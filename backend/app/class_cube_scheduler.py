@@ -87,9 +87,16 @@ class ClassCubeScheduler:
                 return False
             self._running_task_ids.add(task_id)
             try:
-                future = self._executor.submit(
-                    self.service.run_scheduled_task, task_id
-                )
+                if schedule_key is None:
+                    future = self._executor.submit(
+                        self.service.run_scheduled_task, task_id
+                    )
+                else:
+                    future = self._executor.submit(
+                        self.service.run_scheduled_task,
+                        task_id,
+                        schedule_key,
+                    )
             except Exception:
                 self._running_task_ids.discard(task_id)
                 raise

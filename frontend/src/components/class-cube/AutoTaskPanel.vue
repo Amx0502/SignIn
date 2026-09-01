@@ -24,7 +24,7 @@
     >
       <el-table-column type="selection" width="46" reserve-selection />
       <el-table-column label="任务" min-width="170">
-        <template #default="{ row }"><div class="task-name"><strong>{{ row.name }}</strong><small>{{ (row.schedule_times || []).join('、') || '未设置时间' }}</small></div></template>
+        <template #default="{ row }"><div class="task-name"><strong>{{ row.name }}</strong><small>{{ (row.schedule_times || []).join('、') || '未设置时间' }}</small><small class="task-plan-summary">{{ schedulePlanSummary(row) }}</small></div></template>
       </el-table-column>
       <el-table-column label="账号 / 课程" min-width="190">
         <template #default="{ row }"><div class="task-name"><span>{{ accountName(row.account_id) }}</span><small>{{ courseName(row.course_id) }}</small></div></template>
@@ -121,10 +121,18 @@
                 <el-button plain @click="draft.schedule_times.push('08:00:00')">添加执行时间</el-button>
               </div>
             </el-form-item>
-            <el-form-item label="执行日期范围">
-              <div class="date-range">
-                <el-date-picker v-model="draft.start_date" value-format="YYYY-MM-DD" type="date" placeholder="开始日期" />
-                <el-date-picker v-model="draft.end_date" value-format="YYYY-MM-DD" type="date" placeholder="结束日期" />
+            <el-form-item label="执行日期计划">
+              <div class="date-plan-card">
+                <div class="date-plan-card__content">
+                  <div class="date-plan-card__tags">
+                    <el-tag size="small" type="primary">{{ draft.date_mode === 'specific' ? '指定日期' : '每天执行' }}</el-tag>
+                    <el-tag v-if="draft.skip_weekends" size="small" type="info">周末跳过</el-tag>
+                    <el-tag v-if="draft.auto_disable_after_finish && draft.date_mode === 'specific'" size="small" type="success">结束后关闭</el-tag>
+                  </div>
+                  <strong>{{ schedulePlanSummary(draft) }}</strong>
+                  <small>{{ scheduleRangeSummary(draft) }}</small>
+                </div>
+                <el-button type="primary" plain @click="openScheduleDrawer">设置签到日期</el-button>
               </div>
             </el-form-item>
             <div class="switch-options">
@@ -139,6 +147,49 @@
         <el-button type="primary" :loading="saving" @click="save">保存任务</el-button>
       </template>
     </el-dialog>
+
+    <el-drawer
+      v-model="scheduleDrawerVisible"
+      title="设置签到日期计划"
+      size="min(760px, 100vw)"
+      append-to-body
+      class="schedule-drawer"
+      :close-on-click-modal="false"
+    >
+      <div class="schedule-drawer__body">
+        <div class="schedule-drawer__intro">
+          <strong>控制具体哪天执行或跳过</strong>
+          <small>日期范围是可选的有效边界；周末跳过不会删除已经选择的周末日期，关闭后会自动恢复。</small>
+        </div>
+        <el-form label-position="top">
+          <el-form-item label="有效日期范围（可选）">
+            <div class="date-range date-range--drawer">
+              <el-date-picker v-model="scheduleDraft.start_date" value-format="YYYY-MM-DD" type="date" placeholder="开始日期" />
+              <el-date-picker v-model="scheduleDraft.end_date" value-format="YYYY-MM-DD" type="date" placeholder="结束日期" />
+            </div>
+          </el-form-item>
+        </el-form>
+        <TaskDateSchedule
+          :date-mode="scheduleDraft.date_mode"
+          :run-dates="scheduleDraft.run_dates"
+          :skip-dates="scheduleDraft.skip_dates"
+          :skip-weekends="scheduleDraft.skip_weekends"
+          :times="draft.schedule_times"
+          :auto-disable-after-finish="scheduleDraft.auto_disable_after_finish"
+          :min-date="scheduleDraft.start_date || ''"
+          :max-date="scheduleDraft.end_date || ''"
+          @update:date-mode="scheduleDraft.date_mode = $event"
+          @update:run-dates="scheduleDraft.run_dates = $event"
+          @update:skip-dates="scheduleDraft.skip_dates = $event"
+          @update:skip-weekends="scheduleDraft.skip_weekends = $event"
+          @update:auto-disable-after-finish="scheduleDraft.auto_disable_after_finish = $event"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="scheduleDrawerVisible = false">取消</el-button>
+        <el-button type="primary" @click="applyScheduleDraft">应用日期计划</el-button>
+      </template>
+    </el-drawer>
   </el-card>
 </template>
 
@@ -149,6 +200,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { coordinateText, normalizeScheduleTimes, parseCoordinates } from '../../utils/classCubeTaskForm.js'
 import LocationPanelLoading from './LocationPanelLoading.vue'
 import TaskImageUpload from '../TaskImageUpload.vue'
+import TaskDateSchedule from '../TaskDateSchedule.vue'
 
 const LocationSearchPanel = defineAsyncComponent({
   loader: () => import('./LocationSearchPanel.vue'),
@@ -178,12 +230,38 @@ const photoUploading = ref(false)
 const photoFiles = ref([])
 const runningTaskId = ref(null)
 const locationPanelKey = ref(0)
-const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', photo_res: '', password: '', has_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
+const scheduleDrawerVisible = ref(false)
+const emptyDatePlan = () => ({ start_date: null, end_date: null, date_mode: 'daily', run_dates: [], skip_dates: [], skip_weekends: false, auto_disable_after_finish: false })
+const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', photo_res: '', password: '', has_password: false, schedule_times: ['08:00:00'], ...emptyDatePlan(), notify_wecom: true })
 const draft = reactive(emptyDraft())
+const scheduleDraft = reactive(emptyDatePlan())
 
 function accountName(id) { const row = props.accounts.find(item => item.id === id); return row?.name || row?.remote_user_name || `账号 ${id}` }
 function courseName(id) { return props.courses.find(item => item.id === id)?.name || `课程 ${id}` }
 function formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '尚未扫描' }
+function dateInRange(value, plan) { return (!plan.start_date || value >= plan.start_date) && (!plan.end_date || value <= plan.end_date) }
+function effectiveSpecificDates(plan) {
+  const skipped = new Set(plan.skip_dates || [])
+  return [...new Set(plan.run_dates || [])].filter(value => {
+    if (!dateInRange(value, plan) || skipped.has(value)) return false
+    if (!plan.skip_weekends) return true
+    const weekday = new Date(`${value}T00:00:00`).getDay()
+    return weekday !== 0 && weekday !== 6
+  }).sort()
+}
+function schedulePlanSummary(plan) {
+  const excluded = (plan.skip_dates || []).length
+  if ((plan.date_mode || 'daily') === 'daily') {
+    return ['每天执行', plan.skip_weekends ? '周末跳过' : '', excluded ? `排除 ${excluded} 天` : ''].filter(Boolean).join(' · ')
+  }
+  const selected = (plan.run_dates || []).length
+  const effective = effectiveSpecificDates(plan).length
+  return [`指定 ${selected} 天`, `实际 ${effective} 天`, plan.auto_disable_after_finish ? '结束后关闭' : ''].filter(Boolean).join(' · ')
+}
+function scheduleRangeSummary(plan) {
+  if (!plan.start_date && !plan.end_date) return '不限制开始和结束日期'
+  return `${plan.start_date || '不限'} 至 ${plan.end_date || '不限'}`
+}
 function selectionChanged(rows) { emit('update:selected-task-ids', new Set(rows.map(row => row.id))) }
 function resetDraft(values = {}) {
   Object.assign(draft, emptyDraft(), values, {
@@ -207,6 +285,35 @@ function accountChanged(id) {
   emit('select-account', id)
 }
 
+function openScheduleDrawer() {
+  Object.assign(scheduleDraft, {
+    start_date: draft.start_date || null,
+    end_date: draft.end_date || null,
+    date_mode: draft.date_mode || 'daily',
+    run_dates: [...(draft.run_dates || [])],
+    skip_dates: [...(draft.skip_dates || [])],
+    skip_weekends: draft.skip_weekends === true,
+    auto_disable_after_finish: draft.auto_disable_after_finish === true,
+  })
+  scheduleDrawerVisible.value = true
+}
+
+function validateDatePlan(plan) {
+  if (plan.start_date && plan.end_date && plan.start_date > plan.end_date) throw new Error('开始日期不能晚于结束日期')
+  if (plan.date_mode === 'specific' && !(plan.run_dates || []).length) throw new Error('指定日期模式下请至少选择一个执行日期')
+  if (plan.date_mode === 'specific' && !effectiveSpecificDates(plan).length) throw new Error('指定日期计划至少需要保留一个实际执行日期')
+}
+
+function applyScheduleDraft() {
+  try { validateDatePlan(scheduleDraft) } catch (error) { return ElMessage.warning(error.message) }
+  Object.assign(draft, {
+    ...scheduleDraft,
+    run_dates: [...scheduleDraft.run_dates],
+    skip_dates: [...scheduleDraft.skip_dates],
+  })
+  scheduleDrawerVisible.value = false
+}
+
 async function save() {
   if (!draft.name.trim() || !draft.account_id || !draft.course_id) return ElMessage.warning('请填写任务名称并选择账号和课程')
   try {
@@ -214,7 +321,7 @@ async function save() {
     else { draft.latitude = null; draft.longitude = null }
     draft.schedule_times = normalizeScheduleTimes(draft.schedule_times)
     if (!draft.schedule_times.length) throw new Error('请至少添加一个执行时间')
-    if (draft.start_date && draft.end_date && draft.start_date > draft.end_date) throw new Error('开始日期不能晚于结束日期')
+    validateDatePlan(draft)
   } catch (error) { return ElMessage.warning(error.message) }
   saving.value = true
   try {
@@ -283,7 +390,7 @@ async function removeSelected() {
 <style scoped>
 .task-panel { border:1px solid rgb(191 219 254 / 58%);border-radius:22px;background:rgb(255 255 255 / 84%);box-shadow:0 18px 42px rgb(15 23 42 / 7%);backdrop-filter:blur(18px) }
 .panel-head { display:flex;align-items:center;justify-content:space-between;gap:14px }.panel-head strong,.panel-head small,.task-name strong,.task-name small { display:block }.panel-head strong{font-size:16px}.panel-head small,.task-name small,.muted{margin-top:4px;color:#64748b;font-size:11px}.task-name strong{color:#172033}
-.task-editor-form{max-height:min(80vh,860px);overflow-x:hidden;overflow-y:auto;padding:2px 4px 4px}.editor-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"basic strategy" "location location";align-items:stretch;gap:14px}.editor-section:nth-child(1){grid-area:basic}.editor-section:nth-child(2){grid-area:location}.editor-section:nth-child(3){grid-area:strategy}.editor-section{min-width:0;overflow:hidden;padding:16px 16px 6px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);box-shadow:0 10px 28px rgb(37 99 235 / 6%)}.editor-section :deep(.el-form-item__content){min-width:0}.editor-section header{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:12px;border-bottom:1px solid #e8eef8}.editor-section header strong,.editor-section header small{display:block}.editor-section header strong{color:#172033;font-size:15px}.editor-section header small{margin-top:2px;color:#8492a6;font-size:11px}.section-index{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-size:11px;font-weight:800;box-shadow:0 7px 16px rgb(37 99 235 / 22%)}.el-select,.el-input-number{width:100%}.field-tip{display:block;margin-top:7px;color:#64748b;font-size:11px}.schedule-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.date-range{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.schedule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;min-width:0}.schedule-row :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.date-range :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.switch-options{display:grid;gap:8px;padding:12px;border-radius:12px;background:#eff6ff}.switch-options .el-checkbox{margin-right:0}
+.task-editor-form{max-height:min(80vh,860px);overflow-x:hidden;overflow-y:auto;padding:2px 4px 4px}.editor-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"basic strategy" "location location";align-items:stretch;gap:14px}.editor-section:nth-child(1){grid-area:basic}.editor-section:nth-child(2){grid-area:location}.editor-section:nth-child(3){grid-area:strategy}.editor-section{min-width:0;overflow:hidden;padding:16px 16px 6px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);box-shadow:0 10px 28px rgb(37 99 235 / 6%)}.editor-section :deep(.el-form-item__content){min-width:0}.editor-section header{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:12px;border-bottom:1px solid #e8eef8}.editor-section header strong,.editor-section header small{display:block}.editor-section header strong{color:#172033;font-size:15px}.editor-section header small{margin-top:2px;color:#8492a6;font-size:11px}.section-index{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-size:11px;font-weight:800;box-shadow:0 7px 16px rgb(37 99 235 / 22%)}.el-select,.el-input-number{width:100%}.field-tip{display:block;margin-top:7px;color:#64748b;font-size:11px}.schedule-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.date-range{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.schedule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;min-width:0}.schedule-row :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.date-range :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.switch-options{display:grid;gap:8px;padding:12px;border-radius:12px;background:#eff6ff}.switch-options .el-checkbox{margin-right:0}.task-plan-summary{color:#2563eb!important}.date-plan-card{display:flex;width:100%;min-width:0;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #dbeafe;border-radius:13px;background:#f8fbff}.date-plan-card__content{display:grid;min-width:0;gap:5px}.date-plan-card__content strong{overflow:hidden;color:#1e3a5f;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.date-plan-card__content small{color:#64748b;font-size:10px}.date-plan-card__tags{display:flex;flex-wrap:wrap;gap:5px}.date-plan-card>.el-button{flex:none}.schedule-drawer__body{display:grid;gap:16px;padding:0 4px 18px}.schedule-drawer__intro{display:grid;gap:5px;padding:13px 14px;border:1px solid #dbeafe;border-radius:13px;background:#eff6ff}.schedule-drawer__intro strong{color:#1e3a5f;font-size:14px}.schedule-drawer__intro small{color:#64748b;line-height:1.55}.date-range--drawer{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 @media(max-width:900px){.task-editor-form{max-height:76vh}}
-@media(max-width:680px){.panel-head{align-items:stretch;flex-direction:column}.panel-head :deep(.el-space),.panel-head :deep(.el-space__item),.panel-head .el-button{width:100%}.editor-layout{grid-template-columns:1fr;grid-template-areas:"basic" "strategy" "location"}.date-range{grid-template-columns:1fr}.task-editor-form{max-height:72vh}.editor-section{padding:14px 13px 4px}}
+@media(max-width:680px){.panel-head{align-items:stretch;flex-direction:column}.panel-head :deep(.el-space),.panel-head :deep(.el-space__item),.panel-head .el-button{width:100%}.editor-layout{grid-template-columns:1fr;grid-template-areas:"basic" "strategy" "location"}.date-range{grid-template-columns:1fr}.task-editor-form{max-height:72vh}.editor-section{padding:14px 13px 4px}.date-plan-card{align-items:stretch;flex-direction:column}.date-plan-card>.el-button{width:100%}.date-range--drawer{grid-template-columns:1fr}}
 </style>

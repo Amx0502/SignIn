@@ -12,6 +12,11 @@ const TASK_FIELDS = new Set([
   'schedule_times',
   'start_date',
   'end_date',
+  'date_mode',
+  'run_dates',
+  'skip_dates',
+  'skip_weekends',
+  'auto_disable_after_finish',
   'notify_wecom',
 ])
 

@@ -178,14 +178,20 @@ class ClassCubeDatabase:
     @staticmethod
     def _migrate_task_table(engine: Engine) -> None:
         table = "class_cube_tasks"
-        columns = {
-            column["name"]
+        column_info = {
+            column["name"]: column
             for column in inspect(engine).get_columns(table)
         }
+        columns = set(column_info)
         definitions = {
             "schedule_times_json": "TEXT NOT NULL",
             "start_date": "DATE NULL",
             "end_date": "DATE NULL",
+            "date_mode": "VARCHAR(16) NOT NULL DEFAULT 'daily'",
+            "run_dates": "JSON NULL",
+            "skip_dates": "JSON NULL",
+            "skip_weekends": "TINYINT(1) NOT NULL DEFAULT 0",
+            "auto_disable_after_finish": "TINYINT(1) NOT NULL DEFAULT 0",
             "notify_wecom": "TINYINT(1) NOT NULL DEFAULT 1",
             "last_schedule_key": "VARCHAR(32) NOT NULL DEFAULT ''",
             "photo_res": "VARCHAR(2048) NOT NULL DEFAULT ''",
@@ -206,6 +212,19 @@ class ClassCubeDatabase:
                         "WHERE schedule_times_json IS NULL"
                     )
                 )
+            for field in ("run_dates", "skip_dates"):
+                connection.execute(text(
+                    f"UPDATE {table} SET {field}=JSON_ARRAY() "
+                    f"WHERE {field} IS NULL"
+                ))
+                if (
+                    field not in columns
+                    or column_info[field].get("nullable", True)
+                ):
+                    connection.execute(text(
+                        f"ALTER TABLE {table} MODIFY COLUMN "
+                        f"{field} JSON NOT NULL"
+                    ))
 
     @staticmethod
     def _migrate_task_run_table(engine: Engine) -> None:
