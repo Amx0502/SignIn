@@ -68,11 +68,6 @@ CLASS_CUBE_MAP_LAYERS_JSON = os.getenv(
     "CLASS_CUBE_MAP_LAYERS_JSON",
     "",
 )
-CLASS_CUBE_SUBMIT_COORDINATE_SYSTEM = os.getenv(
-    "CLASS_CUBE_SUBMIT_COORDINATE_SYSTEM",
-    "gcj02",
-)
-
 _DEFAULT_CLASS_CUBE_MAP_LAYERS = [{
     "id": "amap",
     "name": "国内地图",
@@ -85,7 +80,8 @@ _DEFAULT_CLASS_CUBE_MAP_LAYERS = [{
         'target="_blank">高德地图</a>'
     ),
     "coordinate_system": "gcj02",
-    "max_zoom": 19,
+    "max_native_zoom": 18,
+    "max_zoom": 20,
 }]
 
 
@@ -108,9 +104,16 @@ def class_cube_map_layers() -> list[dict]:
         if not url or "{z}" not in url or "{x}" not in url or "{y}" not in url:
             continue
         try:
-            max_zoom = min(max(int(layer.get("max_zoom", 19)), 3), 22)
+            max_zoom = min(max(int(layer.get("max_zoom", 20)), 3), 22)
         except (TypeError, ValueError):
-            max_zoom = 19
+            max_zoom = 20
+        try:
+            max_native_zoom = min(
+                max(int(layer.get("max_native_zoom", max_zoom)), 3),
+                max_zoom,
+            )
+        except (TypeError, ValueError):
+            max_native_zoom = max_zoom
         layers.append({
             "id": str(layer.get("id") or f"layer-{index + 1}")[:64],
             "name": str(layer.get("name") or f"地图 {index + 1}")[:64],
@@ -121,6 +124,7 @@ def class_cube_map_layers() -> list[dict]:
                 if str(layer.get("coordinate_system") or "").lower() == "gcj02"
                 else "wgs84"
             ),
+            "max_native_zoom": max_native_zoom,
             "max_zoom": max_zoom,
         })
     return layers or [dict(layer) for layer in _DEFAULT_CLASS_CUBE_MAP_LAYERS]

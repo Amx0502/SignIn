@@ -203,10 +203,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import classCubeApi from '../../api/classCube.js'
 import {
-  gcj02ToWgs84,
-  wgs84ToGcj02,
-} from '../../utils/classCubeMapCoordinates.js'
-import {
   CHINA_PROVINCE_CITIES,
 } from '../../utils/chinaRegions.js'
 import { parseCoordinates } from '../../utils/classCubeTaskForm.js'
@@ -223,7 +219,8 @@ const DEFAULT_MAP_CONFIG = {
     url: 'https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
     attribution: '&copy; <a href="https://www.amap.com/" target="_blank">高德地图</a>',
     coordinate_system: 'gcj02',
-    max_zoom: 19,
+    max_native_zoom: 18,
+    max_zoom: 20,
   }],
   default_center: { latitude: 35.8617, longitude: 104.1954 },
   default_zoom: 4,
@@ -342,34 +339,12 @@ function parsedModelValue() {
   }
 }
 
-function layerUsesGcj02(layer = null) {
-  const selectedLayer = layer || layerById(activeLayerId.value)
-  return String(selectedLayer?.coordinate_system || '').toLowerCase() === 'gcj02'
-}
-
-function coordinateForMap(coordinate, layer = null) {
-  const normalized = normalizeCoordinate(coordinate.latitude, coordinate.longitude)
-  return layerUsesGcj02(layer)
-    ? wgs84ToGcj02(normalized.latitude, normalized.longitude)
-    : normalized
-}
-
-function coordinateFromMap(coordinate, layer = null) {
-  const normalized = normalizeCoordinate(coordinate.latitude, coordinate.longitude)
-  return layerUsesGcj02(layer)
-    ? gcj02ToWgs84(normalized.latitude, normalized.longitude)
-    : normalized
-}
-
-function coordinateFromSource(coordinate, coordinateSystem = 'wgs84') {
-  const normalized = normalizeCoordinate(coordinate.latitude, coordinate.longitude)
-  return String(coordinateSystem || '').toLowerCase() === 'gcj02'
-    ? gcj02ToWgs84(normalized.latitude, normalized.longitude)
-    : normalized
+function coordinateForMap(coordinate) {
+  return normalizeCoordinate(coordinate.latitude, coordinate.longitude)
 }
 
 function resultCoordinateForMap(result) {
-  return coordinateForMap(coordinateFromSource(result, result.coordinate_system))
+  return coordinateForMap(result)
 }
 
 function announce(message) {
@@ -417,10 +392,7 @@ function updateMapPosition(coordinate, { recenter = false, zoom = 16 } = {}) {
 }
 
 function applyCoordinate(latitude, longitude, options = {}) {
-  const sourceCoordinate = normalizeCoordinate(latitude, longitude)
-  const coordinate = options.fromMap
-    ? coordinateFromMap(sourceCoordinate)
-    : coordinateFromSource(sourceCoordinate, options.sourceCoordinateSystem)
+  const coordinate = normalizeCoordinate(latitude, longitude)
   emit(
     'update:modelValue',
     `${formatCoordinate(coordinate.latitude)}, ${formatCoordinate(coordinate.longitude)}`,
@@ -510,7 +482,6 @@ async function searchAddress() {
 
 function selectResult(result) {
   applyCoordinate(result.latitude, result.longitude, {
-    sourceCoordinateSystem: result.coordinate_system,
     resultId: result.id,
     recenter: true,
     zoom: 17,
@@ -645,6 +616,11 @@ function normalizedMapConfig(response) {
             ? 'gcj02'
             : 'wgs84'
         ),
+        max_native_zoom: Math.min(
+          Number(layer.max_native_zoom) || Number(layer.max_zoom) || 20,
+          Number(layer.max_zoom) || 20,
+        ),
+        max_zoom: Number(layer.max_zoom) || 20,
       })),
     default_center: data.default_center || DEFAULT_MAP_CONFIG.default_center,
   }
@@ -670,7 +646,8 @@ function activateLayer(layerId, { automatic = false } = {}) {
   tileErrorCount = 0
   const currentLayerId = layer.id
   tileLayer = Leaflet.tileLayer(layer.url, {
-    maxZoom: Number(layer.max_zoom) || 19,
+    maxNativeZoom: Number(layer.max_native_zoom) || Number(layer.max_zoom) || 20,
+    maxZoom: Number(layer.max_zoom) || 20,
     attribution: layer.attribution || '',
     updateWhenIdle: constrainedNetwork.value,
     updateWhenZooming: !constrainedNetwork.value,
@@ -701,7 +678,7 @@ function activateLayer(layerId, { automatic = false } = {}) {
     }
   })
   tileLayer.addTo(map)
-  map.setMaxZoom(Number(layer.max_zoom) || 19)
+  map.setMaxZoom(Number(layer.max_zoom) || 20)
   const coordinate = parsedModelValue()
   if (coordinate) {
     updateMapPosition(coordinateForMap(coordinate, layer), { recenter: false })
@@ -779,7 +756,7 @@ async function initializeMap() {
     center: [center.latitude, center.longitude],
     zoom: Number(mapConfig.value.default_zoom) || 4,
     minZoom: 3,
-    maxZoom: 19,
+    maxZoom: 20,
     zoomControl: false,
     scrollWheelZoom: false,
     dragging: mapDraggingEnabled.value,
@@ -790,7 +767,6 @@ async function initializeMap() {
   map.on('click', event => {
     applyCoordinate(event.latlng.lat, event.latlng.lng, {
       recenter: false,
-      fromMap: true,
       announceText: '已通过地图点击选择位置',
     })
   })
