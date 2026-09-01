@@ -113,30 +113,26 @@ def build_effective_menu(
         key: True if is_admin else overrides.get(key, global_visibility.get(key, True))
         for key in MENU_KEYS
     }
-    children: dict[str, list[dict[str, Any]]] = {}
-    roots: list[dict[str, Any]] = []
-
+    source_children: dict[str | None, list[dict[str, Any]]] = {}
     for item in sorted(MENU_CATALOG, key=lambda row: row["order"]):
-        parent_key = item["parent_key"]
-        if not direct_visibility[item["key"]]:
-            continue
-        if parent_key and not direct_visibility.get(parent_key, True):
-            continue
-        rendered = {
-            "key": item["key"],
-            "title": item["title"],
-            "path": item["path"],
-            "icon": item["icon"],
-            "children": [],
-        }
-        if parent_key:
-            children.setdefault(parent_key, []).append(rendered)
-        else:
-            roots.append(rendered)
+        source_children.setdefault(item["parent_key"], []).append(item)
 
-    for root in roots:
-        root["children"] = children.get(root["key"], [])
-    return roots
+    def render(parent_key: str | None, ancestors_visible: bool) -> list[dict[str, Any]]:
+        rendered_items = []
+        for item in source_children.get(parent_key, []):
+            visible = ancestors_visible and direct_visibility[item["key"]]
+            if not visible:
+                continue
+            rendered_items.append({
+                "key": item["key"],
+                "title": item["title"],
+                "path": item["path"],
+                "icon": item["icon"],
+                "children": render(item["key"], visible),
+            })
+        return rendered_items
+
+    return render(None, True)
 
 
 def visible_menu_keys(menus: list[dict[str, Any]]) -> set[str]:

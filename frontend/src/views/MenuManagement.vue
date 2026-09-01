@@ -24,21 +24,21 @@
         <el-tab-pane label="全局默认配置" name="global">
           <div class="section-copy">
             <strong>全部普通用户的默认菜单</strong>
-            <span>一级和二级菜单互不联动；隐藏一级菜单时会暂时隐藏其子菜单，但保留子菜单设置。</span>
+            <span>关闭一级菜单会立即隐藏整棵子菜单；重新开启后恢复之前保存的子菜单设置。</span>
           </div>
           <div class="menu-tree-list">
             <div
               v-for="row in rows"
               :key="`global-${row.key}`"
               class="menu-config-row"
-              :class="{ 'is-child': row.depth > 0 }"
+              :class="{ 'is-child': row.depth > 0, 'is-parent-hidden': isAncestorHidden(row, 'global') }"
             >
               <div class="menu-label" :style="{ paddingLeft: `${row.depth * 30}px` }">
                 <span class="level-badge">{{ row.depth ? '二级' : '一级' }}</span>
                 <div><strong>{{ row.title }}</strong><small>{{ row.path || '菜单分组' }}</small></div>
               </div>
-              <el-checkbox v-model="globalVisibility[row.key]">
-                {{ globalVisibility[row.key] ? '显示' : '隐藏' }}
+              <el-checkbox v-model="globalVisibility[row.key]" :disabled="isAncestorHidden(row, 'global')">
+                {{ isAncestorHidden(row, 'global') ? '随父级隐藏' : globalVisibility[row.key] ? '显示' : '隐藏' }}
               </el-checkbox>
             </div>
           </div>
@@ -74,16 +74,17 @@
                 v-for="row in rows"
                 :key="`user-${row.key}`"
                 class="menu-config-row override-row"
-                :class="{ 'is-child': row.depth > 0 }"
+                :class="{ 'is-child': row.depth > 0, 'is-parent-hidden': isAncestorHidden(row, 'user') }"
               >
                 <div class="menu-label" :style="{ paddingLeft: `${row.depth * 30}px` }">
                   <span class="level-badge">{{ row.depth ? '二级' : '一级' }}</span>
                   <div>
                     <strong>{{ row.title }}</strong>
-                    <small>全局当前：{{ globalVisibility[row.key] ? '显示' : '隐藏' }}</small>
+                    <small v-if="isAncestorHidden(row, 'user')">父级已隐藏，当前菜单同步隐藏</small>
+                    <small v-else>全局当前：{{ globalVisibility[row.key] ? '显示' : '隐藏' }}</small>
                   </div>
                 </div>
-                <el-radio-group v-model="userOverrides[row.key]" size="small">
+                <el-radio-group v-model="userOverrides[row.key]" size="small" :disabled="isAncestorHidden(row, 'user')">
                   <el-radio-button value="inherit">继承全局</el-radio-button>
                   <el-radio-button value="visible">显示</el-radio-button>
                   <el-radio-button value="hidden">隐藏</el-radio-button>
@@ -161,6 +162,23 @@ const ordinaryUsers = computed(() => users.value.filter(user => user.role === 'u
 const globalDirty = computed(() => JSON.stringify(globalVisibility.value) !== savedGlobal.value)
 const overrideDirty = computed(() => JSON.stringify(userOverrides.value) !== savedOverrides.value)
 const hasUnsavedChanges = computed(() => globalDirty.value || overrideDirty.value)
+
+function directVisibility(key, scope) {
+  if (scope === 'global') return globalVisibility.value[key] !== false
+  const state = userOverrides.value[key]
+  if (state === 'visible') return true
+  if (state === 'hidden') return false
+  return globalVisibility.value[key] !== false
+}
+
+function isAncestorHidden(row, scope) {
+  let parentKey = row.parentKey
+  while (parentKey) {
+    if (!directVisibility(parentKey, scope)) return true
+    parentKey = rows.value.find(candidate => candidate.key === parentKey)?.parentKey || null
+  }
+  return false
+}
 
 function captureSavedState() {
   savedGlobal.value = JSON.stringify(globalVisibility.value)
@@ -336,6 +354,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
 .config-card,.audit-card { border-radius: 20px; border-color: #dbeafe; }.conflict-alert { border-radius: 14px; }
 .section-copy { display: grid; gap: 5px; margin-bottom: 14px; }.section-copy span,.user-picker small { color: #64748b; font-size: 12px; }
 .menu-tree-list { display: grid; gap: 8px; }.menu-config-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 16px; border: 1px solid #dbeafe; border-radius: 14px; background: #f8fbff; }.menu-config-row.is-child { background: #fff; }
+.menu-config-row.is-parent-hidden { opacity: 0.55; background: #f8fafc; }
 .menu-label { display: flex; min-width: 0; align-items: center; gap: 10px; }.menu-label div { min-width: 0; }.menu-label strong,.menu-label small { display: block; }.menu-label small { margin-top: 3px; color: #94a3b8; font-size: 11px; overflow-wrap: anywhere; }
 .level-badge { flex: none; padding: 3px 7px; color: #2563eb; font-size: 10px; border-radius: 999px; background: #dbeafe; }.is-child .level-badge { color: #0f766e; background: #ccfbf1; }
 .save-bar { position: sticky; bottom: 0; margin-top: 16px; padding: 14px 16px; color: #64748b; border: 1px solid #dbeafe; border-radius: 14px; background: rgb(255 255 255 / 94%); box-shadow: 0 -8px 24px rgb(15 23 42 / 5%); }

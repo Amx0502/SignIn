@@ -33,7 +33,7 @@ from .models import (
 from .database_config import load_database_config
 from .class_cube_client import ClassCubeClient
 from .class_cube_database import ClassCubeDatabase
-from .class_cube_repository import ClassCubeRepository
+from .class_cube_repository import ClassCubeNotFound, ClassCubeRepository
 from .class_cube_router import create_class_cube_router
 from .class_cube_service import ClassCubeService
 from .class_cube_scheduler import ClassCubeScheduler
@@ -391,26 +391,119 @@ def list_users(admin=Depends(require_admin)):
 
 
 @app.post("/api/users")
-def create_user(payload: UserCreate, admin=Depends(require_admin)):
-    try:
-        return success(
-            auth_service.repository.create_user(
-                payload.username, payload.password, payload.role, payload.is_active
+async def create_user(
+    payload: UserCreate,
+    request: Request,
+    admin=Depends(require_admin),
+):
+    class_cube_only = bool(payload.class_cube_only and payload.role == "user")
+    account_limit = (
+        payload.class_cube_account_limit if payload.role == "user" else None
+    )
+    if (
+        class_cube_only
+        and "class_cube_account_limit" not in payload.model_fields_set
+    ):
+        account_limit = 1
+    if payload.initial_class_cube_account_id is not None:
+        if not class_cube_only:
+            failure("只有班级魔方单用户可以选择初始账号")
+        if account_limit == 0:
+            failure("账号额度为 0 时不能选择初始账号")
+        try:
+            request.app.state.class_cube_service.repository.get_account(
+                payload.initial_class_cube_account_id,
+                admin["id"],
+                True,
             )
+        except ClassCubeNotFound:
+            failure("选择的班级魔方账号不存在", 404)
+    created = None
+    try:
+        created = auth_service.repository.create_user(
+            payload.username,
+            payload.password,
+            payload.role,
+            payload.is_active,
+            class_cube_only=class_cube_only,
+            class_cube_account_limit=account_limit,
         )
+        menu_result = get_menu_repository().apply_user_access_profile(
+            user_id=created["id"],
+            class_cube_only=class_cube_only,
+            actor_user_id=admin["id"],
+        )
+        if payload.initial_class_cube_account_id is not None:
+            request.app.state.class_cube_service.repository.assign_account_to_user(
+                payload.initial_class_cube_account_id,
+                created["id"],
+                admin["id"],
+            )
+        await menu_event_broker.publish(menu_result["version"])
+        return success(created)
     except DuplicateUsernameError as exc:
+        failure(str(exc))
+    except (ValueError, RuntimeError) as exc:
+        if created is not None:
+            try:
+                request.app.state.class_cube_service.repository.remove_user_bindings(
+                    created["id"]
+                )
+                auth_service.repository.delete_user(created["id"], admin["id"])
+            except Exception:
+                pass
         failure(str(exc))
 
 
 @app.put("/api/users/{user_id}")
-def update_user(user_id: int, payload: UserUpdate, admin=Depends(require_admin)):
+async def update_user(
+    user_id: int,
+    payload: UserUpdate,
+    request: Request,
+    admin=Depends(require_admin),
+):
     try:
-        return success(
-            auth_service.repository.update_user(
-                user_id, payload.username, payload.role, payload.is_active
-            )
+        previous = next(
+            (row for row in auth_service.repository.list_users() if row["id"] == user_id),
+            None,
         )
+        if previous is None:
+            raise UserNotFoundError(user_id)
+        class_cube_only = bool(payload.class_cube_only and payload.role == "user")
+        if payload.role != "user":
+            account_limit = None
+        elif "class_cube_account_limit" in payload.model_fields_set:
+            account_limit = payload.class_cube_account_limit
+        elif class_cube_only and not previous.get("class_cube_only"):
+            account_limit = 1
+        else:
+            account_limit = previous.get("class_cube_account_limit")
+        request.app.state.class_cube_service.repository.validate_account_limit(
+            user_id,
+            account_limit,
+        )
+        updated = auth_service.repository.update_user(
+            user_id,
+            payload.username,
+            payload.role,
+            payload.is_active,
+            class_cube_only=class_cube_only,
+            class_cube_account_limit=account_limit,
+        )
+        if (
+            bool(previous.get("class_cube_only")) != class_cube_only
+            or previous.get("role") != payload.role
+        ):
+            menu_result = get_menu_repository().apply_user_access_profile(
+                user_id=user_id,
+                class_cube_only=class_cube_only,
+                actor_user_id=admin["id"],
+            )
+            await menu_event_broker.publish(menu_result["version"])
+        return success(updated)
     except (DuplicateUsernameError, LastAdminError) as exc:
+        failure(str(exc))
+    except ValueError as exc:
         failure(str(exc))
     except UserNotFoundError:
         failure("用户不存在", 404)
@@ -436,9 +529,14 @@ def reset_user_password(
 
 
 @app.delete("/api/users/{user_id}")
-def delete_user(user_id: int, admin=Depends(require_admin)):
+def delete_user(
+    user_id: int,
+    request: Request,
+    admin=Depends(require_admin),
+):
     try:
         auth_service.repository.delete_user(user_id, admin["id"])
+        request.app.state.class_cube_service.repository.remove_user_bindings(user_id)
         return success(True)
     except (LastAdminError, ValueError) as exc:
         failure(str(exc))

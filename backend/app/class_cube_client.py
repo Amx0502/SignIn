@@ -18,18 +18,19 @@ from app.class_cube_parser import (
     ParsedForm,
     ParsedItem,
     ParsedResult,
+    ParsedStudentIdentity,
     parse_checkin_form,
     parse_checkin_items,
     parse_checkin_result,
     parse_courses,
     parse_qr_image_url,
-    parse_student_name,
+    parse_student_identity,
 )
 
 
 QR_LOGIN_URL = "https://k8n.cn/weixin/qrlogin/student"
 COURSES_URL = "https://k8n.cn/student"
-STUDENT_PROFILE_URL = "https://k8n.cn/student/my"
+STUDENT_PROFILE_URL = "https://k8n.cn/student"
 CHECKIN_LIST_URLS = {
     "punchs": (
         "https://k8n.cn/student/course/{course_id}/punchs"
@@ -191,6 +192,10 @@ class ClassCubeClient:
             session.close()
 
     def fetch_student_name(self, cookie: str) -> str:
+        identity = self.fetch_student_identity(cookie)
+        return identity.remote_user_name
+
+    def fetch_student_identity(self, cookie: str) -> ParsedStudentIdentity:
         session = self._short_lived_session(cookie)
         try:
             response = self._get_with_retries(
@@ -198,7 +203,12 @@ class ClassCubeClient:
                 STUDENT_PROFILE_URL,
             )
             self._raise_if_cookie_expired(response)
-            return parse_student_name(response.text)
+            identity = parse_student_identity(response.text)
+            if identity is None:
+                raise ClassCubeRequestError(
+                    "remote student identity did not contain uid"
+                )
+            return identity
         finally:
             session.close()
 

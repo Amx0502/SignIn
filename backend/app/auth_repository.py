@@ -7,10 +7,10 @@ from pathlib import Path
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from .auth_database import AuthDatabase
-from .auth_models import UserRow, UserSessionRow
+from .auth_models import UserFeaturePolicyRow, UserRow, UserSessionRow
 
 
 PBKDF2_ITERATIONS = 600_000
@@ -61,6 +61,7 @@ class AuthRepository:
 
     @staticmethod
     def _to_dict(row: UserRow) -> dict:
+        policy = row.feature_policy
         return {
             "id": row.id,
             "username": row.username,
@@ -69,6 +70,10 @@ class AuthRepository:
             "created_at": row.created_at.isoformat(),
             "updated_at": row.updated_at.isoformat(),
             "last_login": row.last_login.isoformat() if row.last_login else None,
+            "class_cube_only": bool(policy.class_cube_only) if policy else False,
+            "class_cube_account_limit": (
+                policy.class_cube_account_limit if policy else None
+            ),
         }
 
     def initialize_users(self, path: Path) -> int:
@@ -104,7 +109,9 @@ class AuthRepository:
     def list_users(self) -> list[dict]:
         with self.database.session() as session:
             return [self._to_dict(row) for row in session.scalars(
-                select(UserRow).order_by(UserRow.id)
+                select(UserRow)
+                .options(selectinload(UserRow.feature_policy))
+                .order_by(UserRow.id)
             ).all()]
 
     def find_by_username(self, username: str) -> UserRow | None:
@@ -122,7 +129,16 @@ class AuthRepository:
     def _duplicate(exc: IntegrityError) -> bool:
         return bool(getattr(exc.orig, "args", ()) and exc.orig.args[0] == 1062)
 
-    def create_user(self, username: str, password: str, role: str, is_active: bool) -> dict:
+    def create_user(
+        self,
+        username: str,
+        password: str,
+        role: str,
+        is_active: bool,
+        *,
+        class_cube_only: bool = False,
+        class_cube_account_limit: int | None = None,
+    ) -> dict:
         if role not in {"admin", "user"}:
             raise ValueError("角色无效")
         try:
@@ -133,6 +149,15 @@ class AuthRepository:
                 )
                 session.add(row)
                 session.flush()
+                policy = UserFeaturePolicyRow(
+                    user_id=row.id,
+                    class_cube_only=bool(class_cube_only and role == "user"),
+                    class_cube_account_limit=(
+                        class_cube_account_limit if role == "user" else None
+                    ),
+                )
+                session.add(policy)
+                row.feature_policy = policy
                 return self._to_dict(row)
         except IntegrityError as exc:
             if self._duplicate(exc):
@@ -144,7 +169,16 @@ class AuthRepository:
             UserRow.role == "admin", UserRow.is_active.is_(True)
         )) or 0)
 
-    def update_user(self, user_id: int, username: str, role: str, is_active: bool) -> dict:
+    def update_user(
+        self,
+        user_id: int,
+        username: str,
+        role: str,
+        is_active: bool,
+        *,
+        class_cube_only: bool = False,
+        class_cube_account_limit: int | None = None,
+    ) -> dict:
         if role not in {"admin", "user"}:
             raise ValueError("角色无效")
         try:
@@ -159,6 +193,16 @@ class AuthRepository:
                 row.username = username.strip()
                 row.role = role
                 row.is_active = is_active
+                policy = session.get(UserFeaturePolicyRow, row.id)
+                if policy is None:
+                    policy = UserFeaturePolicyRow(user_id=row.id)
+                    session.add(policy)
+                policy.class_cube_only = bool(
+                    class_cube_only and role == "user"
+                )
+                policy.class_cube_account_limit = (
+                    class_cube_account_limit if role == "user" else None
+                )
                 if not is_active:
                     session.execute(delete(UserSessionRow).where(UserSessionRow.user_id == row.id))
                 session.flush()

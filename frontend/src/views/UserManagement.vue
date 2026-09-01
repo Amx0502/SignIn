@@ -22,6 +22,18 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="功能范围" min-width="150">
+          <template #default="{ row }">
+            <el-tag v-if="row.role === 'admin'" type="danger">全部功能</el-tag>
+            <el-tag v-else-if="row.class_cube_only" type="primary">仅班级魔方</el-tag>
+            <el-tag v-else type="info">普通用户</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="魔方账号额度" width="130">
+          <template #default="{ row }">
+            {{ row.role === 'admin' || row.class_cube_account_limit == null ? '不限' : row.class_cube_account_limit }}
+          </template>
+        </el-table-column>
         <el-table-column prop="last_login" label="最后登录" min-width="180">
           <template #default="{ row }">{{ formatTime(row.last_login) }}</template>
         </el-table-column>
@@ -38,7 +50,7 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="userDialog" :title="editingId ? '编辑用户' : '新增用户'" width="460px">
+    <el-dialog v-model="userDialog" :title="editingId ? '编辑用户' : '新增用户'" width="560px">
       <el-form ref="userFormRef" :model="userForm" :rules="userRules" label-position="top">
         <el-form-item label="用户名" prop="username">
           <el-input v-model="userForm.username" />
@@ -55,6 +67,46 @@
         <el-form-item label="状态">
           <el-switch v-model="userForm.is_active" active-text="启用" inactive-text="禁用" />
         </el-form-item>
+        <template v-if="userForm.role === 'user'">
+          <el-form-item label="班级魔方单用户">
+            <el-switch
+              v-model="userForm.class_cube_only"
+              active-text="仅显示班级魔方"
+              inactive-text="使用自定义菜单权限"
+              @change="handleClassCubeOnlyChange"
+            />
+            <div class="field-help">开启后会一键隐藏“小小签到”一级菜单及全部子菜单，并显示班级魔方菜单。</div>
+          </el-form-item>
+          <el-form-item label="班级魔方账号额度">
+            <div class="quota-row">
+              <el-switch v-model="quotaUnlimited" active-text="不限额度" />
+              <el-input-number
+                v-if="!quotaUnlimited"
+                v-model="userForm.class_cube_account_limit"
+                :min="0"
+                :max="999"
+                controls-position="right"
+              />
+            </div>
+          </el-form-item>
+          <el-form-item v-if="!editingId && userForm.class_cube_only" label="初始班级魔方账号">
+            <el-select
+              v-model="userForm.initial_class_cube_account_id"
+              clearable
+              filterable
+              placeholder="可不选择，用户之后扫码添加"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="account in accountPool"
+                :key="account.id"
+                :label="accountLabel(account)"
+                :value="account.id"
+              />
+            </el-select>
+            <div class="field-help">选择后将绑定现有账号作为该用户的第一个默认账号，不会复制 Cookie。</div>
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="userDialog = false">取消</el-button>
@@ -84,17 +136,24 @@ import {
   createUserApi, deleteUserApi, getUsersApi,
   resetUserPasswordApi, updateUserApi
 } from '../api'
+import classCubeApi from '../api/classCube.js'
 
 const users = ref([])
+const accountPool = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const userDialog = ref(false)
 const resetDialog = ref(false)
 const editingId = ref(null)
 const resetUserId = ref(null)
+const quotaUnlimited = ref(true)
 const userFormRef = ref()
 const resetFormRef = ref()
-const userForm = reactive({ username: '', password: '', role: 'user', is_active: true })
+const userForm = reactive({
+  username: '', password: '', role: 'user', is_active: true,
+  class_cube_only: false, class_cube_account_limit: 1,
+  initial_class_cube_account_id: null,
+})
 const resetForm = reactive({ new_password: '' })
 const userRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }, { min: 3, message: '至少 3 个字符', trigger: 'blur' }],
@@ -108,15 +167,41 @@ async function loadUsers() {
   try { users.value = (await getUsersApi()).data } catch (error) { ElMessage.error(error.message) }
   finally { loading.value = false }
 }
+async function loadAccountPool() {
+  try { accountPool.value = (await classCubeApi.listAccounts()).data || [] }
+  catch { accountPool.value = [] }
+}
+function accountLabel(account) {
+  const name = account.name || account.remote_user_name || `账号 ${account.id}`
+  return account.remote_uid ? `${name} · UID ${account.remote_uid}` : `${name} · 待确认 UID`
+}
 function openCreate() {
   editingId.value = null
-  Object.assign(userForm, { username: '', password: '', role: 'user', is_active: true })
+  quotaUnlimited.value = true
+  Object.assign(userForm, {
+    username: '', password: '', role: 'user', is_active: true,
+    class_cube_only: false, class_cube_account_limit: 1,
+    initial_class_cube_account_id: null,
+  })
   userDialog.value = true
 }
 function openEdit(row) {
   editingId.value = row.id
-  Object.assign(userForm, { username: row.username, password: '', role: row.role, is_active: row.is_active })
+  quotaUnlimited.value = row.class_cube_account_limit == null
+  Object.assign(userForm, {
+    username: row.username, password: '', role: row.role, is_active: row.is_active,
+    class_cube_only: Boolean(row.class_cube_only),
+    class_cube_account_limit: row.class_cube_account_limit ?? 1,
+    initial_class_cube_account_id: null,
+  })
   userDialog.value = true
+}
+function handleClassCubeOnlyChange(enabled) {
+  if (enabled && quotaUnlimited.value) {
+    quotaUnlimited.value = false
+    userForm.class_cube_account_limit = 1
+  }
+  if (!enabled) userForm.initial_class_cube_account_id = null
 }
 async function saveUser() {
   await userFormRef.value.validate()
@@ -124,10 +209,20 @@ async function saveUser() {
   try {
     if (editingId.value) {
       await updateUserApi(editingId.value, {
-        username: userForm.username, role: userForm.role, is_active: userForm.is_active
+        username: userForm.username, role: userForm.role, is_active: userForm.is_active,
+        class_cube_only: userForm.role === 'user' && userForm.class_cube_only,
+        class_cube_account_limit: userForm.role === 'user' && !quotaUnlimited.value
+          ? userForm.class_cube_account_limit : null,
       })
     } else {
-      await createUserApi({ ...userForm })
+      await createUserApi({
+        ...userForm,
+        class_cube_only: userForm.role === 'user' && userForm.class_cube_only,
+        class_cube_account_limit: userForm.role === 'user' && !quotaUnlimited.value
+          ? userForm.class_cube_account_limit : null,
+        initial_class_cube_account_id: userForm.class_cube_only
+          ? userForm.initial_class_cube_account_id : null,
+      })
     }
     ElMessage.success('保存成功')
     userDialog.value = false
@@ -159,7 +254,7 @@ async function removeUser(row) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message)
   }
 }
-onMounted(loadUsers)
+onMounted(() => Promise.all([loadUsers(), loadAccountPool()]))
 </script>
 
 <style scoped>
@@ -168,6 +263,8 @@ onMounted(loadUsers)
 .page-heading h2 { margin: 0 0 6px; color: #0f172a; }
 .page-heading p { margin: 0; color: #64748b; }
 .table-card { border-radius: 18px; }
+.field-help { width: 100%; margin-top: 6px; color: #64748b; font-size: 12px; line-height: 1.5; }
+.quota-row { display: flex; align-items: center; gap: 16px; width: 100%; }
 @media (max-width: 640px) {
   .page-heading { align-items: flex-start; flex-direction: column; }
 }

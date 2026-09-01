@@ -13,6 +13,7 @@ from urllib.parse import unquote
 import uuid
 
 from fastapi import UploadFile
+from sqlalchemy.exc import IntegrityError
 
 from . import config
 from .class_cube_client import (
@@ -422,6 +423,10 @@ class ClassCubeService:
             )
         )
 
+    def get_account_access(self, actor: dict[str, Any]) -> dict[str, Any]:
+        actor_user_id, is_admin = self._actor_scope(actor)
+        return self.repository.account_access(actor_user_id, is_admin)
+
     def create_qr_session(
         self,
         actor: dict[str, Any],
@@ -440,6 +445,11 @@ class ClassCubeService:
                 actor_user_id,
                 is_admin,
             )
+        else:
+            try:
+                self.repository.assert_can_add_account(actor_user_id, is_admin)
+            except ValueError as exc:
+                raise ClassCubeValidationError(str(exc)) from exc
         try:
             created = self.client.create_qr_session(actor_user_id)
         except ClassCubeRequestError as exc:
@@ -532,32 +542,44 @@ class ClassCubeService:
                 retryable=False,
             )
 
-        account = self.repository.upsert_scanned_account(
-            owner_user_id=actor_user_id,
-            identity={},
-            cookie=result.cookie,
-            account_id=target.account_id,
-            actor_user_id=actor_user_id,
-            is_admin=is_admin,
-        )
-        safe_account = account_view(account)
-
         try:
-            remote_user_name = self.client.fetch_student_name(
-                result.cookie
+            identity = self.client.fetch_student_identity(result.cookie)
+            account = self.repository.upsert_scanned_account(
+                owner_user_id=actor_user_id,
+                identity={
+                    "remote_uid": identity.remote_uid,
+                    "remote_user_name": identity.remote_user_name,
+                },
+                cookie=result.cookie,
+                account_id=target.account_id,
+                actor_user_id=actor_user_id,
+                is_admin=is_admin,
             )
-            if remote_user_name:
-                account = self.repository.upsert_scanned_account(
-                    owner_user_id=account["owner_user_id"],
-                    identity={
-                        "remote_user_name": remote_user_name
-                    },
+            safe_account = account_view(account)
+        except IntegrityError as exc:
+            if target.account_id is not None:
+                raise ClassCubeValidationError(
+                    "该班级魔方 UID 已绑定其他账号，请使用扫码添加进行复用"
+                ) from exc
+            try:
+                account = self.repository.bind_existing_scanned_account(
+                    owner_user_id=actor_user_id,
+                    remote_uid=identity.remote_uid,
+                    remote_user_name=identity.remote_user_name,
                     cookie=result.cookie,
-                    account_id=account["id"],
                     actor_user_id=actor_user_id,
-                    is_admin=is_admin,
                 )
                 safe_account = account_view(account)
+            except ValueError as conflict:
+                raise ClassCubeValidationError(str(conflict)) from conflict
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
+        except ClassCubeCookieExpired as exc:
+            raise self._cookie_expired_error(exc) from exc
+        except ClassCubeRequestError as exc:
+            raise self._remote_error("读取扫码账号身份", exc) from exc
+
+        try:
             courses = self.client.fetch_courses(result.cookie)
         except ClassCubeCookieExpired as exc:
             raise self._cookie_expired_error(
@@ -1579,7 +1601,7 @@ class ClassCubeService:
         course = context["course"]
         account = context["account"]
         self.repository.record_manual_run(
-            owner_user_id=int(account["owner_user_id"]),
+            owner_user_id=int(context["actor_user_id"]),
             account_id=int(account["id"]),
             course_id=int(course["id"]),
             checkin_item_id=int(item["id"]),
@@ -2066,7 +2088,7 @@ class ClassCubeService:
                 try:
                     photo = self._owned_photo_path(
                         photo_path,
-                        int(account["owner_user_id"]),
+                        int(context["actor_user_id"]),
                     )
                     remote_photo_value = self.client.upload_photo_to_oss(
                         account["cookie"],
@@ -2283,12 +2305,11 @@ class ClassCubeService:
         actor_user_id, is_admin = self._actor_scope(actor)
         owner_user_id = actor_user_id
         if account_id is not None:
-            account = self.repository.get_account(
+            self.repository.get_account(
                 account_id,
                 actor_user_id,
                 is_admin,
             )
-            owner_user_id = int(account["owner_user_id"])
 
         extension = Path(upload.filename or "").suffix.lower()
         expected_type = _PHOTO_CONTENT_TYPES.get(extension)

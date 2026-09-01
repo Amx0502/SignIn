@@ -407,10 +407,11 @@ function handleTabMenuCommand(command) {
 
 function pruneHiddenTabs() {
   if (!currentUser.value || currentUser.value.role === 'admin') return
-  if (!menuState.loaded) return
   const visible = tabs.value.filter(item => {
     const meta = router.resolve(item.path)?.meta || {}
+    if (meta.requiresAdmin && currentUser.value.role !== 'admin') return false
     if (!meta.menuKey) return true
+    if (!menuState.loaded) return true
     return isCurrentMenuVisible(meta.menuKey, currentUser.value)
   })
   if (visible.length !== tabs.value.length) {

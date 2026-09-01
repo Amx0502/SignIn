@@ -20,6 +20,7 @@ export function createClassCubeApi(instance = defaultInstance) {
 
     listAccounts: (params = {}) =>
       instance.get(`${root}/accounts`, { params }),
+    getAccountAccess: () => instance.get(`${root}/accounts/access`),
     updateAccount: (accountId, data) =>
       instance.put(`${root}/accounts/${accountId}`, data),
     deleteAccount: accountId =>

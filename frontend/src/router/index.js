@@ -28,7 +28,7 @@ const routes = [
   { path: '/menu-management', name: 'MenuManagement', component: MenuManagement, meta: { title: '菜单管理', parentTitle: '系统设置', requiresAuth: true, requiresAdmin: true } },
   { path: '/no-access', name: 'NoAvailableMenus', component: NoAvailableMenus, meta: { title: '暂无可用功能', requiresAuth: true } },
   { path: '/', redirect: '/dashboard' },
-  { path: '/dashboard', name: 'Dashboard', component: Dashboard, meta: { title: '综合总览', parentTitle: '签到管理系统', requiresAuth: true } },
+  { path: '/dashboard', name: 'Dashboard', component: Dashboard, meta: { title: '综合总览', parentTitle: '签到管理系统', requiresAuth: true, requiresAdmin: true } },
   { path: '/overview', name: 'Overview', component: Overview, meta: { title: '系统概览', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.overview' } },
   { path: '/accounts', name: 'Accounts', component: Accounts, meta: { title: '账号管理', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.accounts' } },
   { path: '/checkin/auto', name: 'AutoCheckIn', component: AutoCheckIn, meta: { title: '自动签到', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.auto' } },

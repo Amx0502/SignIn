@@ -27,7 +27,9 @@ class ClassCubeAccountRow(ClassCubeBase):
     __tablename__ = "class_cube_accounts"
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
     owner_user_id: Mapped[int] = mapped_column(
         BigInteger, nullable=False, index=True
@@ -35,6 +37,9 @@ class ClassCubeAccountRow(ClassCubeBase):
     name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     remote_user_name: Mapped[str] = mapped_column(
         String(255), nullable=False, default=""
+    )
+    remote_uid: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
     )
     cookie: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
@@ -60,6 +65,48 @@ class ClassCubeAccountRow(ClassCubeBase):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    bindings: Mapped[list["ClassCubeAccountBindingRow"]] = relationship(
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ClassCubeAccountBindingRow(ClassCubeBase):
+    __tablename__ = "class_cube_account_bindings"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "account_id", name="uq_class_cube_binding_user_account"
+        ),
+        Index("ix_class_cube_bindings_user_default", "user_id", "is_default"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    account_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("class_cube_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    assigned_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    account: Mapped[ClassCubeAccountRow] = relationship(back_populates="bindings")
 
 
 class ClassCubeCourseRow(ClassCubeBase):

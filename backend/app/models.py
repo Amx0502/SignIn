@@ -100,12 +100,17 @@ class UserCreate(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
     role: str = Field(default="user", pattern="^(admin|user)$")
     is_active: bool = True
+    class_cube_only: bool = False
+    class_cube_account_limit: int | None = Field(default=None, ge=0)
+    initial_class_cube_account_id: int | None = Field(default=None, gt=0)
 
 
 class UserUpdate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     role: str = Field(..., pattern="^(admin|user)$")
     is_active: bool
+    class_cube_only: bool = False
+    class_cube_account_limit: int | None = Field(default=None, ge=0)
 
 
 class PasswordReset(BaseModel):

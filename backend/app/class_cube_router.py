@@ -215,6 +215,17 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             owner_user_id=owner_user_id,
         )
 
+    @router.get("/accounts/access")
+    def get_account_access(
+        request: Request,
+        actor=Depends(access_shared_read),
+    ):
+        return _invoke(
+            request,
+            _service(request).get_account_access,
+            actor,
+        )
+
     @router.get("/logs")
     def get_logs(
         request: Request,

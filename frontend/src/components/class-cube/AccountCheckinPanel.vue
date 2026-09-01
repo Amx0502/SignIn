@@ -23,7 +23,14 @@
               >
                 批量删除<span v-if="selectedAccountIds.size">（{{ selectedAccountIds.size }}）</span>
               </el-button>
-              <el-button type="primary" :icon="Plus" @click="emit('qr-login', null)">扫码添加</el-button>
+              <el-tooltip
+                :disabled="canAddAccount"
+                :content="`当前账号额度已满（${accountAccess.account_count}/${accountAccess.account_limit}）`"
+              >
+                <span>
+                  <el-button type="primary" :icon="Plus" :disabled="!canAddAccount" @click="emit('qr-login', null)">扫码添加</el-button>
+                </span>
+              </el-tooltip>
             </div>
           </div>
         </template>
@@ -45,7 +52,10 @@
             <span class="avatar">{{ (account.remote_user_name || account.name || '班').slice(0, 1) }}</span>
             <div class="account-main">
               <strong>{{ account.name || account.remote_user_name || `账号 ${account.id}` }}</strong>
-              <small>{{ account.remote_user_name || '未获取平台姓名' }}</small>
+              <small>
+                {{ account.remote_user_name || '未获取平台姓名' }}
+                <template v-if="account.remote_uid"> · UID {{ account.remote_uid }}</template>
+              </small>
             </div>
             <el-tag :type="account.status === 'active' ? 'success' : 'danger'" size="small">
               {{ account.status === 'active' ? '有效' : account.status === 'expired' ? '已失效' : '已停用' }}
@@ -252,6 +262,8 @@ const LocationSearchPanel = defineAsyncComponent({
 
 const props = defineProps({
   accounts: { type: Array, default: () => [] },
+  accountAccess: { type: Object, default: () => ({ account_limit: null, account_count: 0 }) },
+  canAddAccount: { type: Boolean, default: true },
   courses: { type: Array, default: () => [] },
   items: { type: Array, default: () => [] },
   tasks: { type: Array, default: () => [] },

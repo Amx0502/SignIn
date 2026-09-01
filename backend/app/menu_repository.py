@@ -209,6 +209,69 @@ class MenuRepository:
             )
             return {"version": version, "overrides": dict(overrides)}
 
+    def apply_user_access_profile(
+        self,
+        *,
+        user_id: int,
+        class_cube_only: bool,
+        actor_user_id: int,
+    ) -> dict[str, Any]:
+        with self.database.session() as session:
+            user = session.get(UserRow, user_id)
+            if user is None:
+                raise ValueError("用户不存在")
+            current = self._user_overrides(session, user_id)
+            if class_cube_only and user.role == "user":
+                requested = {
+                    key: (key == "class_cube" or key.startswith("class_cube."))
+                    for key in MENU_KEYS
+                }
+            else:
+                requested = {}
+            if current == requested:
+                state = session.get(MenuConfigStateRow, 1)
+                return {
+                    "version": int(state.version if state else 1),
+                    "overrides": requested,
+                }
+            state = session.scalar(
+                select(MenuConfigStateRow)
+                .where(MenuConfigStateRow.id == 1)
+                .with_for_update()
+            )
+            version = int(state.version if state else 1) + 1
+            if state is None:
+                session.add(MenuConfigStateRow(id=1, version=version))
+            else:
+                state.version = version
+            session.execute(delete(UserMenuOverrideRow).where(
+                UserMenuOverrideRow.user_id == user_id
+            ))
+            for key, visible in requested.items():
+                session.add(UserMenuOverrideRow(
+                    user_id=user_id,
+                    menu_key=key,
+                    visible=visible,
+                ))
+            before = {
+                key: "visible" if visible else "hidden"
+                for key, visible in current.items()
+            }
+            after = {
+                key: "visible" if visible else "hidden"
+                for key, visible in requested.items()
+            }
+            self._record_audit(
+                session,
+                actor_user_id=actor_user_id,
+                target_type="user",
+                target_user_id=user_id,
+                before=before,
+                after=after,
+                version=version,
+            )
+            return {"version": version, "overrides": requested}
+
     def effective_catalog(self, user: dict[str, Any]) -> dict[str, Any]:
         with self.database.session() as session:
             state = session.get(MenuConfigStateRow, 1)

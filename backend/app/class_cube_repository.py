@@ -3,12 +3,13 @@ import json
 from typing import Any, Iterable
 import uuid
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from .class_cube_client import RemoteItemBundle
 from .class_cube_database import ClassCubeDatabase
 from .class_cube_db_models import (
+    ClassCubeAccountBindingRow,
     ClassCubeAccountRow,
     ClassCubeCheckinItemRow,
     ClassCubeCourseRow,
@@ -16,6 +17,7 @@ from .class_cube_db_models import (
     ClassCubeTaskRow,
     ClassCubeTaskRunRow,
 )
+from .auth_models import UserFeaturePolicyRow
 from .class_cube_parser import (
     PASSWORD_FIELD_ALIASES,
     ParsedCourse,
@@ -31,18 +33,71 @@ class ClassCubeRepository:
         self.database = database
 
     @staticmethod
-    def _account_record(row: ClassCubeAccountRow) -> dict[str, Any]:
+    def _account_record(
+        row: ClassCubeAccountRow,
+        binding: ClassCubeAccountBindingRow | None = None,
+    ) -> dict[str, Any]:
         return {
             "id": row.id,
-            "owner_user_id": row.owner_user_id,
+            "owner_user_id": binding.user_id if binding else row.owner_user_id,
+            "created_by_user_id": row.owner_user_id,
             "name": row.name,
             "remote_user_name": row.remote_user_name,
+            "remote_uid": row.remote_uid,
             "cookie": row.cookie,
             "status": row.status,
             "last_login_at": row.last_login_at,
             "created_at": row.created_at,
             "updated_at": row.updated_at,
+            "is_default": bool(binding.is_default) if binding else False,
         }
+
+    @staticmethod
+    def _account_limit(session, user_id: int) -> int | None:
+        policy = session.get(UserFeaturePolicyRow, user_id)
+        return policy.class_cube_account_limit if policy else None
+
+    @staticmethod
+    def _binding_count(session, user_id: int) -> int:
+        return int(session.scalar(
+            select(func.count(ClassCubeAccountBindingRow.id)).where(
+                ClassCubeAccountBindingRow.user_id == user_id
+            )
+        ) or 0)
+
+    @classmethod
+    def _assert_binding_capacity(cls, session, user_id: int) -> None:
+        limit = cls._account_limit(session, user_id)
+        if limit is not None and cls._binding_count(session, user_id) >= limit:
+            raise ValueError(
+                f"班级魔方账号额度已满（{limit} 个），请联系管理员调整额度"
+            )
+
+    @classmethod
+    def _ensure_binding(
+        cls,
+        session,
+        *,
+        user_id: int,
+        account_id: int,
+        assigned_by_user_id: int | None,
+    ) -> ClassCubeAccountBindingRow:
+        binding = session.scalar(select(ClassCubeAccountBindingRow).where(
+            ClassCubeAccountBindingRow.user_id == user_id,
+            ClassCubeAccountBindingRow.account_id == account_id,
+        ))
+        if binding is not None:
+            return binding
+        cls._assert_binding_capacity(session, user_id)
+        binding = ClassCubeAccountBindingRow(
+            user_id=user_id,
+            account_id=account_id,
+            is_default=cls._binding_count(session, user_id) == 0,
+            assigned_by_user_id=assigned_by_user_id,
+        )
+        session.add(binding)
+        session.flush()
+        return binding
 
     @staticmethod
     def _course_record(row: ClassCubeCourseRow) -> dict[str, Any]:
@@ -122,8 +177,11 @@ class ClassCubeRepository:
             ClassCubeAccountRow.id == account_id
         )
         if not is_admin:
-            query = query.where(
-                ClassCubeAccountRow.owner_user_id == actor_user_id
+            query = query.join(
+                ClassCubeAccountBindingRow,
+                ClassCubeAccountBindingRow.account_id == ClassCubeAccountRow.id,
+            ).where(
+                ClassCubeAccountBindingRow.user_id == actor_user_id
             )
         return query
 
@@ -143,8 +201,11 @@ class ClassCubeRepository:
             .where(ClassCubeCourseRow.id == course_id)
         )
         if not is_admin:
-            query = query.where(
-                ClassCubeAccountRow.owner_user_id == actor_user_id
+            query = query.join(
+                ClassCubeAccountBindingRow,
+                ClassCubeAccountBindingRow.account_id == ClassCubeAccountRow.id,
+            ).where(
+                ClassCubeAccountBindingRow.user_id == actor_user_id
             )
         return query
 
@@ -169,8 +230,11 @@ class ClassCubeRepository:
             .where(ClassCubeCheckinItemRow.id == item_id)
         )
         if not is_admin:
-            query = query.where(
-                ClassCubeAccountRow.owner_user_id == actor_user_id
+            query = query.join(
+                ClassCubeAccountBindingRow,
+                ClassCubeAccountBindingRow.account_id == ClassCubeAccountRow.id,
+            ).where(
+                ClassCubeAccountBindingRow.user_id == actor_user_id
             )
         return query
 
@@ -181,22 +245,41 @@ class ClassCubeRepository:
         owner_user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         with self.database.session() as session:
-            query = select(ClassCubeAccountRow)
+            query = select(ClassCubeAccountRow, ClassCubeAccountBindingRow)
             if is_admin:
                 if owner_user_id is not None:
-                    query = query.where(
-                        ClassCubeAccountRow.owner_user_id
-                        == owner_user_id
+                    query = query.join(
+                        ClassCubeAccountBindingRow,
+                        ClassCubeAccountBindingRow.account_id == ClassCubeAccountRow.id,
+                    ).where(ClassCubeAccountBindingRow.user_id == owner_user_id)
+                else:
+                    query = query.outerjoin(
+                        ClassCubeAccountBindingRow,
+                        ClassCubeAccountBindingRow.account_id == ClassCubeAccountRow.id,
                     )
             else:
-                query = query.where(
-                    ClassCubeAccountRow.owner_user_id
-                    == actor_user_id
+                query = query.join(
+                    ClassCubeAccountBindingRow,
+                    ClassCubeAccountBindingRow.account_id == ClassCubeAccountRow.id,
+                ).where(ClassCubeAccountBindingRow.user_id == actor_user_id)
+            pairs = session.execute(
+                query.order_by(
+                    ClassCubeAccountBindingRow.is_default.desc(),
+                    ClassCubeAccountRow.id,
                 )
-            rows = session.scalars(
-                query.order_by(ClassCubeAccountRow.id)
             ).all()
-            return [self._account_record(row) for row in rows]
+            records: dict[int, dict[str, Any]] = {}
+            for row, binding in pairs:
+                record_binding = (
+                    binding
+                    if binding is not None and (
+                        not is_admin or owner_user_id == binding.user_id
+                    ) else None
+                )
+                records.setdefault(
+                    int(row.id), self._account_record(row, record_binding)
+                )
+            return list(records.values())
 
     def get_account(
         self,
@@ -214,7 +297,64 @@ class ClassCubeRepository:
             )
             if row is None:
                 raise ClassCubeNotFound("班级魔方账号不存在")
-            return self._account_record(row)
+            binding = session.scalar(select(ClassCubeAccountBindingRow).where(
+                ClassCubeAccountBindingRow.user_id == actor_user_id,
+                ClassCubeAccountBindingRow.account_id == row.id,
+            ))
+            return self._account_record(row, binding)
+
+    def account_access(self, user_id: int, is_admin: bool) -> dict[str, Any]:
+        with self.database.session() as session:
+            count = self._binding_count(session, user_id)
+            limit = None if is_admin else self._account_limit(session, user_id)
+            return {
+                "account_limit": limit,
+                "account_count": count,
+                "can_add_account": limit is None or count < limit,
+            }
+
+    def validate_account_limit(self, user_id: int, limit: int | None) -> int:
+        with self.database.session() as session:
+            count = self._binding_count(session, user_id)
+            if limit is not None and count > limit:
+                raise ValueError(
+                    f"该用户当前已绑定 {count} 个班级魔方账号，"
+                    f"请先解除 {count - limit} 个绑定再降低额度"
+                )
+            return count
+
+    def assert_can_add_account(self, user_id: int, is_admin: bool) -> None:
+        if is_admin:
+            return
+        with self.database.session() as session:
+            self._assert_binding_capacity(session, user_id)
+
+    def assign_account_to_user(
+        self,
+        account_id: int,
+        user_id: int,
+        assigned_by_user_id: int,
+    ) -> dict[str, Any]:
+        with self.database.session() as session:
+            row = session.get(ClassCubeAccountRow, account_id)
+            if row is None:
+                raise ClassCubeNotFound("班级魔方账号不存在")
+            binding = self._ensure_binding(
+                session,
+                user_id=user_id,
+                account_id=account_id,
+                assigned_by_user_id=assigned_by_user_id,
+            )
+            return self._account_record(row, binding)
+
+    def remove_user_bindings(self, user_id: int) -> None:
+        with self.database.session() as session:
+            session.execute(delete(ClassCubeTaskRow).where(
+                ClassCubeTaskRow.owner_user_id == user_id
+            ))
+            session.execute(delete(ClassCubeAccountBindingRow).where(
+                ClassCubeAccountBindingRow.user_id == user_id
+            ))
 
     def upsert_scanned_account(
         self,
@@ -232,18 +372,33 @@ class ClassCubeRepository:
             or identity.get("name")
             or ""
         ).strip()
+        remote_uid = str(identity.get("remote_uid") or "").strip()
+        if not remote_uid:
+            raise ValueError("无法确认班级魔方账号 UID，请重新扫码")
         with self.database.session() as session:
             if account_id is None:
-                row = ClassCubeAccountRow(
-                    owner_user_id=owner_user_id,
-                    name=remote_user_name or "班级魔方账号",
-                    remote_user_name=remote_user_name,
-                    cookie=cookie,
-                    status="active",
-                    last_login_at=now,
+                row = session.scalar(select(ClassCubeAccountRow).where(
+                    ClassCubeAccountRow.remote_uid == remote_uid
+                ).with_for_update())
+                if row is None:
+                    self._assert_binding_capacity(session, owner_user_id)
+                    row = ClassCubeAccountRow(
+                        owner_user_id=owner_user_id,
+                        name=remote_user_name or "班级魔方账号",
+                        remote_user_name=remote_user_name,
+                        remote_uid=remote_uid,
+                        cookie=cookie,
+                        status="active",
+                        last_login_at=now,
+                    )
+                    session.add(row)
+                    session.flush()
+                binding = self._ensure_binding(
+                    session,
+                    user_id=owner_user_id,
+                    account_id=row.id,
+                    assigned_by_user_id=actor_user_id or owner_user_id,
                 )
-                session.add(row)
-                session.flush()
             else:
                 scoped_actor_id = (
                     owner_user_id
@@ -261,6 +416,25 @@ class ClassCubeRepository:
                     raise ClassCubeNotFound(
                         "班级魔方账号不存在"
                     )
+                if row.remote_uid and row.remote_uid != remote_uid:
+                    raise ValueError(
+                        "本次扫码登录的班级魔方账号与当前账号不一致"
+                    )
+                duplicate = session.scalar(select(ClassCubeAccountRow.id).where(
+                    ClassCubeAccountRow.remote_uid == remote_uid,
+                    ClassCubeAccountRow.id != row.id,
+                ))
+                if duplicate is not None:
+                    raise ValueError(
+                        "该班级魔方 UID 已绑定其他账号，请使用扫码添加进行复用"
+                    )
+                row.remote_uid = remote_uid
+                binding = self._ensure_binding(
+                    session,
+                    user_id=owner_user_id,
+                    account_id=row.id,
+                    assigned_by_user_id=actor_user_id or owner_user_id,
+                )
                 row.remote_user_name = (
                     remote_user_name or row.remote_user_name
                 )
@@ -269,7 +443,43 @@ class ClassCubeRepository:
                 row.last_login_at = now
                 row.updated_at = now
                 session.flush()
-            return self._account_record(row)
+            row.remote_user_name = remote_user_name or row.remote_user_name
+            row.cookie = cookie
+            row.status = "active"
+            row.last_login_at = now
+            row.updated_at = now
+            session.flush()
+            return self._account_record(row, binding)
+
+    def bind_existing_scanned_account(
+        self,
+        *,
+        owner_user_id: int,
+        remote_uid: str,
+        remote_user_name: str,
+        cookie: str,
+        actor_user_id: int,
+    ) -> dict[str, Any]:
+        now = datetime.now()
+        with self.database.session() as session:
+            row = session.scalar(select(ClassCubeAccountRow).where(
+                ClassCubeAccountRow.remote_uid == str(remote_uid)
+            ).with_for_update())
+            if row is None:
+                raise ClassCubeNotFound("班级魔方账号不存在，请重新扫码")
+            binding = self._ensure_binding(
+                session,
+                user_id=owner_user_id,
+                account_id=row.id,
+                assigned_by_user_id=actor_user_id,
+            )
+            row.remote_user_name = remote_user_name or row.remote_user_name
+            row.cookie = cookie
+            row.status = "active"
+            row.last_login_at = now
+            row.updated_at = now
+            session.flush()
+            return self._account_record(row, binding)
 
     def update_account_name(
         self,
@@ -338,7 +548,29 @@ class ClassCubeRepository:
             )
             if row is None:
                 raise ClassCubeNotFound("班级魔方账号不存在")
-            session.delete(row)
+            if is_admin:
+                session.delete(row)
+                return
+            session.execute(delete(ClassCubeTaskRow).where(
+                ClassCubeTaskRow.owner_user_id == actor_user_id,
+                ClassCubeTaskRow.account_id == account_id,
+            ))
+            session.execute(delete(ClassCubeAccountBindingRow).where(
+                ClassCubeAccountBindingRow.user_id == actor_user_id,
+                ClassCubeAccountBindingRow.account_id == account_id,
+            ))
+            replacement = session.scalar(
+                select(ClassCubeAccountBindingRow)
+                .where(ClassCubeAccountBindingRow.user_id == actor_user_id)
+                .order_by(ClassCubeAccountBindingRow.id)
+            )
+            if replacement is not None and not session.scalar(select(
+                func.count(ClassCubeAccountBindingRow.id)
+            ).where(
+                ClassCubeAccountBindingRow.user_id == actor_user_id,
+                ClassCubeAccountBindingRow.is_default.is_(True),
+            )):
+                replacement.is_default = True
 
     def delete_accounts(
         self,
@@ -352,14 +584,38 @@ class ClassCubeRepository:
                 ClassCubeAccountRow.id.in_(normalized_ids)
             )
             if not is_admin:
-                query = query.where(
-                    ClassCubeAccountRow.owner_user_id == actor_user_id
-                )
+                query = query.join(
+                    ClassCubeAccountBindingRow,
+                    ClassCubeAccountBindingRow.account_id == ClassCubeAccountRow.id,
+                ).where(ClassCubeAccountBindingRow.user_id == actor_user_id)
             rows = session.scalars(query).all()
             if len(rows) != len(normalized_ids):
                 raise ClassCubeNotFound("班级魔方账号不存在")
-            for row in rows:
-                session.delete(row)
+            if is_admin:
+                for row in rows:
+                    session.delete(row)
+            else:
+                session.execute(delete(ClassCubeTaskRow).where(
+                    ClassCubeTaskRow.owner_user_id == actor_user_id,
+                    ClassCubeTaskRow.account_id.in_(normalized_ids),
+                ))
+                session.execute(delete(ClassCubeAccountBindingRow).where(
+                    ClassCubeAccountBindingRow.user_id == actor_user_id,
+                    ClassCubeAccountBindingRow.account_id.in_(normalized_ids),
+                ))
+                replacement = session.scalar(
+                    select(ClassCubeAccountBindingRow)
+                    .where(ClassCubeAccountBindingRow.user_id == actor_user_id)
+                    .order_by(ClassCubeAccountBindingRow.id)
+                )
+                has_default = session.scalar(select(
+                    func.count(ClassCubeAccountBindingRow.id)
+                ).where(
+                    ClassCubeAccountBindingRow.user_id == actor_user_id,
+                    ClassCubeAccountBindingRow.is_default.is_(True),
+                ))
+                if replacement is not None and not has_default:
+                    replacement.is_default = True
             session.flush()
             return len(rows)
 
@@ -846,9 +1102,15 @@ class ClassCubeRepository:
             account = session.scalar(
                 select(ClassCubeAccountRow).where(
                     ClassCubeAccountRow.id == values["account_id"],
-                    ClassCubeAccountRow.owner_user_id == owner_id,
                 )
             )
+            if account is not None and (not is_admin or owner_id != actor_user_id):
+                binding = session.scalar(select(ClassCubeAccountBindingRow.id).where(
+                    ClassCubeAccountBindingRow.user_id == owner_id,
+                    ClassCubeAccountBindingRow.account_id == account.id,
+                ))
+                if binding is None:
+                    account = None
             course = session.scalar(
                 select(ClassCubeCourseRow).where(
                     ClassCubeCourseRow.id == values["course_id"],

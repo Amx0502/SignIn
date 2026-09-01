@@ -23,6 +23,12 @@ class ParsedCourse:
 
 
 @dataclass(frozen=True)
+class ParsedStudentIdentity:
+    remote_uid: str
+    remote_user_name: str = ""
+
+
+@dataclass(frozen=True)
 class ParsedItem:
     remote_item_id: str
     course_id: str
@@ -99,36 +105,53 @@ def parse_courses(html: str) -> list[ParsedCourse]:
     return courses
 
 
-def parse_student_name(html: str) -> str:
+def parse_student_identity(html: str) -> ParsedStudentIdentity | None:
     soup = BeautifulSoup(html, "html.parser")
-    node = soup.select_one(
-        "[data-student-name], #student-name, .student-name"
-    )
-    if isinstance(node, Tag):
-        value = (
-            _attribute_text(node.get("data-student-name"))
-            or node.get_text(" ", strip=True)
-        ).strip()
-        if value:
-            return value
-
     for script in soup.find_all("script"):
         source = script.string or script.get_text()
         config_match = re.search(
-            r"\bvar\s+gconfig\s*=\s*\{(?P<body>.*?)\}\s*;?",
+            r"\bvar\s+w?gconfig\s*=\s*\{(?P<body>.*?)\}\s*;?",
             source,
             re.DOTALL,
         )
         if not config_match:
             continue
+        body = config_match.group("body")
+        uid_match = re.search(
+            r"\buid\s*:\s*(?P<quote>['\"]?)(?P<uid>\d+)(?P=quote)",
+            body,
+        )
+        if not uid_match:
+            continue
         name_match = re.search(
             r"\buname\s*:\s*(['\"])(?P<name>.*?)\1",
-            config_match.group("body"),
+            body,
             re.DOTALL,
         )
-        if name_match:
-            return unescape(name_match.group("name")).strip()
-    return ""
+        return ParsedStudentIdentity(
+            remote_uid=uid_match.group("uid"),
+            remote_user_name=(
+                unescape(name_match.group("name")).strip()
+                if name_match else ""
+            ),
+        )
+    return None
+
+
+def parse_student_name(html: str) -> str:
+    identity = parse_student_identity(html)
+    if identity is not None and identity.remote_user_name:
+        return identity.remote_user_name
+    soup = BeautifulSoup(html, "html.parser")
+    node = soup.select_one(
+        "[data-student-name], #student-name, .student-name"
+    )
+    if not isinstance(node, Tag):
+        return ""
+    return (
+        _attribute_text(node.get("data-student-name"))
+        or node.get_text(" ", strip=True)
+    ).strip()
 
 
 def parse_checkin_items(

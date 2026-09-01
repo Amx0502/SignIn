@@ -54,6 +54,7 @@ class ClassCubeDatabase:
         try:
             ClassCubeBase.metadata.create_all(database_engine)
             if database_engine.dialect.name == "mysql":
+                self._migrate_account_pool(database_engine)
                 self._migrate_claim_table(database_engine)
                 self._migrate_task_table(database_engine)
                 self._migrate_task_run_table(database_engine)
@@ -69,6 +70,53 @@ class ClassCubeDatabase:
 
         self._engine = database_engine
         self._session_factory = session_factory
+
+    @staticmethod
+    def _migrate_account_pool(engine: Engine) -> None:
+        table = "class_cube_accounts"
+        inspector = inspect(engine)
+        columns = {
+            column["name"] for column in inspector.get_columns(table)
+        }
+        indexes = {
+            index["name"] for index in inspector.get_indexes(table)
+        }
+        quote = engine.dialect.identifier_preparer.quote
+        with engine.begin() as connection:
+            if "remote_uid" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE class_cube_accounts "
+                    "ADD COLUMN remote_uid VARCHAR(64) NULL "
+                    "AFTER remote_user_name"
+                ))
+            if "ix_class_cube_accounts_remote_uid" not in indexes:
+                connection.execute(text(
+                    f"CREATE UNIQUE INDEX {quote('ix_class_cube_accounts_remote_uid')} "
+                    "ON class_cube_accounts (remote_uid)"
+                ))
+            connection.execute(text(
+                "INSERT IGNORE INTO class_cube_account_bindings "
+                "(user_id, account_id, is_default, assigned_by_user_id, "
+                "created_at, updated_at) "
+                "SELECT accounts.owner_user_id, accounts.id, 0, "
+                "accounts.owner_user_id, accounts.created_at, accounts.updated_at "
+                "FROM class_cube_accounts AS accounts"
+            ))
+            connection.execute(text(
+                "UPDATE class_cube_account_bindings AS bindings "
+                "JOIN ("
+                "SELECT user_id, MIN(id) AS first_binding_id "
+                "FROM class_cube_account_bindings GROUP BY user_id"
+                ") AS first_binding "
+                "ON first_binding.first_binding_id = bindings.id "
+                "LEFT JOIN ("
+                "SELECT user_id FROM class_cube_account_bindings "
+                "WHERE is_default = 1 GROUP BY user_id"
+                ") AS existing_default "
+                "ON existing_default.user_id = bindings.user_id "
+                "SET bindings.is_default = 1 "
+                "WHERE existing_default.user_id IS NULL"
+            ))
 
     @staticmethod
     def _migrate_claim_table(engine: Engine) -> None:

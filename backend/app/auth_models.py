@@ -25,6 +25,32 @@ class UserRow(AuthBase):
     sessions: Mapped[list["UserSessionRow"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
+    feature_policy: Mapped["UserFeaturePolicyRow | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True,
+        uselist=False,
+    )
+
+
+class UserFeaturePolicyRow(AuthBase):
+    __tablename__ = "user_feature_policies"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    class_cube_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    class_cube_account_limit: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    user: Mapped[UserRow] = relationship(back_populates="feature_policy")
 
 
 class UserSessionRow(AuthBase):

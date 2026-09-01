@@ -26,6 +26,7 @@ export function normalizeClassCubeError(error) {
 
 export function useClassCube(api = classCubeApi) {
   const accounts = ref([])
+  const accountAccess = ref({ account_limit: null, account_count: 0, can_add_account: true })
   const courses = ref([])
   const items = ref([])
   const tasks = ref([])
@@ -67,6 +68,7 @@ export function useClassCube(api = classCubeApi) {
     reconcileSelection(courses.value, selectedCourseId.value))
   const selectedItem = computed(() =>
     reconcileSelection(items.value, selectedItemId.value))
+  const canAddAccount = computed(() => Boolean(accountAccess.value.can_add_account))
 
   function reportError(caught) {
     error.value = normalizeClassCubeError(caught)
@@ -80,7 +82,12 @@ export function useClassCube(api = classCubeApi) {
 
   async function loadAccounts(params = accountFilters.value) {
     accountFilters.value = { ...params }
-    const fresh = responseData(await api.listAccounts(params), [])
+    const [accountsResponse, accessResponse] = await Promise.all([
+      api.listAccounts(params),
+      api.getAccountAccess(),
+    ])
+    const fresh = responseData(accountsResponse, [])
+    accountAccess.value = responseData(accessResponse, accountAccess.value)
     accounts.value = Array.isArray(fresh) ? fresh : []
     const stable = reconcileSelection(accounts.value, selectedAccountId.value)
     selectedAccountId.value = stable?.id ?? accounts.value[0]?.id ?? null
@@ -419,6 +426,8 @@ export function useClassCube(api = classCubeApi) {
 
   return {
     accounts,
+    accountAccess,
+    canAddAccount,
     courses,
     items,
     tasks,
