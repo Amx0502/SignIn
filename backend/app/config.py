@@ -3,7 +3,12 @@ import os
 from pathlib import Path
 import tempfile
 
+from dotenv import load_dotenv
+
 APP_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(APP_DIR / ".env", override=False)
+load_dotenv(APP_DIR.parent / ".env", override=False)
+
 LEGACY_ACCOUNTS_FILE = APP_DIR / "accounts.json"
 LEGACY_USERS_FILE = APP_DIR / "users.json"
 LEGACY_SESSIONS_FILE = APP_DIR / "sessions.json"
