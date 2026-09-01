@@ -674,7 +674,14 @@ let lastCcLogKey = ''
 let ccLogTimer = null
 let tabsResizeObserver = null
 
+const canPollCcLogs = computed(() => {
+  if (currentUser.value?.role === 'admin') return true
+  if (!currentUser.value || !menuState.loaded) return false
+  return isCurrentMenuVisible('class_cube.logs', currentUser.value)
+})
+
 async function refreshCcLogs() {
+  if (!canPollCcLogs.value) return
   try {
     const res = await classCubeApi.listLogs(50)
     if (res.ok) ccLogs.value = res.data || []
@@ -710,6 +717,17 @@ function stopCcLogPolling() {
   }
 }
 
+function syncCcLogPolling() {
+  if (isLoginPage.value || !canPollCcLogs.value) {
+    stopCcLogPolling()
+    ccLogs.value = []
+    ccLogBaselineSet = false
+    lastCcLogKey = ''
+    return
+  }
+  if (!ccLogTimer) startCcLogPolling()
+}
+
 // menu command availability
 const currentTabIndex = computed(() => tabs.value.findIndex(item => item.path === route.path))
 const canCloseLeft = computed(() => {
@@ -734,6 +752,17 @@ watch(() => route.path, () => {
 watch(() => menuState.version, () => {
   pruneHiddenTabs()
 })
+
+watch(
+  [
+    () => menuState.loaded,
+    () => menuState.version,
+    () => currentUser.value?.id,
+    () => currentUser.value?.role,
+    () => route.path,
+  ],
+  syncCcLogPolling,
+)
 
 watch(currentUser, () => {
   if (currentUser.value) syncCurrentTab()
@@ -803,7 +832,6 @@ onMounted(async () => {
   window.addEventListener('resize', checkMobile)
   window.addEventListener('resize', updateTabsOverflow)
   if (!isLoginPage.value) {
-    startCcLogPolling()
     tabsResizeObserver = new ResizeObserver(() => updateTabsOverflow())
     if (tabsScrollRef.value) tabsResizeObserver.observe(tabsScrollRef.value)
     nextTick(updateTabsOverflow)
@@ -812,6 +840,7 @@ onMounted(async () => {
     } catch (error) {
       ElMessage.warning(error.message || '菜单配置暂时无法同步')
     }
+    syncCcLogPolling()
   }
 })
 
