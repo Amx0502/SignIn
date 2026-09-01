@@ -19,10 +19,6 @@ CLASS_CUBE_UPLOAD_DIR = UPLOAD_DIR / "class-cube"
 DEFAULT_REFRESH_TIMES = ["07:30:00", "11:30:00", "14:00:00", "17:00:00", "18:30:00"]
 DEFAULT_WEBHOOK_URL = ""
 
-CLASS_CUBE_GEOCODER_PROVIDER = os.getenv(
-    "CLASS_CUBE_GEOCODER_PROVIDER",
-    "tencent",
-)
 CLASS_CUBE_TENCENT_URL = os.getenv(
     "CLASS_CUBE_TENCENT_URL",
     "https://apis.map.qq.com",
@@ -38,14 +34,6 @@ CLASS_CUBE_TENCENT_JS_URL = os.getenv(
 CLASS_CUBE_TENCENT_JS_KEY = os.getenv(
     "CLASS_CUBE_TENCENT_JS_KEY",
     CLASS_CUBE_TENCENT_KEY,
-)
-CLASS_CUBE_GEOCODER_URL = os.getenv(
-    "CLASS_CUBE_GEOCODER_URL",
-    "https://restapi.amap.com/v3/place",
-)
-CLASS_CUBE_GEOCODER_KEY = os.getenv(
-    "CLASS_CUBE_GEOCODER_KEY",
-    "",
 )
 CLASS_CUBE_GEOCODER_USER_AGENT = os.getenv(
     "CLASS_CUBE_GEOCODER_USER_AGENT",

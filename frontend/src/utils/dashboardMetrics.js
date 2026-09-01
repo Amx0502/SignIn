@@ -73,5 +73,3 @@ export function buildDashboardMetrics(input = {}) {
       .slice(0, 8),
   }
 }
-
-export const dashboardTypeLabel = typeLabel

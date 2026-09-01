@@ -841,7 +841,6 @@ onUnmounted(() => {
 }
 .sidebar::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 0%, rgba(59, 130, 246, 0.28), transparent 34%); pointer-events: none; }
 .brand { position: relative; display: flex; gap: 12px; align-items: center; margin-bottom: 18px; padding: 0 8px; }
-.brand-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 16px; background: linear-gradient(135deg, #60a5fa, #2563eb); color: #fff; font-weight: 900; box-shadow: 0 16px 30px rgba(37, 99, 235, 0.35); }
 .brand h1 { margin: 0; font-size: 21px; color: #fff; letter-spacing: -0.03em; }
 .brand p { margin: 6px 0 0; font-size: 11px; color: #9fb0cf; text-transform: uppercase; letter-spacing: 0.08em; }
 .sidebar-menu { position: relative; border-right: none; background: transparent; }

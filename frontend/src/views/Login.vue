@@ -194,18 +194,6 @@ async function handleLogin() {
   background: linear-gradient(135deg, #1d4ed8, #1e40af);
 }
 
-.login-footer {
-  text-align: center;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.login-footer p {
-  margin: 0;
-  font-size: 12px;
-  color: #64748b;
-}
-
 :deep(.el-input__wrapper) {
   background: rgba(0, 0, 0, 0.2);
   border-color: rgba(255, 255, 255, 0.1);

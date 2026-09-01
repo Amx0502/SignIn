@@ -94,13 +94,7 @@
     </section>
 
     <section class="map-pane" aria-label="地图选点">
-      <div
-        class="map-shell"
-        :class="{
-          'is-loading': tileStatus === 'loading',
-          'is-error': tileStatus === 'error',
-        }"
-      >
+      <div class="map-shell">
         <div
           ref="mapElement"
           class="location-map"
@@ -126,11 +120,8 @@
         单击地图直接选点；可拖动地图，并使用鼠标滚轮或双指缩放。
       </p>
 
-      <p v-if="mapNotice" class="inline-message" :class="`is-${mapNotice.type}`">
-        {{ mapNotice.text }}
-      </p>
-      <p v-if="constrainedNetwork" class="network-notice">
-        已启用弱网模式：减少地图缓冲和动画，地址与坐标编辑不受影响。
+      <p v-if="mapNotice" class="inline-message is-error">
+        {{ mapNotice }}
       </p>
     </section>
   </div>
@@ -151,15 +142,12 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const DEFAULT_MAP_CONFIG = {
-  map_provider: 'tencent_js_gl',
   map_sdk_url: 'https://map.qq.com/api/gljs',
   map_sdk_key: '',
   default_center: { latitude: 35.8617, longitude: 104.1954 },
   default_zoom: 4,
   min_zoom: 3,
   max_zoom: 20,
-  coordinate_system: 'GCJ02',
-  search_notice: '地址搜索由地图服务处理，请勿输入个人住宅等敏感信息',
 }
 const coordinateValue = computed({
   get: () => props.modelValue,
@@ -184,18 +172,15 @@ const liveMessage = ref('')
 const mapConfig = ref(DEFAULT_MAP_CONFIG)
 const mapReady = ref(false)
 const tileStatus = ref('loading')
-const mapNotice = ref(null)
-const constrainedNetwork = ref(false)
+const mapNotice = ref('')
 
 let TMap = null
 let map = null
 let markerLayer = null
 let searchController = null
 let requestSequence = 0
-let noticeTimer = null
 let mapLoadTimer = null
 let destroyed = false
-let connection = null
 
 function resetRegionSearch() {
   searchController?.abort()
@@ -272,12 +257,8 @@ function announce(message) {
   nextTick(() => { liveMessage.value = message })
 }
 
-function showMapNotice(text, type = 'info', duration = 3500) {
-  if (noticeTimer) window.clearTimeout(noticeTimer)
-  mapNotice.value = { text, type }
-  if (duration > 0) {
-    noticeTimer = window.setTimeout(() => { mapNotice.value = null }, duration)
-  }
+function showMapNotice(text) {
+  mapNotice.value = text
 }
 
 function toTencentLatLng(coordinate) {
@@ -350,8 +331,6 @@ function resultTypeLabel(result) {
 
 function resultMeta(result) {
   const parts = [result.city, result.district, resultTypeLabel(result)].filter(Boolean)
-  const score = Number(result.score)
-  if (Number.isFinite(score)) parts.push(`匹配度 ${Math.round(score)}`)
   if (currentCoordinate.value) {
     parts.push(`距当前点 ${formatDistance(coordinateDistance(
       currentCoordinate.value,
@@ -419,10 +398,6 @@ function normalizedMapConfig(response) {
   }
 }
 
-function updateEnvironmentPreferences() {
-  constrainedNetwork.value = Boolean(connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType))
-}
-
 function handleVisibilityChange() {
   if (!map || document.hidden) return
   nextTick(() => {
@@ -450,6 +425,7 @@ async function retryTencentMap() {
 async function initializeMap() {
   if (!mapElement.value || map || destroyed) return
   tileStatus.value = 'loading'
+  mapNotice.value = ''
   try {
     const configResponse = await classCubeApi.getLocationConfig()
     mapConfig.value = normalizedMapConfig(configResponse)
@@ -490,7 +466,7 @@ async function initializeMap() {
       if (!map || tileStatus.value !== 'loading') return
       tileStatus.value = 'error'
       const message = '腾讯地图底图加载超时，请检查 JavaScript API GL 权限与域名白名单'
-      showMapNotice(message, 'error', 0)
+      showMapNotice(message)
       announce(message)
     }, 15_000)
     mapReady.value = true
@@ -501,7 +477,7 @@ async function initializeMap() {
     tileStatus.value = 'error'
     mapReady.value = false
     const message = error?.message || '腾讯地图加载失败，请检查 Key 与域名白名单'
-    showMapNotice(message, 'error', 0)
+    showMapNotice(message)
     announce(message)
   }
 }
@@ -525,10 +501,7 @@ watch(
   },
 )
 onMounted(() => {
-  connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection || null
-  connection?.addEventListener?.('change', updateEnvironmentPreferences)
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  updateEnvironmentPreferences()
   initializeMap()
 })
 
@@ -536,8 +509,6 @@ onBeforeUnmount(() => {
   destroyed = true
   requestSequence += 1
   searchController?.abort()
-  if (noticeTimer) window.clearTimeout(noticeTimer)
-  connection?.removeEventListener?.('change', updateEnvironmentPreferences)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   destroyMap()
   TMap = null
@@ -545,11 +516,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.location-search-panel{container-type:inline-size;display:grid;gap:5px;width:100%;min-width:0;padding:12px;border:1px solid #dbeafe;border-radius:15px;background:linear-gradient(145deg,#f8fbff,#fff);box-sizing:border-box}.location-entry-pane{grid-column:1/-1;min-width:0}.location-entry-row{display:grid;grid-template-columns:minmax(270px,.75fr) minmax(520px,1.25fr);gap:14px}.entry-field{display:grid;align-content:start;gap:6px;min-width:0}.search-pane,.map-pane{display:grid;align-content:start;gap:10px;min-width:0}.coordinate-editor{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-width:0}.address-search{display:grid;grid-template-columns:120px 125px minmax(180px,1fr) auto;gap:8px;min-width:0}.field-tip,.privacy-tip{color:#52657f;font-size:12px;line-height:1.55}.privacy-tip{color:#64748b}.inline-message{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0;padding:9px 11px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:13px;line-height:1.45}.inline-message button{border:0;background:transparent;color:inherit;font-weight:700;cursor:pointer}.inline-message.is-error{background:#fef2f2;color:#b91c1c}.inline-message.is-warning{background:#fffbeb;color:#a16207}.inline-message.is-success{background:#ecfdf5;color:#047857}.saved-group{display:grid;gap:6px}.saved-group header{display:flex;align-items:center;justify-content:space-between;gap:8px}.saved-group header strong{color:#334155;font-size:13px}.saved-group header button{border:0;background:transparent;color:#64748b;font-size:12px;cursor:pointer}.saved-list{display:flex;gap:6px;overflow:auto;padding:1px 1px 3px}.saved-list button{display:flex;align-items:center;gap:4px;flex:0 0 auto;max-width:190px;min-height:34px;padding:6px 10px;overflow:hidden;border:1px solid #dbeafe;border-radius:999px;background:#fff;color:#1e40af;font-size:12px;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.saved-list button:hover{border-color:#60a5fa;background:#eff6ff}.saved-list button span{color:#f59e0b}.search-results{display:grid;gap:7px;max-height:280px;margin:0;padding:2px;overflow:auto;list-style:none}.result-item{min-width:0}.result-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;min-height:68px;padding:10px;border:1px solid #e2e8f0;border-radius:11px;background:#fff;color:#334155;text-align:left;cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .18s}.result-row:hover,.result-row.active{border-color:#60a5fa;box-shadow:0 7px 18px rgb(37 99 235 / 12%);transform:translateY(-1px)}.result-copy{display:grid;gap:3px;min-width:0}.result-copy strong{overflow:hidden;color:#172033;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.result-copy small{display:-webkit-box;overflow:hidden;color:#52657f;font-size:12px;line-height:1.45;-webkit-box-orient:vertical;-webkit-line-clamp:2}.result-copy em{overflow:hidden;color:#64748b;font-size:12px;font-style:normal;text-overflow:ellipsis;white-space:nowrap}.result-row code{color:#1d4ed8;font-size:12px;white-space:nowrap}.selection-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;border:1px solid #bfdbfe;border-radius:11px;background:#eff6ff}.selection-card>div:first-child{display:grid;gap:2px;min-width:0}.selection-card small{color:#64748b;font-size:12px}.selection-card strong{overflow:hidden;color:#1e3a8a;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.deviation-warning{color:#a16207;font-size:12px}.selection-actions{display:flex;gap:6px;flex:0 0 auto}.selection-actions button{min-height:34px;padding:5px 9px;border:1px solid #bfdbfe;border-radius:8px;background:#fff;color:#1d4ed8;font-size:12px;cursor:pointer}.selection-actions button:disabled{cursor:not-allowed;opacity:.45}.map-shell{position:relative;min-width:0;overflow:hidden;border:1px solid #bfdbfe;border-radius:14px;background:#eaf3ff}.location-map{width:100%;height:380px;min-height:300px}.map-skeleton{position:absolute;z-index:450;inset:0;display:grid;place-content:center;justify-items:center;gap:12px;background:linear-gradient(135deg,#eef5ff,#dcecff);pointer-events:none}.map-skeleton::before,.map-skeleton::after{position:absolute;inset:20% -10%;content:"";border-top:3px solid rgb(96 165 250 / 25%);transform:rotate(-14deg)}.map-skeleton::after{inset:65% -10%;transform:rotate(9deg)}.map-skeleton span{z-index:1;width:26px;height:26px;border:3px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;animation:map-spin .8s linear infinite}.map-skeleton strong{z-index:1;color:#1e40af;font-size:13px}.map-error-panel{position:absolute;z-index:550;inset:50% auto auto 50%;display:grid;justify-items:center;gap:6px;width:min(300px,calc(100% - 36px));padding:18px;border:1px solid #fecaca;border-radius:14px;background:rgb(255 255 255 / 95%);box-shadow:0 14px 35px rgb(127 29 29 / 15%);text-align:center;transform:translate(-50%,-50%)}.map-error-panel strong{color:#991b1b}.map-error-panel span{color:#64748b;font-size:12px}.map-error-panel button{min-height:38px;padding:7px 13px;border:0;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer}.map-instructions,.network-notice{margin:0;color:#52657f;font-size:12px;line-height:1.55}.network-notice{padding:8px 10px;border-radius:9px;background:#fffbeb;color:#92400e}.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;border:0;clip:rect(0,0,0,0);white-space:nowrap}.location-search-panel :deep(.el-empty){padding:8px 0}.location-search-panel :deep(.el-empty__description){margin-top:4px}.location-search-panel :deep(.el-empty__description p){font-size:12px}@keyframes map-spin{to{transform:rotate(360deg)}}
+.location-search-panel{container-type:inline-size;display:grid;gap:5px;width:100%;min-width:0;padding:12px;border:1px solid #dbeafe;border-radius:15px;background:linear-gradient(145deg,#f8fbff,#fff);box-sizing:border-box}.location-entry-pane{grid-column:1/-1;min-width:0}.location-entry-row{display:grid;grid-template-columns:minmax(270px,.75fr) minmax(520px,1.25fr);gap:14px}.entry-field{display:grid;align-content:start;gap:6px;min-width:0}.search-pane,.map-pane{display:grid;align-content:start;gap:10px;min-width:0}.coordinate-editor{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-width:0}.address-search{display:grid;grid-template-columns:120px 125px minmax(180px,1fr) auto;gap:8px;min-width:0}.inline-message{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0;padding:9px 11px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:13px;line-height:1.45}.inline-message button{border:0;background:transparent;color:inherit;font-weight:700;cursor:pointer}.inline-message.is-error{background:#fef2f2;color:#b91c1c}.search-results{display:grid;gap:7px;max-height:280px;margin:0;padding:2px;overflow:auto;list-style:none}.result-item{min-width:0}.result-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;min-height:68px;padding:10px;border:1px solid #e2e8f0;border-radius:11px;background:#fff;color:#334155;text-align:left;cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .18s}.result-row:hover,.result-row.active{border-color:#60a5fa;box-shadow:0 7px 18px rgb(37 99 235 / 12%);transform:translateY(-1px)}.result-copy{display:grid;gap:3px;min-width:0}.result-copy strong{overflow:hidden;color:#172033;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.result-copy small{display:-webkit-box;overflow:hidden;color:#52657f;font-size:12px;line-height:1.45;-webkit-box-orient:vertical;-webkit-line-clamp:2}.result-copy em{overflow:hidden;color:#64748b;font-size:12px;font-style:normal;text-overflow:ellipsis;white-space:nowrap}.result-row code{color:#1d4ed8;font-size:12px;white-space:nowrap}.map-shell{position:relative;min-width:0;overflow:hidden;border:1px solid #bfdbfe;border-radius:14px;background:#eaf3ff}.location-map{width:100%;height:380px;min-height:300px}.map-skeleton{position:absolute;z-index:450;inset:0;display:grid;place-content:center;justify-items:center;gap:12px;background:linear-gradient(135deg,#eef5ff,#dcecff);pointer-events:none}.map-skeleton::before,.map-skeleton::after{position:absolute;inset:20% -10%;content:"";border-top:3px solid rgb(96 165 250 / 25%);transform:rotate(-14deg)}.map-skeleton::after{inset:65% -10%;transform:rotate(9deg)}.map-skeleton span{z-index:1;width:26px;height:26px;border:3px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;animation:map-spin .8s linear infinite}.map-skeleton strong{z-index:1;color:#1e40af;font-size:13px}.map-error-panel{position:absolute;z-index:550;inset:50% auto auto 50%;display:grid;justify-items:center;gap:6px;width:min(300px,calc(100% - 36px));padding:18px;border:1px solid #fecaca;border-radius:14px;background:rgb(255 255 255 / 95%);box-shadow:0 14px 35px rgb(127 29 29 / 15%);text-align:center;transform:translate(-50%,-50%)}.map-error-panel strong{color:#991b1b}.map-error-panel span{color:#64748b;font-size:12px}.map-error-panel button{min-height:38px;padding:7px 13px;border:0;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer}.map-instructions{margin:0;color:#52657f;font-size:12px;line-height:1.55}.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;border:0;clip:rect(0,0,0,0);white-space:nowrap}.location-search-panel :deep(.el-empty){padding:8px 0}.location-search-panel :deep(.el-empty__description){margin-top:4px}.location-search-panel :deep(.el-empty__description p){font-size:12px}@keyframes map-spin{to{transform:rotate(360deg)}}
 @container(min-width:900px){.location-search-panel{grid-template-columns:minmax(310px,350px) minmax(0,1fr);align-items:start}.location-map{height:clamp(480px,60vh,560px)}.search-results{max-height:330px}}
 @media(max-width:720px){.location-entry-row{grid-template-columns:1fr}}
 @media(max-width:900px){.location-entry-row{grid-template-columns:1fr}.address-search{grid-template-columns:120px 125px minmax(180px,1fr) auto}}
-@media(max-width:640px){.location-search-panel{padding:10px}.coordinate-editor{grid-template-columns:1fr}.address-search{grid-template-columns:1fr 1fr}.address-search .el-input{grid-column:1/-1}.coordinate-editor .el-button{width:100%;min-height:42px}.address-search>.el-button{grid-column:1/-1;width:100%;min-height:42px}.result-row{grid-template-columns:1fr}.result-row code{white-space:normal}.selection-card{align-items:stretch;flex-direction:column}.selection-actions{display:grid;grid-template-columns:1fr 1fr}.selection-actions button{width:100%;min-height:42px;margin:0}.location-map{height:clamp(280px,48vh,420px);min-height:260px}.map-instructions,.field-tip,.privacy-tip{font-size:12px}}
+@media(max-width:640px){.location-search-panel{padding:10px}.coordinate-editor{grid-template-columns:1fr}.address-search{grid-template-columns:1fr 1fr}.address-search .el-input{grid-column:1/-1}.coordinate-editor .el-button{width:100%;min-height:42px}.address-search>.el-button{grid-column:1/-1;width:100%;min-height:42px}.result-row{grid-template-columns:1fr}.result-row code{white-space:normal}.location-map{height:clamp(280px,48vh,420px);min-height:260px}}
 .search-results{max-height:155px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.result-row{height:72px;min-height:72px;padding-block:8px;overflow:hidden}.result-copy small{-webkit-line-clamp:1}
 .search-results{scrollbar-width:auto;scrollbar-color:#60a5fa #eff6ff}.search-results::-webkit-scrollbar{width:10px}.search-results::-webkit-scrollbar-track{border-radius:999px;background:#eff6ff}.search-results::-webkit-scrollbar-thumb{border:2px solid #eff6ff;border-radius:999px;background:#60a5fa}
 @media(max-width:640px){.search-results{max-height:199px}.result-row{height:94px;min-height:94px}}

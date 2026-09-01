@@ -302,24 +302,10 @@ class ClassCubeService:
         self.logger = logger
         self._clock = clock or time.monotonic
         self.notifier = notifier or ClassCubeNotifier()
-        geocoder_provider = str(
-            config.CLASS_CUBE_GEOCODER_PROVIDER or "tencent"
-        ).lower()
-        if geocoder_provider not in {"amap", "nominatim", "tencent"}:
-            geocoder_provider = "tencent"
         self.geocoder = geocoder or ClassCubeGeocoder(
-            base_url=(
-                config.CLASS_CUBE_TENCENT_URL
-                if geocoder_provider == "tencent"
-                else config.CLASS_CUBE_GEOCODER_URL
-            ),
+            base_url=config.CLASS_CUBE_TENCENT_URL,
             user_agent=config.CLASS_CUBE_GEOCODER_USER_AGENT,
-            provider=geocoder_provider,
-            api_key=(
-                config.CLASS_CUBE_TENCENT_KEY
-                if geocoder_provider == "tencent"
-                else config.CLASS_CUBE_GEOCODER_KEY
-            ),
+            api_key=config.CLASS_CUBE_TENCENT_KEY,
             shared_rate_file=config.CLASS_CUBE_GEOCODER_RATE_FILE,
         )
         self._qr_targets: dict[str, _QrTarget] = {}
@@ -727,7 +713,6 @@ class ClassCubeService:
     ) -> dict[str, Any]:
         self._actor_scope(actor)
         return {
-            "map_provider": "tencent_js_gl",
             "map_sdk_url": str(
                 config.CLASS_CUBE_TENCENT_JS_URL
                 or "https://map.qq.com/api/gljs"
@@ -742,11 +727,6 @@ class ClassCubeService:
             "default_zoom": 4,
             "min_zoom": 3,
             "max_zoom": 20,
-            "coordinate_system": "GCJ02",
-            "search_provider": self.geocoder.provider,
-            "search_notice": (
-                "地址搜索由地图服务处理，请勿输入个人住宅等敏感信息"
-            ),
         }
 
     def sync_courses(

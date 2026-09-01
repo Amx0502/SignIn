@@ -60,7 +60,6 @@ body::before {
 }
 
 .page-hero,
-.analytics-grid,
 .form-section,
 .el-row { margin-bottom: 18px; }
 
@@ -132,8 +131,6 @@ body::before {
 .el-card__header { border-bottom: 1px solid var(--line) !important; padding: 18px 22px !important; color: #1e293b; }
 .el-card__body { padding: 22px !important; }
 
-.panel-soft { background: rgba(248, 250, 252, 0.78); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
-
 .el-form-item { margin-bottom: 20px; }
 .el-input__wrapper, .el-textarea__inner, .el-input-number, .el-select__wrapper { border-radius: 12px !important; box-shadow: 0 0 0 1px var(--line) inset !important; }
 .el-input__wrapper:hover, .el-textarea__inner:hover, .el-select__wrapper:hover { box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.35) inset !important; }
@@ -147,15 +144,7 @@ body::before {
 .el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell { background: #eff6ff !important; }
 .el-tag { border-radius: 999px !important; font-weight: 650; }
 
-.chart-card { min-height: 320px; }
-.progress-list { display: grid; gap: 16px; }
-.progress-row { display: grid; gap: 8px; }
-.progress-meta { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); font-weight: 650; }
-.progress-track { height: 10px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
-.progress-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2563eb, #06b6d4); animation: growBar 0.8s ease both; }
-
 @keyframes pageIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes growBar { from { width: 0; } }
 
 @media (max-width: 768px) {
   html { font-size: 14px; }
