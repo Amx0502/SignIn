@@ -399,6 +399,8 @@ function resultTypeLabel(result) {
 
 function resultMeta(result) {
   const parts = [result.city, result.district, resultTypeLabel(result)].filter(Boolean)
+  const score = Number(result.score)
+  if (Number.isFinite(score)) parts.push(`匹配度 ${Math.round(score)}`)
   if (currentCoordinate.value) {
     parts.push(`距当前点 ${formatDistance(coordinateDistance(
       currentCoordinate.value,
