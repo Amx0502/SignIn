@@ -27,6 +27,7 @@ class ClassCubeGeocoder:
         provider: str = "nominatim",
         account_id: str = "",
         api_key: str = "",
+        region: str = "",
         coordinate_system: str = "gcj02",
         cache_ttl_seconds: float = 24 * 60 * 60,
         cache_limit: int = 512,
@@ -38,10 +39,11 @@ class ClassCubeGeocoder:
         self.base_url = str(base_url).rstrip("/")
         self.user_agent = str(user_agent).strip()
         self.provider = str(provider or "nominatim").strip().lower()
-        if self.provider not in {"amap", "apihz", "nominatim"}:
-            self.provider = "apihz"
+        if self.provider not in {"amap", "apihz", "nominatim", "tencent"}:
+            self.provider = "tencent"
         self.account_id = str(account_id or "").strip()
         self.api_key = str(api_key or "").strip()
+        self.region = str(region or "").strip()
         self.coordinate_system = (
             "GCJ02"
             if str(coordinate_system or "").strip().lower() == "gcj02"
@@ -462,6 +464,147 @@ class ClassCubeGeocoder:
         response.raise_for_status()
         return self._normalize_amap_results(response.json())
 
+    @classmethod
+    def _normalize_tencent_results(
+        cls,
+        payload: Any,
+    ) -> tuple[dict[str, Any], ...]:
+        if not isinstance(payload, dict):
+            raise ClassCubeGeocoderError("腾讯地点搜索返回了无效数据")
+        try:
+            status = int(payload.get("status"))
+        except (TypeError, ValueError):
+            status = -1
+        if status != 0:
+            detail = cls._text(payload.get("message"))
+            normalized_detail = detail.casefold()
+            if status in {110, 111, 112, 114, 115, 116, 160} or any(
+                token in normalized_detail
+                for token in ("key", "鉴权", "权限", "签名", "授权")
+            ):
+                message = "腾讯位置服务 Key 无效、未授权或未开通 WebService API"
+                retryable = False
+            elif status in {120, 121, 122} or any(
+                token in normalized_detail
+                for token in ("quota", "qps", "配额", "频率", "限流")
+            ):
+                message = "腾讯地点搜索调用额度或频率已受限"
+                retryable = True
+            else:
+                message = (
+                    f"腾讯地点搜索失败：{detail}"
+                    if detail else "腾讯地点搜索暂时不可用"
+                )
+                retryable = status >= 300 or status < 0
+            raise ClassCubeGeocoderError(message, retryable=retryable)
+
+        rows = payload.get("data")
+        if rows is None:
+            rows = []
+        if not isinstance(rows, list):
+            raise ClassCubeGeocoderError("腾讯地点搜索返回了无效数据")
+
+        normalized: list[dict[str, Any]] = []
+        seen: set[tuple[float, float, str]] = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            location = row.get("location")
+            if not isinstance(location, dict):
+                continue
+            try:
+                latitude = float(location.get("lat"))
+                longitude = float(location.get("lng"))
+            except (TypeError, ValueError):
+                continue
+            if (
+                not math.isfinite(latitude)
+                or not math.isfinite(longitude)
+                or not -90 <= latitude <= 90
+                or not -180 <= longitude <= 180
+            ):
+                continue
+
+            name = cls._text(row.get("title")) or "搜索结果"
+            address = cls._text(row.get("address"))
+            ad_info = row.get("ad_info")
+            if not isinstance(ad_info, dict):
+                ad_info = {}
+            province = cls._text(ad_info.get("province"))
+            city = cls._text(ad_info.get("city"))
+            district = cls._text(ad_info.get("district"))
+            full_address = address
+            if not full_address:
+                full_address = "".join(dict.fromkeys(
+                    part for part in (province, city, district) if part
+                )) or name
+
+            dedupe_key = (
+                round(latitude, 7),
+                round(longitude, 7),
+                name.casefold(),
+            )
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            item = {
+                "id": f"tencent:{cls._text(row.get('id')) or len(normalized)}",
+                "name": name,
+                "address": full_address,
+                "latitude": latitude,
+                "longitude": longitude,
+                "category": cls._text(row.get("category")),
+                "type": (
+                    cls._text(row.get("type"))
+                    or cls._text(row.get("category"))
+                ),
+                "province": province,
+                "city": city,
+                "district": district,
+                "provider": "tencent",
+                "coordinate_system": "GCJ02",
+            }
+            try:
+                distance = float(row.get("_distance"))
+            except (TypeError, ValueError):
+                distance = None
+            if distance is not None and math.isfinite(distance) and distance >= 0:
+                item["distance"] = round(distance, 1)
+            normalized.append(item)
+        return tuple(normalized)
+
+    def _request_tencent(
+        self,
+        query: str,
+        limit: int,
+    ) -> tuple[dict[str, Any], ...]:
+        if not self.api_key:
+            raise ClassCubeGeocoderError(
+                "尚未配置腾讯位置服务 Key，无法使用腾讯地点搜索",
+                retryable=False,
+            )
+        params: dict[str, Any] = {
+            "key": self.api_key,
+            "keyword": query,
+            "page_index": 1,
+            "page_size": limit,
+            "output": "json",
+        }
+        if self.region:
+            params["boundary"] = f"region({self.region},0)"
+        response = self._session.get(
+            f"{self.base_url}/ws/place/v1/search",
+            params=params,
+            headers={
+                "User-Agent": self.user_agent,
+                "Accept": "application/json",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        return self._normalize_tencent_results(response.json())
+
     def _request_nominatim(
         self,
         query: str,
@@ -505,11 +648,20 @@ class ClassCubeGeocoder:
                 return cached
 
             if (
-                self.provider == "apihz"
-                and (not self.account_id or not self.api_key)
+                self.provider in {"apihz", "tencent"}
+                and not self.api_key
             ):
                 raise ClassCubeGeocoderError(
-                    "尚未配置接口盒子用户 ID 或通讯密钥，无法使用国内模糊地址搜索",
+                    (
+                        "尚未配置腾讯位置服务 Key，无法使用腾讯地点搜索"
+                        if self.provider == "tencent"
+                        else "尚未配置接口盒子通讯密钥，无法使用国内模糊地址搜索"
+                    ),
+                    retryable=False,
+                )
+            if self.provider == "apihz" and not self.account_id:
+                raise ClassCubeGeocoderError(
+                    "尚未配置接口盒子用户 ID，无法使用国内模糊地址搜索",
                     retryable=False,
                 )
 
@@ -518,6 +670,11 @@ class ClassCubeGeocoder:
             try:
                 if self.provider == "apihz":
                     results = self._request_apihz(normalized_query)
+                elif self.provider == "tencent":
+                    results = self._request_tencent(
+                        normalized_query,
+                        normalized_limit,
+                    )
                 elif self.provider == "amap":
                     results = self._request_amap(
                         normalized_query,

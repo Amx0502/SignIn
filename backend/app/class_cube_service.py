@@ -323,13 +323,17 @@ class ClassCubeService:
         self._clock = clock or time.monotonic
         self.notifier = notifier or ClassCubeNotifier()
         geocoder_provider = str(
-            config.CLASS_CUBE_GEOCODER_PROVIDER or "apihz"
+            config.CLASS_CUBE_GEOCODER_PROVIDER or "tencent"
         ).lower()
         self.geocoder = geocoder or ClassCubeGeocoder(
             base_url=(
                 config.CLASS_CUBE_APIHZ_URL
                 if geocoder_provider == "apihz"
-                else config.CLASS_CUBE_GEOCODER_URL
+                else (
+                    config.CLASS_CUBE_TENCENT_URL
+                    if geocoder_provider == "tencent"
+                    else config.CLASS_CUBE_GEOCODER_URL
+                )
             ),
             user_agent=config.CLASS_CUBE_GEOCODER_USER_AGENT,
             provider=geocoder_provider,
@@ -341,7 +345,16 @@ class ClassCubeService:
             api_key=(
                 config.CLASS_CUBE_APIHZ_KEY
                 if geocoder_provider == "apihz"
-                else config.CLASS_CUBE_GEOCODER_KEY
+                else (
+                    config.CLASS_CUBE_TENCENT_KEY
+                    if geocoder_provider == "tencent"
+                    else config.CLASS_CUBE_GEOCODER_KEY
+                )
+            ),
+            region=(
+                config.CLASS_CUBE_TENCENT_REGION
+                if geocoder_provider == "tencent"
+                else ""
             ),
             coordinate_system=config.CLASS_CUBE_APIHZ_COORDINATE_SYSTEM,
             shared_rate_file=config.CLASS_CUBE_GEOCODER_RATE_FILE,
@@ -763,7 +776,7 @@ class ClassCubeService:
             "default_zoom": 4,
             "coordinate_system": "WGS84",
             "search_provider": str(
-                config.CLASS_CUBE_GEOCODER_PROVIDER or "apihz"
+                config.CLASS_CUBE_GEOCODER_PROVIDER or "tencent"
             ).lower(),
             "search_notice": (
                 "地址搜索由地图服务处理，请勿输入个人住宅等敏感信息"

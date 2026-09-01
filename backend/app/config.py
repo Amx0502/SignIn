@@ -22,7 +22,19 @@ DEFAULT_WEBHOOK_URL = ""
 
 CLASS_CUBE_GEOCODER_PROVIDER = os.getenv(
     "CLASS_CUBE_GEOCODER_PROVIDER",
-    "apihz",
+    "tencent",
+)
+CLASS_CUBE_TENCENT_URL = os.getenv(
+    "CLASS_CUBE_TENCENT_URL",
+    "https://apis.map.qq.com",
+)
+CLASS_CUBE_TENCENT_KEY = os.getenv(
+    "CLASS_CUBE_TENCENT_KEY",
+    "",
+)
+CLASS_CUBE_TENCENT_REGION = os.getenv(
+    "CLASS_CUBE_TENCENT_REGION",
+    "潍坊市",
 )
 CLASS_CUBE_GEOCODER_URL = os.getenv(
     "CLASS_CUBE_GEOCODER_URL",
