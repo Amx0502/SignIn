@@ -21,6 +21,7 @@ class UserRow(AuthBase):
         DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
     )
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     sessions: Mapped[list["UserSessionRow"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True

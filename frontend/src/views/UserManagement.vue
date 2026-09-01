@@ -1,7 +1,7 @@
 <template>
   <div class="users-page">
     <div class="page-heading">
-      <div><h2>用户管理</h2><p>管理后台登录用户、角色和启用状态</p></div>
+      <div><h2>用户管理</h2><p>管理后台登录用户、角色、启用状态和账号有效期</p></div>
       <el-button type="primary" :icon="Plus" @click="openCreate">新增用户</el-button>
     </div>
 
@@ -17,8 +17,8 @@
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'">
-              {{ row.is_active ? '已启用' : '已禁用' }}
+            <el-tag :type="isExpired(row) ? 'warning' : row.is_active ? 'success' : 'info'">
+              {{ isExpired(row) ? '已到期' : row.is_active ? '已启用' : '已禁用' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -32,6 +32,11 @@
         <el-table-column label="魔方账号额度" width="130">
           <template #default="{ row }">
             {{ row.role === 'admin' || row.class_cube_account_limit == null ? '不限' : row.class_cube_account_limit }}
+          </template>
+        </el-table-column>
+        <el-table-column label="到期时间" min-width="180">
+          <template #default="{ row }">
+            <span :class="{ 'expired-time': isExpired(row) }">{{ formatExpiry(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="last_login" label="最后登录" min-width="180">
@@ -67,6 +72,20 @@
         <el-form-item label="状态">
           <el-switch v-model="userForm.is_active" active-text="启用" inactive-text="禁用" />
         </el-form-item>
+        <el-form-item v-if="userForm.role === 'user'" label="账号到期时间">
+          <el-date-picker
+            v-model="userForm.expires_at"
+            type="datetime"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            format="YYYY-MM-DD HH:mm:ss"
+            placeholder="留空表示永不过期"
+            :disabled-date="disablePastDate"
+            clearable
+            style="width: 100%"
+          />
+          <div class="field-help">到期后账号会自动变为禁用，已登录会话也会失效；清空表示永不过期。</div>
+        </el-form-item>
+        <div v-else class="admin-expiry-note">管理员账号不设置到期时间，避免系统失去可用管理员。</div>
         <template v-if="userForm.role === 'user'">
           <el-form-item label="班级魔方单用户">
             <el-switch
@@ -129,7 +148,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -153,6 +172,7 @@ const userForm = reactive({
   username: '', password: '', role: 'user', is_active: true,
   class_cube_only: false, class_cube_account_limit: 1,
   initial_class_cube_account_id: null,
+  expires_at: null,
 })
 const resetForm = reactive({ new_password: '' })
 const userRules = {
@@ -162,6 +182,21 @@ const userRules = {
 const resetRules = { new_password: [{ required: true, message: '请输入新密码', trigger: 'blur' }, { min: 6, message: '密码至少 6 位', trigger: 'blur' }] }
 
 function formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN') : '从未登录' }
+function isExpired(row) {
+  return Boolean(row.is_expired || (row.expires_at && new Date(row.expires_at) <= new Date()))
+}
+function formatExpiry(row) {
+  if (!row.expires_at) return '永不过期'
+  return new Date(row.expires_at).toLocaleString('zh-CN')
+}
+function formExpiryValue(value) {
+  return value ? value.replace('T', ' ').slice(0, 19) : null
+}
+function disablePastDate(date) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return date.getTime() < today.getTime()
+}
 async function loadUsers() {
   loading.value = true
   try { users.value = (await getUsersApi()).data } catch (error) { ElMessage.error(error.message) }
@@ -182,6 +217,7 @@ function openCreate() {
     username: '', password: '', role: 'user', is_active: true,
     class_cube_only: false, class_cube_account_limit: 1,
     initial_class_cube_account_id: null,
+    expires_at: null,
   })
   userDialog.value = true
 }
@@ -193,6 +229,7 @@ function openEdit(row) {
     class_cube_only: Boolean(row.class_cube_only),
     class_cube_account_limit: row.class_cube_account_limit ?? 1,
     initial_class_cube_account_id: null,
+    expires_at: row.role === 'user' ? formExpiryValue(row.expires_at) : null,
   })
   userDialog.value = true
 }
@@ -205,6 +242,15 @@ function handleClassCubeOnlyChange(enabled) {
 }
 async function saveUser() {
   await userFormRef.value.validate()
+  if (
+    userForm.role === 'user'
+    && userForm.is_active
+    && userForm.expires_at
+    && new Date(userForm.expires_at) <= new Date()
+  ) {
+    ElMessage.warning('启用用户的到期时间必须晚于当前时间')
+    return
+  }
   saving.value = true
   try {
     if (editingId.value) {
@@ -213,6 +259,7 @@ async function saveUser() {
         class_cube_only: userForm.role === 'user' && userForm.class_cube_only,
         class_cube_account_limit: userForm.role === 'user' && !quotaUnlimited.value
           ? userForm.class_cube_account_limit : null,
+        expires_at: userForm.role === 'user' ? userForm.expires_at : null,
       })
     } else {
       await createUserApi({
@@ -222,6 +269,7 @@ async function saveUser() {
           ? userForm.class_cube_account_limit : null,
         initial_class_cube_account_id: userForm.class_cube_only
           ? userForm.initial_class_cube_account_id : null,
+        expires_at: userForm.role === 'user' ? userForm.expires_at : null,
       })
     }
     ElMessage.success('保存成功')
@@ -254,7 +302,14 @@ async function removeUser(row) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message)
   }
 }
-onMounted(() => Promise.all([loadUsers(), loadAccountPool()]))
+let userRefreshTimer = null
+onMounted(() => {
+  Promise.all([loadUsers(), loadAccountPool()])
+  userRefreshTimer = window.setInterval(loadUsers, 30_000)
+})
+onBeforeUnmount(() => {
+  if (userRefreshTimer) window.clearInterval(userRefreshTimer)
+})
 </script>
 
 <style scoped>
@@ -265,6 +320,16 @@ onMounted(() => Promise.all([loadUsers(), loadAccountPool()]))
 .table-card { border-radius: 18px; }
 .field-help { width: 100%; margin-top: 6px; color: #64748b; font-size: 12px; line-height: 1.5; }
 .quota-row { display: flex; align-items: center; gap: 16px; width: 100%; }
+.expired-time { color: #d97706; }
+.admin-expiry-note {
+  margin: -2px 0 18px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f5f7fa;
+  color: #7a8798;
+  font-size: 12px;
+  line-height: 1.5;
+}
 @media (max-width: 640px) {
   .page-heading { align-items: flex-start; flex-direction: column; }
 }

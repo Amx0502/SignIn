@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -26,6 +26,14 @@ class LastAdminError(ValueError):
 
 class UserNotFoundError(IndexError):
     pass
+
+
+def normalize_expiration(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone().replace(tzinfo=None)
+    return value
 
 
 def hash_password(password: str) -> str:
@@ -70,6 +78,10 @@ class AuthRepository:
             "created_at": row.created_at.isoformat(),
             "updated_at": row.updated_at.isoformat(),
             "last_login": row.last_login.isoformat() if row.last_login else None,
+            "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+            "is_expired": bool(
+                row.expires_at and row.expires_at <= datetime.now()
+            ),
             "class_cube_only": bool(policy.class_cube_only) if policy else False,
             "class_cube_account_limit": (
                 policy.class_cube_account_limit if policy else None
@@ -108,6 +120,7 @@ class AuthRepository:
 
     def list_users(self) -> list[dict]:
         with self.database.session() as session:
+            self._expire_due_users(session)
             return [self._to_dict(row) for row in session.scalars(
                 select(UserRow)
                 .options(selectinload(UserRow.feature_policy))
@@ -138,14 +151,20 @@ class AuthRepository:
         *,
         class_cube_only: bool = False,
         class_cube_account_limit: int | None = None,
+        expires_at: datetime | None = None,
     ) -> dict:
+        expires_at = normalize_expiration(expires_at)
         if role not in {"admin", "user"}:
             raise ValueError("角色无效")
+        if role == "admin" and expires_at is not None:
+            raise ValueError("管理员账号不能设置到期时间")
+        if is_active and expires_at is not None and expires_at <= datetime.now():
+            raise ValueError("启用用户的到期时间必须晚于当前时间")
         try:
             with self.database.session() as session:
                 row = UserRow(
                     username=username.strip(), password_hash=hash_password(password),
-                    role=role, is_active=is_active,
+                    role=role, is_active=is_active, expires_at=expires_at,
                 )
                 session.add(row)
                 session.flush()
@@ -178,9 +197,15 @@ class AuthRepository:
         *,
         class_cube_only: bool = False,
         class_cube_account_limit: int | None = None,
+        expires_at: datetime | None = None,
     ) -> dict:
+        expires_at = normalize_expiration(expires_at)
         if role not in {"admin", "user"}:
             raise ValueError("角色无效")
+        if role == "admin" and expires_at is not None:
+            raise ValueError("管理员账号不能设置到期时间")
+        if is_active and expires_at is not None and expires_at <= datetime.now():
+            raise ValueError("启用用户的到期时间必须晚于当前时间")
         try:
             with self.database.session() as session:
                 row = session.get(UserRow, user_id)
@@ -193,6 +218,7 @@ class AuthRepository:
                 row.username = username.strip()
                 row.role = role
                 row.is_active = is_active
+                row.expires_at = expires_at if role == "user" else None
                 policy = session.get(UserFeaturePolicyRow, row.id)
                 if policy is None:
                     policy = UserFeaturePolicyRow(user_id=row.id)
@@ -236,6 +262,7 @@ class AuthRepository:
 
     def authenticate(self, username: str, password: str) -> UserRow | None:
         with self.database.session() as session:
+            self._expire_due_users(session)
             row = session.scalar(select(UserRow).where(UserRow.username == username))
             if row is None or not row.is_active:
                 return None
@@ -285,6 +312,7 @@ class AuthRepository:
     def verify_session(self, token: str) -> dict | None:
         token_hash = self.token_hash(token)
         with self.database.session() as session:
+            self._expire_due_users(session)
             row = session.scalar(
                 select(UserSessionRow)
                 .options(joinedload(UserSessionRow.user))
@@ -296,6 +324,29 @@ class AuthRepository:
                 session.delete(row)
                 return None
             return self._to_dict(row.user)
+
+    @staticmethod
+    def _expire_due_users(session, now: datetime | None = None) -> int:
+        current = now or datetime.now()
+        user_ids = list(session.scalars(
+            select(UserRow.id).where(
+                UserRow.role == "user",
+                UserRow.is_active.is_(True),
+                UserRow.expires_at.is_not(None),
+                UserRow.expires_at <= current,
+            )
+        ).all())
+        if not user_ids:
+            return 0
+        session.execute(
+            update(UserRow)
+            .where(UserRow.id.in_(user_ids))
+            .values(is_active=False, updated_at=current)
+        )
+        session.execute(
+            delete(UserSessionRow).where(UserSessionRow.user_id.in_(user_ids))
+        )
+        return len(user_ids)
 
     def logout(self, token: str) -> None:
         with self.database.session() as session:

@@ -110,6 +110,7 @@ class UserCreate(BaseModel):
     class_cube_only: bool = False
     class_cube_account_limit: int | None = Field(default=None, ge=0)
     initial_class_cube_account_id: int | None = Field(default=None, gt=0)
+    expires_at: datetime | None = None
 
 
 class UserUpdate(BaseModel):
@@ -118,6 +119,7 @@ class UserUpdate(BaseModel):
     is_active: bool
     class_cube_only: bool = False
     class_cube_account_limit: int | None = Field(default=None, ge=0)
+    expires_at: datetime | None = None
 
 
 class PasswordReset(BaseModel):

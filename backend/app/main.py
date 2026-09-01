@@ -452,6 +452,7 @@ async def create_user(
             payload.is_active,
             class_cube_only=class_cube_only,
             class_cube_account_limit=account_limit,
+            expires_at=payload.expires_at,
         )
         menu_result = get_menu_repository().apply_user_access_profile(
             user_id=created["id"],
@@ -514,6 +515,7 @@ async def update_user(
             payload.is_active,
             class_cube_only=class_cube_only,
             class_cube_account_limit=account_limit,
+            expires_at=payload.expires_at,
         )
         if (
             bool(previous.get("class_cube_only")) != class_cube_only

@@ -50,6 +50,10 @@ class AuthDatabase:
                 connection.execute(
                     text("ALTER TABLE users DROP COLUMN must_change_password")
                 )
+            if "expires_at" not in columns:
+                connection.execute(
+                    text("ALTER TABLE users ADD COLUMN expires_at DATETIME NULL")
+                )
 
     @contextmanager
     def session(self) -> Iterator[Session]:
