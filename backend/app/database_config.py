@@ -1,15 +1,12 @@
-import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
 
 from sqlalchemy import URL
 
+from . import config
 
-DATABASE_CONFIG_FILE = Path(__file__).resolve().parent.parent / "database_config.json"
 UNIFIED_DATABASE_NAME = "SignIn"
 _DATABASE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
-_REQUIRED_FIELDS = ("host", "port", "database", "user", "password")
 
 
 @dataclass(frozen=True)
@@ -42,103 +39,40 @@ class ConnectionSettings:
         )
 
 
-@dataclass(frozen=True)
-class DatabaseConfig:
-    connection: ConnectionSettings
-
-    @property
-    def business(self) -> ConnectionSettings:
-        return self.connection
-
-    @property
-    def auth(self) -> ConnectionSettings:
-        return self.connection
-
-    @property
-    def class_cube(self) -> ConnectionSettings:
-        return self.connection
+def _required_value(variable: str, value: str) -> str:
+    if not value:
+        raise RuntimeError(f"数据库环境变量 {variable} 未配置")
+    return value
 
 
-def _connection_settings(data: object, section: str, path: Path) -> ConnectionSettings:
-    if not isinstance(data, dict):
-        raise RuntimeError(f"数据库配置文件 {path} 中的 {section} 必须是对象")
-
-    for field in _REQUIRED_FIELDS:
-        if field not in data:
-            raise RuntimeError(f"数据库配置文件 {path} 缺少字段 {section}.{field}")
-
-    port = data["port"]
-    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+def load_database_config() -> ConnectionSettings:
+    host = _required_value("DATABASE_HOST", config.DATABASE_HOST)
+    database = _required_value("DATABASE_NAME", config.DATABASE_NAME)
+    user = _required_value("DATABASE_USER", config.DATABASE_USER)
+    password = _required_value("DATABASE_PASSWORD", config.DATABASE_PASSWORD)
+    try:
+        port = int(_required_value("DATABASE_PORT", config.DATABASE_PORT))
+    except ValueError as exc:
+        raise RuntimeError("数据库环境变量 DATABASE_PORT 必须是整数") from exc
+    if not 1 <= port <= 65535:
         raise RuntimeError(
-            f"数据库配置文件 {path} 的 {section}.port 必须是 1 到 65535 的整数"
+            "数据库环境变量 DATABASE_PORT 必须是 1 到 65535 的整数"
         )
 
-    for field in ("host", "database", "user", "password"):
-        value = data[field]
-        if not isinstance(value, str) or not value.strip():
-            raise RuntimeError(
-                f"数据库配置文件 {path} 的 {section}.{field} 必须是非空字符串"
-            )
-
-    database = data["database"]
     if not _DATABASE_NAME_PATTERN.fullmatch(database):
         raise RuntimeError(
-            f"数据库配置文件 {path} 的 {section}.database "
-            "只能包含字母、数字和下划线"
+            "数据库环境变量 DATABASE_NAME 只能包含字母、数字和下划线"
+        )
+
+    if database != UNIFIED_DATABASE_NAME:
+        raise RuntimeError(
+            f"数据库环境变量 DATABASE_NAME 必须为 {UNIFIED_DATABASE_NAME}"
         )
 
     return ConnectionSettings(
-        host=data["host"].strip(),
+        host=host,
         port=port,
         name=database,
-        user=data["user"].strip(),
-        password=data["password"],
+        user=user,
+        password=password,
     )
-
-
-def load_database_config(
-    path: str | Path = DATABASE_CONFIG_FILE,
-) -> DatabaseConfig:
-    config_path = Path(path)
-    if not config_path.is_file():
-        raise RuntimeError(f"数据库配置文件不存在: {config_path}")
-
-    try:
-        data = json.loads(config_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"数据库配置文件 {config_path} JSON 格式错误: {exc.msg}"
-        ) from exc
-    except OSError as exc:
-        raise RuntimeError(f"无法读取数据库配置文件 {config_path}: {exc}") from exc
-
-    if not isinstance(data, dict):
-        raise RuntimeError(f"数据库配置文件 {config_path} 的根节点必须是对象")
-
-    if "connection" in data:
-        settings = _connection_settings(data["connection"], "connection", config_path)
-    else:
-        legacy_sections = ("business", "auth", "class_cube")
-        for section in legacy_sections:
-            if section not in data:
-                raise RuntimeError(
-                    f"数据库配置文件 {config_path} 缺少配置段 connection"
-                )
-        legacy_settings = [
-            _connection_settings(data[section], section, config_path)
-            for section in legacy_sections
-        ]
-        if len(set(legacy_settings)) != 1:
-            raise RuntimeError(
-                f"数据库配置文件 {config_path} 的 business、auth、class_cube "
-                "必须使用完全相同的数据库连接"
-            )
-        settings = legacy_settings[0]
-
-    if settings.name != UNIFIED_DATABASE_NAME:
-        raise RuntimeError(
-            f"数据库配置文件 {config_path} 的数据库名称必须为 "
-            f"{UNIFIED_DATABASE_NAME}"
-        )
-
-    return DatabaseConfig(connection=settings)

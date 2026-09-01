@@ -61,8 +61,7 @@ async def lifespan(app: FastAPI):
     class_cube_service: ClassCubeService | None = None
     class_cube_scheduler: ClassCubeScheduler | None = None
     try:
-        database_config = load_database_config()
-        database_settings = database_config.connection
+        database_settings = load_database_config()
         app_state.initialize_database(database_settings)
         app_state.repository.import_legacy_json_if_empty(
             config.LEGACY_ACCOUNTS_FILE

@@ -304,9 +304,9 @@ class ClassCubeService:
         self.notifier = notifier or ClassCubeNotifier()
         self.geocoder = geocoder or ClassCubeGeocoder(
             base_url=config.CLASS_CUBE_TENCENT_URL,
-            user_agent=config.CLASS_CUBE_GEOCODER_USER_AGENT,
+            user_agent=config.CLASS_CUBE_TENCENT_USER_AGENT,
             api_key=config.CLASS_CUBE_TENCENT_KEY,
-            shared_rate_file=config.CLASS_CUBE_GEOCODER_RATE_FILE,
+            shared_rate_file=config.CLASS_CUBE_TENCENT_RATE_FILE,
         )
         self._qr_targets: dict[str, _QrTarget] = {}
         self._qr_lock = RLock()

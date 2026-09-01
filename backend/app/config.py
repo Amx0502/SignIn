@@ -19,6 +19,12 @@ CLASS_CUBE_UPLOAD_DIR = UPLOAD_DIR / "class-cube"
 DEFAULT_REFRESH_TIMES = ["07:30:00", "11:30:00", "14:00:00", "17:00:00", "18:30:00"]
 DEFAULT_WEBHOOK_URL = ""
 
+DATABASE_HOST = os.getenv("DATABASE_HOST", "").strip()
+DATABASE_PORT = os.getenv("DATABASE_PORT", "").strip()
+DATABASE_NAME = os.getenv("DATABASE_NAME", "").strip()
+DATABASE_USER = os.getenv("DATABASE_USER", "").strip()
+DATABASE_PASSWORD = os.getenv("DATABASE_PASSWORD", "")
+
 CLASS_CUBE_TENCENT_URL = os.getenv(
     "CLASS_CUBE_TENCENT_URL",
     "https://apis.map.qq.com",
@@ -35,13 +41,13 @@ CLASS_CUBE_TENCENT_JS_KEY = os.getenv(
     "CLASS_CUBE_TENCENT_JS_KEY",
     CLASS_CUBE_TENCENT_KEY,
 )
-CLASS_CUBE_GEOCODER_USER_AGENT = os.getenv(
-    "CLASS_CUBE_GEOCODER_USER_AGENT",
+CLASS_CUBE_TENCENT_USER_AGENT = os.getenv(
+    "CLASS_CUBE_TENCENT_USER_AGENT",
     "SignIn-ClassCube/1.0",
 )
-CLASS_CUBE_GEOCODER_RATE_FILE = os.getenv(
-    "CLASS_CUBE_GEOCODER_RATE_FILE",
-    str(Path(tempfile.gettempdir()) / "signin-class-cube-geocoder.rate"),
+CLASS_CUBE_TENCENT_RATE_FILE = os.getenv(
+    "CLASS_CUBE_TENCENT_RATE_FILE",
+    str(Path(tempfile.gettempdir()) / "signin-class-cube-tencent.rate"),
 )
 PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3IbkWjuSaZWr/UtdHFsZ
