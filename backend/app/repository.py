@@ -2,12 +2,12 @@ import datetime as dt
 import json
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Database
-from .db_models import AccountProjectRow, AccountRow, TaskRow
+from .db_models import AccountProjectRow, AccountRow, TaskRow, XxqdTaskRunRow
 from .task_date_schedule import get_last_effective_occurrence, normalize_task_date_rule
 
 
@@ -94,6 +94,7 @@ class AccountRepository:
     @classmethod
     def _account_to_dict(cls, row: AccountRow) -> dict:
         return {
+            "id": row.id,
             "name": row.name,
             "mobile": row.mobile,
             "password": row.password,
@@ -101,6 +102,85 @@ class AccountRepository:
             "tasks": [cls._task_to_dict(task) for task in row.tasks],
             "projects": [dict(project.payload) for project in row.projects],
         }
+
+    @staticmethod
+    def _run_to_dict(row: XxqdTaskRunRow) -> dict:
+        return {
+            column.name: getattr(row, column.name)
+            for column in row.__table__.columns
+        }
+
+    def record_run(
+        self,
+        *,
+        account: dict,
+        task: dict,
+        source: str,
+        status: str,
+        message: str,
+        response_summary: dict,
+        started_at: dt.datetime,
+    ) -> dict:
+        now = dt.datetime.now()
+        safe_summary = json.loads(json.dumps(response_summary or {}, default=str))
+        with self.database.session() as session:
+            row = XxqdTaskRunRow(
+                account_id=account.get("id"),
+                task_id=task.get("id"),
+                account_name=str(account.get("name") or account.get("mobile") or "未知账号")[:255],
+                task_title=str(task.get("title") or "未命名任务")[:255],
+                source=str(source or "manual")[:32],
+                mode=str(task.get("mode") or "normal")[:32],
+                status=str(status or "failed")[:32],
+                message=" ".join(str(message or "").split())[:500],
+                response_summary=safe_summary,
+                started_at=started_at,
+                finished_at=now,
+            )
+            session.add(row)
+            session.flush()
+            return self._run_to_dict(row)
+
+    def dashboard_summary(self, start_at: dt.datetime, end_at: dt.datetime) -> dict:
+        success_statuses = ("success", "already_signed")
+        failed_statuses = ("failed", "error", "unknown_result")
+        with self.database.session() as session:
+            account_count = int(session.scalar(select(func.count(AccountRow.id))) or 0)
+            task_count = int(session.scalar(select(func.count(TaskRow.id))) or 0)
+            enabled_task_count = int(session.scalar(
+                select(func.count(TaskRow.id)).where(TaskRow.enable.is_(True))
+            ) or 0)
+            base = (XxqdTaskRunRow.started_at >= start_at, XxqdTaskRunRow.started_at < end_at)
+            counts = session.execute(select(
+                func.count(XxqdTaskRunRow.id),
+                func.sum(case((XxqdTaskRunRow.status.in_(success_statuses), 1), else_=0)),
+                func.sum(case((XxqdTaskRunRow.status.in_(failed_statuses), 1), else_=0)),
+            ).where(*base)).one()
+            recent_rows = session.scalars(
+                select(XxqdTaskRunRow).where(*base)
+                .order_by(desc(XxqdTaskRunRow.started_at), desc(XxqdTaskRunRow.id)).limit(20)
+            ).all()
+            type_rows = session.execute(
+                select(XxqdTaskRunRow.mode, func.count(XxqdTaskRunRow.id))
+                .where(*base).group_by(XxqdTaskRunRow.mode)
+            ).all()
+            rank_rows = session.execute(
+                select(XxqdTaskRunRow.account_name, func.count(XxqdTaskRunRow.id))
+                .where(*base, XxqdTaskRunRow.status.in_(success_statuses))
+                .group_by(XxqdTaskRunRow.account_name)
+                .order_by(desc(func.count(XxqdTaskRunRow.id))).limit(10)
+            ).all()
+            return {
+                "accounts": account_count,
+                "tasks": task_count,
+                "enabled_tasks": enabled_task_count,
+                "executions": int(counts[0] or 0),
+                "success": int(counts[1] or 0),
+                "failed": int(counts[2] or 0),
+                "recent_runs": [self._run_to_dict(row) for row in recent_rows],
+                "types": [{"mode": mode or "normal", "value": int(value)} for mode, value in type_rows],
+                "ranking": [{"name": name or "未知账号", "value": int(value)} for name, value in rank_rows],
+            }
 
     @staticmethod
     def _resolve_account(session: Session, index: int) -> AccountRow:

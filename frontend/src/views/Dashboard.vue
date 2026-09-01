@@ -1,151 +1,196 @@
 <template>
   <div class="dashboard-page">
     <section class="dashboard-hero">
-      <div>
+      <div class="hero-copy">
         <p class="eyebrow">SIGN-IN OPERATIONS CENTER</p>
         <h1>综合总览</h1>
-        <p>集中查看小小签到与班级魔方的运行情况、任务分布和执行排行。</p>
+        <p>用统一口径查看小小签到与班级魔方的执行质量、任务规模和资源用量。</p>
       </div>
-      <el-button class="refresh-button" :loading="loading" :icon="Refresh" @click="loadDashboard">
-        {{ loading ? '加载中' : '刷新数据' }}
-      </el-button>
+      <div class="hero-actions">
+        <el-segmented v-model="range" :options="rangeOptions" @change="loadDashboard" />
+        <el-button class="refresh-button" :loading="loading" :icon="Refresh" @click="loadDashboard">
+          {{ loading ? '加载中' : '刷新数据' }}
+        </el-button>
+        <small v-if="summary.generated_at">更新于 {{ formatDateTime(summary.generated_at) }}</small>
+      </div>
     </section>
 
-    <el-alert
-      v-for="error in platformErrors"
-      :key="error"
-      class="platform-alert"
-      type="warning"
-      :title="error"
-      :closable="false"
-    />
+    <el-alert v-if="errorMessage" type="warning" :title="errorMessage" :closable="false" show-icon />
 
-    <el-skeleton v-if="loading && !loadedOnce" :rows="5" animated />
+    <el-skeleton v-if="loading && !loadedOnce" :rows="8" animated />
     <template v-else>
       <section class="metric-grid">
-        <article v-for="card in metrics.cards" :key="card.label" class="metric-card" :class="`metric-${card.tone}`">
-          <div class="metric-icon"><el-icon><component :is="iconFor(card.tone)" /></el-icon></div>
-          <div><strong>{{ card.value }}</strong><span>{{ card.label }}</span></div>
+        <article v-for="card in coreCards" :key="card.label" class="metric-card" :class="`metric-${card.tone}`">
+          <div class="metric-top"><span>{{ card.label }}</span><el-icon><component :is="card.icon" /></el-icon></div>
+          <strong>{{ card.value }}</strong>
+          <small>{{ card.note }}</small>
         </article>
       </section>
 
-      <section class="content-grid">
-        <el-card class="panel status-panel" shadow="never">
-          <template #header><div class="panel-title"><span>运行状态</span><el-tag type="info">班级魔方记录</el-tag></div></template>
-          <div class="status-list">
-            <div v-for="item in statusItems" :key="item.key" class="status-row">
-              <span class="status-dot" :class="`dot-${item.key}`"></span>
-              <span>{{ item.label }}</span><strong>{{ item.value }}</strong>
-              <div class="status-track"><i :class="`bar-${item.key}`" :style="{ width: `${statusPercent(item.value)}%` }"></i></div>
+      <section class="platform-grid">
+        <article v-for="platform in platformCards" :key="platform.key" class="platform-card" :class="`platform-${platform.key}`">
+          <header>
+            <div class="platform-title">
+              <span class="platform-logo"><el-icon><component :is="platform.icon" /></el-icon></span>
+              <div><strong>{{ platform.name }}</strong><small>{{ platform.description }}</small></div>
             </div>
+            <el-tag effect="plain">{{ rangeLabel }}</el-tag>
+          </header>
+          <div class="platform-kpis">
+            <div><span>执行</span><strong>{{ platform.data.executions }}</strong></div>
+            <div><span>成功</span><strong class="success-text">{{ platform.data.success }}</strong></div>
+            <div><span>失败</span><strong class="danger-text">{{ platform.data.failed }}</strong></div>
+            <div><span>其他</span><strong>{{ platform.data.other }}</strong></div>
           </div>
-        </el-card>
-
-        <el-card class="panel type-panel" shadow="never">
-          <template #header><div class="panel-title"><span>签到类型分布</span><el-tag type="primary">任务</el-tag></div></template>
-          <el-empty v-if="!metrics.typeDistribution.length" description="暂无任务类型数据" :image-size="70" />
-          <div v-else class="type-list">
-            <div v-for="item in metrics.typeDistribution" :key="item.label" class="type-row">
-              <div class="type-name"><span>{{ item.label }}</span><strong>{{ item.value }}</strong></div>
-              <div class="type-track"><i :style="{ width: `${typePercent(item.value)}%` }"></i></div>
-            </div>
-          </div>
-        </el-card>
+          <div class="rate-line"><span>成功率</span><strong>{{ formatPercent(platform.data.success_rate) }}</strong></div>
+          <el-progress :percentage="platform.data.success_rate || 0" :stroke-width="9" :show-text="false" />
+          <footer>
+            <span><b>{{ platform.data.accounts }}</b> 个账号</span>
+            <span><b>{{ platform.data.tasks }}</b> 个任务</span>
+            <span><b>{{ platform.data.enabled_tasks }}</b> 个启用</span>
+          </footer>
+        </article>
       </section>
 
-      <section class="content-grid lower-grid">
+      <section class="main-grid">
         <el-card class="panel recent-panel" shadow="never">
-          <template #header><div class="panel-title"><span>最近运行</span><el-button link type="primary" @click="router.push('/class-cube/runs')">查看全部</el-button></div></template>
-          <el-empty v-if="!metrics.recentRuns.length" description="暂无运行记录" :image-size="70" />
+          <template #header>
+            <div class="panel-title"><div><strong>最近执行</strong><small>两套平台按时间统一排列</small></div><el-tag type="info">最近 {{ summary.recent_runs.length }} 条</el-tag></div>
+          </template>
+          <el-empty v-if="!summary.recent_runs.length" description="当前统计范围暂无执行记录" :image-size="72" />
           <div v-else class="recent-list">
-            <div v-for="(run, index) in metrics.recentRuns" :key="run.id || index" class="recent-row">
-              <span class="recent-index">{{ index + 1 }}</span>
-              <div class="recent-main"><strong>{{ run.task_name || run.task_title || '签到任务' }}</strong><small>{{ run.account_name || '未知账号' }} · {{ formatTime(run.started_at || run.created_at) }}</small></div>
-              <el-tag size="small" :type="statusTagType(run.status)">{{ statusLabel(run.status) }}</el-tag>
-            </div>
+            <article v-for="run in summary.recent_runs" :key="`${run.platform}-${run.id}`" class="recent-row">
+              <span class="platform-pill" :class="run.platform">{{ platformShortName(run.platform) }}</span>
+              <div class="recent-main">
+                <strong>{{ run.task_title || run.task_name || '签到任务' }}</strong>
+                <small>{{ run.account_name || '未知账号' }} · {{ modeLabel(run.mode) }}</small>
+              </div>
+              <div class="recent-result">
+                <el-tag size="small" :type="statusTagType(run.status)">{{ statusLabel(run.status) }}</el-tag>
+                <time>{{ formatDateTime(run.started_at) }}</time>
+              </div>
+            </article>
           </div>
         </el-card>
 
-        <el-card class="panel ranking-panel" shadow="never">
-          <template #header><div class="panel-title"><span>账号排行</span><el-tag type="success">成功次数</el-tag></div></template>
-          <el-empty v-if="!metrics.ranking.length" description="暂无排行数据" :image-size="70" />
+        <div class="side-stack">
+          <el-card class="panel resource-panel" shadow="never">
+            <template #header><div class="panel-title"><div><strong>系统资源</strong><small>配额和后台用户状态</small></div><el-icon><Location /></el-icon></div></template>
+            <div class="resource-heading"><span>腾讯地址调用</span><strong>{{ locationUsed }}/{{ locationLimit || '不限' }}</strong></div>
+            <el-progress :percentage="locationPercent" :stroke-width="10" :show-text="false" :status="locationPercent >= 90 ? 'exception' : undefined" />
+            <div class="resource-meta"><span>今日剩余 <b>{{ locationRemaining }}</b></span><span>{{ locationUsage.date || '-' }}</span></div>
+            <div class="resource-users">
+              <span><el-icon><User /></el-icon>后台用户</span>
+              <strong>{{ summary.resources.users }} 人</strong>
+              <small>启用 {{ summary.resources.active_users }} 人</small>
+            </div>
+            <p class="resource-tip">调用量按本系统实际请求腾讯关键词输入提示接口累计，缓存命中不重复计数。</p>
+          </el-card>
+
+          <el-card class="panel distribution-panel" shadow="never">
+            <template #header><div class="panel-title"><div><strong>结果分布</strong><small>成功、失败与非提交结果</small></div></div></template>
+            <div class="distribution-list">
+              <div v-for="item in summary.status_distribution" :key="item.key" class="distribution-row">
+                <span class="status-dot" :class="item.key"></span><span>{{ item.label }}</span><strong>{{ item.value }}</strong>
+                <div class="track"><i :class="item.key" :style="{ width: statusWidth(item.value) }"></i></div>
+              </div>
+            </div>
+          </el-card>
+        </div>
+      </section>
+
+      <section class="bottom-grid">
+        <el-card class="panel" shadow="never">
+          <template #header><div class="panel-title"><div><strong>签到类型</strong><small>按实际执行记录统计</small></div></div></template>
+          <el-empty v-if="!summary.type_distribution.length" description="暂无签到类型数据" :image-size="64" />
+          <div v-else class="type-list">
+            <div v-for="item in summary.type_distribution" :key="item.mode" class="type-row">
+              <span>{{ modeLabel(item.mode) }}</span><strong>{{ item.value }} 次</strong>
+              <div class="track"><i :style="{ width: typeWidth(item.value) }"></i></div>
+            </div>
+          </div>
+        </el-card>
+        <el-card class="panel" shadow="never">
+          <template #header><div class="panel-title"><div><strong>账号排行</strong><small>按成功签到次数排序</small></div></div></template>
+          <el-empty v-if="!summary.ranking.length" description="暂无成功记录" :image-size="64" />
           <div v-else class="ranking-list">
-            <div v-for="(item, index) in metrics.ranking" :key="item.name" class="ranking-row">
-              <span class="rank-number" :class="{ top: index < 3 }">{{ index + 1 }}</span><span class="rank-name">{{ item.name }}</span><strong>{{ item.value }} 次</strong>
+            <div v-for="(item, index) in summary.ranking" :key="`${item.platform}-${item.name}`" class="ranking-row">
+              <span class="rank" :class="{ top: index < 3 }">{{ index + 1 }}</span>
+              <span class="platform-pill" :class="item.platform">{{ platformShortName(item.platform) }}</span>
+              <strong>{{ item.name }}</strong><b>{{ item.value }} 次</b>
             </div>
           </div>
         </el-card>
       </section>
+
+      <p class="data-note">小小签到结构化执行记录从本次升级后开始累计；旧文本日志不会补算，避免把非签到日志误计为执行数据。</p>
     </template>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { CircleCheck, Document, Location, Refresh, Tickets, User } from '@element-plus/icons-vue'
-import { useRouter } from 'vue-router'
-import api, { getTencentLocationUsageApi } from '../api'
-import classCubeApi from '../api/classCube.js'
-import { buildDashboardMetrics } from '../utils/dashboardMetrics.js'
+import { CircleCheck, Clock, DataAnalysis, Location, Refresh, Tickets, Timer, User } from '@element-plus/icons-vue'
+import { getDashboardSummaryApi } from '../api'
 
-const router = useRouter()
+const emptyPlatform = () => ({ accounts: 0, tasks: 0, enabled_tasks: 0, executions: 0, success: 0, failed: 0, other: 0, success_rate: 0 })
+const emptySummary = () => ({
+  generated_at: '', totals: { executions: 0, success: 0, failed: 0, other: 0, success_rate: 0, enabled_tasks: 0 },
+  platforms: { xxqd: emptyPlatform(), class_cube: emptyPlatform() }, status_distribution: [], type_distribution: [], recent_runs: [], ranking: [],
+  resources: { tencent_location: { used: 0, limit: 0, date: '' }, users: 0, active_users: 0 },
+})
+
 const loading = ref(false)
 const loadedOnce = ref(false)
-const platformErrors = ref([])
-const metrics = ref(buildDashboardMetrics())
-const statusItems = computed(() => [
-  { key: 'success', label: '签到成功', value: metrics.value.statuses.success },
-  { key: 'failed', label: '签到失败', value: metrics.value.statuses.failed },
-  { key: 'running', label: '执行中', value: metrics.value.statuses.running },
-  { key: 'pending', label: '待处理', value: metrics.value.statuses.pending },
+const errorMessage = ref('')
+const range = ref('today')
+const summary = ref(emptySummary())
+const rangeOptions = [{ label: '今天', value: 'today' }, { label: '近 7 天', value: '7d' }, { label: '近 30 天', value: '30d' }]
+const rangeLabel = computed(() => rangeOptions.find(item => item.value === range.value)?.label || '今天')
+const locationUsage = computed(() => summary.value.resources?.tencent_location || {})
+const locationUsed = computed(() => Number(locationUsage.value.used || 0))
+const locationLimit = computed(() => Number(locationUsage.value.limit || 0))
+const locationRemaining = computed(() => locationLimit.value > 0 ? Math.max(0, locationLimit.value - locationUsed.value) : '不限')
+const locationPercent = computed(() => locationLimit.value > 0 ? Math.min(100, Math.round(locationUsed.value * 100 / locationLimit.value)) : 0)
+const maxStatus = computed(() => Math.max(...summary.value.status_distribution.map(item => item.value), 1))
+const maxType = computed(() => Math.max(...summary.value.type_distribution.map(item => item.value), 1))
+const coreCards = computed(() => [
+  { label: '执行次数', value: summary.value.totals.executions, note: `${rangeLabel.value}两套平台合计`, tone: 'blue', icon: Timer },
+  { label: '签到成功', value: summary.value.totals.success, note: `失败 ${summary.value.totals.failed} 次`, tone: 'green', icon: CircleCheck },
+  { label: '成功率', value: formatPercent(summary.value.totals.success_rate), note: '成功次数 ÷ 全部执行', tone: 'violet', icon: DataAnalysis },
+  { label: '启用任务', value: summary.value.totals.enabled_tasks, note: '当前正在参与调度', tone: 'orange', icon: Clock },
 ])
-const totalStatuses = computed(() => statusItems.value.reduce((sum, item) => sum + item.value, 0))
-const maxTypeValue = computed(() => Math.max(...metrics.value.typeDistribution.map(item => item.value), 1))
+const platformCards = computed(() => [
+  { key: 'xxqd', name: '小小签到', description: '自动签到任务执行情况', icon: Tickets, data: summary.value.platforms.xxqd || emptyPlatform() },
+  { key: 'class_cube', name: '班级魔方', description: '课程签到项提交情况', icon: Location, data: summary.value.platforms.class_cube || emptyPlatform() },
+])
 
-const iconFor = tone => ({ blue: User, violet: Tickets, green: CircleCheck, cyan: User, orange: Document, slate: Tickets, teal: Location }[tone] || Document)
-const statusPercent = value => totalStatuses.value ? Math.max(4, Math.round(value / totalStatuses.value * 100)) : 0
-const typePercent = value => Math.max(4, Math.round(value / maxTypeValue.value * 100))
-const statusLabel = status => ({ success: '成功', already_signed: '已签到', failed: '失败', error: '失败', running: '执行中', submitting: '提交中' }[String(status || '').toLowerCase()] || '待处理')
-const statusTagType = status => ({ success: 'success', already_signed: 'success', failed: 'danger', error: 'danger', running: 'warning', submitting: 'warning' }[String(status || '').toLowerCase()] || 'info')
-const formatTime = value => value ? new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'
-
-function unwrap(response, fallback) {
-  if (response?.ok === false) throw new Error(response.error || '请求失败')
-  return response?.data ?? fallback
-}
+const modeLabel = mode => ({ normal: '普通签到', image: '图片签到', gps: 'GPS 签到', gps_photo: 'GPS 拍照签到', password: '密码签到', qr: '二维码签到', task: '任务扫描', unknown: '其他签到' }[String(mode || '').toLowerCase()] || '其他签到')
+const statusLabel = status => ({ success: '成功', already_signed: '已签到', failed: '失败', error: '失败', unknown_result: '待确认', no_sign_in: '无签到项', skipped: '已跳过', waiting_parameter: '待补参数', running: '执行中' }[String(status || '').toLowerCase()] || '其他')
+const statusTagType = status => ({ success: 'success', already_signed: 'success', failed: 'danger', error: 'danger', unknown_result: 'warning', waiting_parameter: 'warning', running: 'warning' }[String(status || '').toLowerCase()] || 'info')
+const platformShortName = platform => platform === 'xxqd' ? '小小' : '魔方'
+const formatPercent = value => `${Number(value || 0).toFixed(1)}%`
+const formatDateTime = value => value ? new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '-'
+const statusWidth = value => `${value ? Math.max(5, Math.round(value * 100 / maxStatus.value)) : 0}%`
+const typeWidth = value => `${value ? Math.max(5, Math.round(value * 100 / maxType.value)) : 0}%`
 
 async function loadDashboard() {
   loading.value = true
-  platformErrors.value = []
-  const results = await Promise.allSettled([
-    api.getState(),
-    api.getLogs(100),
-    classCubeApi.listAccounts(),
-    classCubeApi.listTasks(),
-    classCubeApi.listRuns({ limit: 100 }),
-    getTencentLocationUsageApi(),
-  ])
-  const values = results.map(result => result.status === 'fulfilled' ? result.value : null)
-  const messages = []
-  if (results[0].status === 'rejected' || results[1].status === 'rejected') messages.push('小小签到数据暂时不可用')
-  if (results.slice(2, 5).some(result => result.status === 'rejected')) messages.push('班级魔方数据暂时不可用')
-  if (results[5].status === 'rejected') messages.push('腾讯位置服务调用量暂时不可用')
-  platformErrors.value = messages
-  metrics.value = buildDashboardMetrics({
-    xxqd: results[0].status === 'fulfilled' ? unwrap(values[0], {}) : null,
-    xxqdLogs: results[1].status === 'fulfilled' ? unwrap(values[1], []) : null,
-    cubeAccounts: results[2].status === 'fulfilled' ? unwrap(values[2], []) : null,
-    cubeTasks: results[3].status === 'fulfilled' ? unwrap(values[3], []) : null,
-    cubeRuns: results[4].status === 'fulfilled' ? unwrap(values[4], []) : null,
-    locationUsage: results[5].status === 'fulfilled' ? unwrap(values[5], {}) : null,
-  })
-  loadedOnce.value = true
-  loading.value = false
+  errorMessage.value = ''
+  try {
+    const response = await getDashboardSummaryApi(range.value)
+    summary.value = response?.data || emptySummary()
+  } catch (error) {
+    errorMessage.value = error.message || '综合总览数据加载失败'
+  } finally {
+    loadedOnce.value = true
+    loading.value = false
+  }
 }
 
 onMounted(loadDashboard)
 </script>
 
 <style scoped>
-.dashboard-page{display:grid;gap:18px}.dashboard-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:28px;border-radius:24px;color:#fff;background:linear-gradient(125deg,#1e40af,#0891b2);box-shadow:0 20px 50px #1d4ed83b}.eyebrow{margin:0;font-size:11px;letter-spacing:.18em;opacity:.8}.dashboard-hero h1{margin:9px 0 6px;font-size:30px}.dashboard-hero p:last-child{margin:0;color:#dbeafe}.refresh-button{color:#1d4ed8;background:#fff;border:0}.platform-alert{margin-bottom:0}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.metric-card{display:flex;align-items:center;gap:12px;min-height:88px;padding:16px;border:1px solid #dbeafe;border-radius:18px;background:#fff;box-shadow:0 12px 30px #0f172a0b}.metric-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:#dbeafe;color:#2563eb}.metric-card strong,.metric-card span{display:block}.metric-card strong{font-size:25px;color:#0f172a;white-space:nowrap}.metric-card span{margin-top:5px;font-size:12px;color:#64748b}.metric-violet .metric-icon{background:#ede9fe;color:#7c3aed}.metric-green .metric-icon{background:#dcfce7;color:#16a34a}.metric-cyan .metric-icon{background:#cffafe;color:#0891b2}.metric-orange .metric-icon{background:#ffedd5;color:#ea580c}.metric-slate .metric-icon{background:#e2e8f0;color:#475569}.metric-teal .metric-icon{background:#ccfbf1;color:#0f766e}.content-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{border:1px solid #dbeafe;border-radius:22px;background:#ffffffd9}.panel-title{display:flex;align-items:center;justify-content:space-between;font-weight:700}.status-list,.type-list,.recent-list,.ranking-list{display:grid;gap:15px}.status-row{display:grid;grid-template-columns:10px 70px 38px 1fr;align-items:center;gap:10px;color:#64748b;font-size:13px}.status-row strong{color:#0f172a;text-align:right}.status-dot{width:9px;height:9px;border-radius:50%}.dot-success{background:#22c55e}.dot-failed{background:#ef4444}.dot-running{background:#f59e0b}.dot-pending{background:#94a3b8}.status-track,.type-track{height:8px;overflow:hidden;border-radius:99px;background:#eef2f7}.status-track i,.type-track i{display:block;height:100%;border-radius:inherit;background:#22c55e}.bar-failed{background:#ef4444!important}.bar-running{background:#f59e0b!important}.bar-pending{background:#94a3b8!important}.type-name{display:flex;justify-content:space-between;color:#475569;font-size:13px}.type-name strong{color:#1d4ed8}.type-track i{background:linear-gradient(90deg,#2563eb,#06b6d4)}.recent-row,.ranking-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #eef2f7}.recent-row:last-child,.ranking-row:last-child{border-bottom:0}.recent-index,.rank-number{display:grid;place-items:center;width:26px;height:26px;border-radius:9px;background:#eff6ff;color:#2563eb;font-size:12px}.recent-main{flex:1;min-width:0}.recent-main strong,.recent-main small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-main strong{color:#334155}.recent-main small{margin-top:4px;color:#94a3b8}.rank-name{flex:1;color:#334155}.rank-number.top{color:#fff;background:#2563eb}.ranking-row strong{color:#16a34a}@media(max-width:760px){.dashboard-hero{align-items:flex-start;flex-direction:column}.metric-grid,.content-grid{grid-template-columns:1fr}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:420px){.metric-grid{grid-template-columns:1fr}}
+.dashboard-page{display:grid;gap:18px;min-width:0}.dashboard-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:26px 28px;border-radius:24px;color:#fff;background:linear-gradient(125deg,#1e40af 0%,#2563eb 48%,#0891b2 100%);box-shadow:0 20px 50px #1d4ed833}.hero-copy{min-width:0}.eyebrow{margin:0;font-size:11px;letter-spacing:.18em;opacity:.8}.dashboard-hero h1{margin:8px 0 5px;font-size:28px}.dashboard-hero p:last-child{margin:0;color:#dbeafe}.hero-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}.hero-actions small{flex-basis:100%;text-align:right;color:#dbeafe}.refresh-button{color:#1d4ed8;background:#fff;border:0}.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metric-card{min-width:0;padding:18px 19px;border:1px solid #dbeafe;border-radius:18px;background:#fff;box-shadow:0 12px 30px #0f172a0a}.metric-top{display:flex;align-items:center;justify-content:space-between;color:#64748b}.metric-top .el-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;color:#2563eb;background:#eff6ff}.metric-card>strong{display:block;margin:10px 0 3px;font-size:28px;color:#0f172a}.metric-card>small{color:#94a3b8}.metric-green .metric-top .el-icon{color:#16a34a;background:#dcfce7}.metric-violet .metric-top .el-icon{color:#7c3aed;background:#ede9fe}.metric-orange .metric-top .el-icon{color:#ea580c;background:#ffedd5}.platform-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.platform-card{padding:20px;border:1px solid #bfdbfe;border-radius:22px;background:linear-gradient(145deg,#fff,#f8fbff);box-shadow:0 12px 35px #2563eb0d}.platform-card header,.platform-title,.platform-card footer,.rate-line{display:flex;align-items:center}.platform-card header{justify-content:space-between;gap:12px}.platform-title{gap:12px;min-width:0}.platform-logo{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;color:#2563eb;background:#dbeafe}.platform-title strong,.platform-title small{display:block}.platform-title strong{color:#0f172a;font-size:17px}.platform-title small{margin-top:3px;color:#94a3b8}.platform-class_cube .platform-logo{color:#0891b2;background:#cffafe}.platform-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:20px 0 16px}.platform-kpis div{padding:10px;border-radius:12px;text-align:center;background:#f1f5f9}.platform-kpis span,.platform-kpis strong{display:block}.platform-kpis span{font-size:12px;color:#64748b}.platform-kpis strong{margin-top:4px;color:#0f172a;font-size:19px}.success-text{color:#16a34a!important}.danger-text{color:#dc2626!important}.rate-line{justify-content:space-between;margin-bottom:8px;color:#64748b;font-size:13px}.rate-line strong{color:#0f172a}.platform-card footer{gap:18px;margin-top:16px;padding-top:14px;border-top:1px solid #e2e8f0;color:#64748b;font-size:12px}.platform-card footer b{color:#334155}.main-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,.75fr);gap:18px}.side-stack{display:grid;align-content:start;gap:18px}.panel{min-width:0;border:1px solid #dbeafe;border-radius:22px;background:#ffffffdb}.panel-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.panel-title>div>strong,.panel-title>div>small{display:block}.panel-title>div>small{margin-top:3px;color:#94a3b8;font-weight:400}.recent-list{display:grid}.recent-row{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #eef2f7}.recent-row:last-child{border-bottom:0}.platform-pill{flex:0 0 auto;padding:4px 7px;border-radius:7px;color:#1d4ed8;background:#dbeafe;font-size:11px}.platform-pill.class_cube{color:#0e7490;background:#cffafe}.recent-main{flex:1;min-width:0}.recent-main strong,.recent-main small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-main strong{color:#334155}.recent-main small{margin-top:4px;color:#94a3b8}.recent-result{display:grid;justify-items:end;gap:5px}.recent-result time{color:#94a3b8;font-size:11px}.resource-heading,.resource-meta,.resource-users{display:flex;align-items:center;justify-content:space-between}.resource-heading{margin-bottom:9px;color:#475569}.resource-heading strong{color:#0f172a;font-size:18px}.resource-meta{margin-top:8px;color:#94a3b8;font-size:12px}.resource-meta b{color:#2563eb}.resource-users{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin-top:18px;padding:14px;border-radius:14px;background:#f0f9ff}.resource-users span{display:flex;align-items:center;gap:7px;color:#475569}.resource-users strong{color:#0f172a}.resource-users small{grid-column:1/-1;color:#94a3b8}.resource-tip{margin:12px 0 0;color:#94a3b8;font-size:11px;line-height:1.65}.distribution-list,.type-list,.ranking-list{display:grid;gap:14px}.distribution-row{display:grid;grid-template-columns:9px 90px 38px 1fr;align-items:center;gap:9px;color:#64748b;font-size:12px}.distribution-row strong{text-align:right;color:#0f172a}.status-dot{width:9px;height:9px;border-radius:50%;background:#94a3b8}.status-dot.success,.track i.success{background:#22c55e}.status-dot.failed,.track i.failed{background:#ef4444}.status-dot.other,.track i.other{background:#f59e0b}.track{height:8px;overflow:hidden;border-radius:99px;background:#eef2f7}.track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#2563eb,#06b6d4)}.bottom-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.type-row{display:grid;grid-template-columns:1fr auto;gap:7px;color:#475569;font-size:13px}.type-row .track{grid-column:1/-1}.type-row strong{color:#1d4ed8}.ranking-row{display:grid;grid-template-columns:28px auto 1fr auto;align-items:center;gap:10px;padding-bottom:11px;border-bottom:1px solid #eef2f7}.ranking-row:last-child{padding-bottom:0;border-bottom:0}.rank{display:grid;place-items:center;width:26px;height:26px;border-radius:9px;color:#2563eb;background:#eff6ff;font-size:12px}.rank.top{color:#fff;background:#2563eb}.ranking-row>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#334155}.ranking-row>b{color:#16a34a}.data-note{margin:0;padding:12px 15px;border:1px solid #dbeafe;border-radius:13px;color:#64748b;background:#f8fafc;font-size:12px;line-height:1.6}@media(max-width:1100px){.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.main-grid{grid-template-columns:1fr}.side-stack{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.dashboard-hero{align-items:flex-start;flex-direction:column}.hero-actions{justify-content:flex-start;width:100%}.hero-actions small{text-align:left}.platform-grid,.bottom-grid,.side-stack{grid-template-columns:1fr}.platform-kpis{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){.metric-grid{grid-template-columns:1fr}.dashboard-hero{padding:22px 18px}.recent-row{align-items:flex-start;flex-wrap:wrap}.recent-main{min-width:calc(100% - 58px)}.recent-result{grid-template-columns:auto auto;align-items:center;width:100%;justify-content:end}.platform-card footer{align-items:flex-start;flex-direction:column;gap:7px}.distribution-row{grid-template-columns:9px 72px 30px 1fr}}
 </style>

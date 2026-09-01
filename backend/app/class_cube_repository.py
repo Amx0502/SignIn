@@ -3,7 +3,7 @@ import json
 from typing import Any, Iterable
 import uuid
 
-from sqlalchemy import Select, delete, func, select, update
+from sqlalchemy import Select, case, delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from .class_cube_client import RemoteItemBundle
@@ -1628,3 +1628,78 @@ class ClassCubeRepository:
                 record["claim_id"] = claim_id
                 records.append(record)
             return records
+
+    def dashboard_summary(self, start_at: datetime, end_at: datetime) -> dict:
+        success_statuses = ("success", "already_signed")
+        failed_statuses = ("failed", "error", "unknown_result")
+        with self.database.session() as session:
+            account_count = int(session.scalar(
+                select(func.count(ClassCubeAccountRow.id))
+            ) or 0)
+            task_count = int(session.scalar(
+                select(func.count(ClassCubeTaskRow.id))
+            ) or 0)
+            enabled_task_count = int(session.scalar(
+                select(func.count(ClassCubeTaskRow.id)).where(
+                    ClassCubeTaskRow.enabled.is_(True)
+                )
+            ) or 0)
+            base = (
+                ClassCubeTaskRunRow.started_at >= start_at,
+                ClassCubeTaskRunRow.started_at < end_at,
+            )
+            counts = session.execute(select(
+                func.count(ClassCubeTaskRunRow.id),
+                func.sum(case((ClassCubeTaskRunRow.status.in_(success_statuses), 1), else_=0)),
+                func.sum(case((ClassCubeTaskRunRow.status.in_(failed_statuses), 1), else_=0)),
+            ).where(*base)).one()
+            recent_rows = session.scalars(
+                select(ClassCubeTaskRunRow).where(*base)
+                .order_by(desc(ClassCubeTaskRunRow.started_at), desc(ClassCubeTaskRunRow.id))
+                .limit(20)
+            ).all()
+            account_ids = {int(row.account_id) for row in recent_rows}
+            task_ids = {int(row.task_id) for row in recent_rows if row.task_id is not None}
+            account_names = {
+                int(row.id): row.name or row.remote_user_name or f"账号 {row.id}"
+                for row in session.scalars(select(ClassCubeAccountRow).where(
+                    ClassCubeAccountRow.id.in_(account_ids)
+                )).all()
+            } if account_ids else {}
+            task_names = {
+                int(row.id): row.name
+                for row in session.scalars(select(ClassCubeTaskRow).where(
+                    ClassCubeTaskRow.id.in_(task_ids)
+                )).all()
+            } if task_ids else {}
+            recent = []
+            for row in recent_rows:
+                record = self._run_record(row)
+                record["account_name"] = account_names.get(int(row.account_id), f"账号 {row.account_id}")
+                record["task_title"] = task_names.get(int(row.task_id), "课程手动签到") if row.task_id else "课程手动签到"
+                recent.append(record)
+            type_rows = session.execute(
+                select(ClassCubeTaskRunRow.mode, func.count(ClassCubeTaskRunRow.id))
+                .where(*base).group_by(ClassCubeTaskRunRow.mode)
+            ).all()
+            rank_rows = session.execute(
+                select(ClassCubeAccountRow.name, ClassCubeAccountRow.remote_user_name, func.count(ClassCubeTaskRunRow.id))
+                .join(ClassCubeTaskRunRow, ClassCubeTaskRunRow.account_id == ClassCubeAccountRow.id)
+                .where(*base, ClassCubeTaskRunRow.status.in_(success_statuses))
+                .group_by(ClassCubeAccountRow.id, ClassCubeAccountRow.name, ClassCubeAccountRow.remote_user_name)
+                .order_by(desc(func.count(ClassCubeTaskRunRow.id))).limit(10)
+            ).all()
+            return {
+                "accounts": account_count,
+                "tasks": task_count,
+                "enabled_tasks": enabled_task_count,
+                "executions": int(counts[0] or 0),
+                "success": int(counts[1] or 0),
+                "failed": int(counts[2] or 0),
+                "recent_runs": recent,
+                "types": [{"mode": mode or "unknown", "value": int(value)} for mode, value in type_rows],
+                "ranking": [
+                    {"name": name or remote_name or "未知账号", "value": int(value)}
+                    for name, remote_name, value in rank_rows
+                ],
+            }

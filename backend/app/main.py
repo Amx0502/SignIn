@@ -1,6 +1,6 @@
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
@@ -219,6 +219,96 @@ def get_tencent_location_usage(
     if service is None:
         failure("班级魔方服务尚未初始化", 503)
     return success(service.get_location_api_usage())
+
+
+def _dashboard_range(range_key: str) -> tuple[str, datetime, datetime]:
+    normalized = str(range_key or "today").lower()
+    days = {"today": 1, "7d": 7, "30d": 30}.get(normalized)
+    if days is None:
+        failure("统计范围仅支持 today、7d 或 30d")
+    today = datetime.now().date()
+    start_at = datetime.combine(today - timedelta(days=days - 1), time.min)
+    end_at = datetime.combine(today + timedelta(days=1), time.min)
+    return normalized, start_at, end_at
+
+
+@app.get("/api/admin/dashboard/summary")
+def get_dashboard_summary(
+    request: Request,
+    range: str = "today",
+    _admin=Depends(require_admin),
+):
+    range_key, start_at, end_at = _dashboard_range(range)
+    service = getattr(request.app.state, "class_cube_service", None)
+    if service is None:
+        failure("班级魔方服务尚未初始化", 503)
+    xxqd = app_state.repository.dashboard_summary(start_at, end_at)
+    class_cube = service.repository.dashboard_summary(start_at, end_at)
+
+    recent_runs = []
+    for run in xxqd.pop("recent_runs", []):
+        recent_runs.append({**run, "platform": "xxqd"})
+    for run in class_cube.pop("recent_runs", []):
+        recent_runs.append({**run, "platform": "class_cube"})
+    recent_runs.sort(
+        key=lambda item: item.get("started_at") or datetime.min,
+        reverse=True,
+    )
+
+    type_totals: dict[str, int] = {}
+    for platform in (xxqd, class_cube):
+        for item in platform.pop("types", []):
+            mode = str(item.get("mode") or "unknown")
+            type_totals[mode] = type_totals.get(mode, 0) + int(item.get("value") or 0)
+
+    ranking = []
+    for platform_key, platform in (("xxqd", xxqd), ("class_cube", class_cube)):
+        for item in platform.pop("ranking", []):
+            ranking.append({**item, "platform": platform_key})
+    ranking.sort(key=lambda item: (-int(item.get("value") or 0), str(item.get("name") or "")))
+
+    executions = xxqd["executions"] + class_cube["executions"]
+    succeeded = xxqd["success"] + class_cube["success"]
+    failed = xxqd["failed"] + class_cube["failed"]
+    other = max(0, executions - succeeded - failed)
+    for platform in (xxqd, class_cube):
+        platform["other"] = max(0, platform["executions"] - platform["success"] - platform["failed"])
+        platform["success_rate"] = round(
+            platform["success"] * 100 / platform["executions"], 1
+        ) if platform["executions"] else 0
+
+    users = auth_service.repository.list_users() if auth_service.repository else []
+    return success({
+        "generated_at": datetime.now(),
+        "range": range_key,
+        "range_start": start_at,
+        "range_end": end_at,
+        "totals": {
+            "executions": executions,
+            "success": succeeded,
+            "failed": failed,
+            "other": other,
+            "success_rate": round(succeeded * 100 / executions, 1) if executions else 0,
+            "enabled_tasks": xxqd["enabled_tasks"] + class_cube["enabled_tasks"],
+        },
+        "platforms": {"xxqd": xxqd, "class_cube": class_cube},
+        "status_distribution": [
+            {"key": "success", "label": "成功", "value": succeeded},
+            {"key": "failed", "label": "失败", "value": failed},
+            {"key": "other", "label": "跳过或待确认", "value": other},
+        ],
+        "type_distribution": [
+            {"mode": mode, "value": value}
+            for mode, value in sorted(type_totals.items(), key=lambda item: -item[1])
+        ],
+        "recent_runs": recent_runs[:12],
+        "ranking": ranking[:8],
+        "resources": {
+            "tencent_location": service.get_location_api_usage(),
+            "users": len(users),
+            "active_users": sum(1 for user in users if user.get("is_active")),
+        },
+    })
 
 
 @app.get("/api/state")

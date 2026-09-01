@@ -50,6 +50,9 @@ export const getMenuConfigLogsApi = (limit = 100) => instance.get('/admin/menu-c
 export const getCheckinDelaySettingsApi = () => instance.get('/admin/checkin-delay-settings')
 export const updateCheckinDelaySettingsApi = data => instance.put('/admin/checkin-delay-settings', data)
 export const getTencentLocationUsageApi = () => instance.get('/admin/tencent-location-usage')
+export const getDashboardSummaryApi = range => instance.get('/admin/dashboard/summary', {
+  params: { range },
+})
 
 export default {
   getState: () => instance.get('/state'),

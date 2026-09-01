@@ -95,7 +95,9 @@ def normalize_task(task: dict | None = None) -> dict:
 
 def normalize_account(account: dict | None = None) -> dict:
     account = account or {}
+    raw_account_id = account.get("id")
     return {
+        "id": int(raw_account_id) if raw_account_id not in (None, "") else None,
         "name": str(account.get("name", "")).strip(),
         "mobile": str(account.get("mobile", "")).strip(),
         "password": str(account.get("password", "")),
@@ -634,9 +636,23 @@ class AppState:
     def run_task(self, account_index: int, task_index: int) -> dict:
         account = self.repository.list_accounts()[account_index]
         task = account["tasks"][task_index]
+        started_at = dt.datetime.now()
         with self.lock:
             webhook_url = self.webhook_url
-        ok, result = self.service.execute_task(account, task)
+        try:
+            ok, result = self.service.execute_task(account, task)
+        except Exception as exc:
+            result = {"title": task.get("title", "未命名任务"), "error": str(exc)}
+            self._record_run(
+                account,
+                task,
+                "manual_task",
+                "failed",
+                str(exc),
+                result,
+                started_at,
+            )
+            raise
         name = account.get("name") or account.get("mobile")
         if ok:
             real_title = result.get("real_title", "未知项目")
@@ -655,6 +671,7 @@ class AppState:
                     self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task.get("title"))
             except Exception:
                 pass
+            self._record_run(account, task, "manual_task", "success", message, result, started_at)
             return result
         else:
             error_msg = result.get("error", "签到失败")
@@ -666,13 +683,14 @@ class AppState:
                     self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task.get("title"))
             except Exception:
                 pass
+            self._record_run(account, task, "manual_task", "failed", error_msg, result, started_at)
             raise RuntimeError(error_msg)
 
     def run_account_tasks(self, account_index: int) -> dict:
         account = self.repository.list_accounts()[account_index]
         tasks = [task for task in account.get("tasks", []) if task.get("enable", True)]
         for task in tasks:
-            self.enqueue_task(account, task)
+            self.enqueue_task(account, task, source="manual_account")
         return {"queued_count": len(tasks)}
 
     def run_all_enabled_tasks(self) -> dict:
@@ -681,7 +699,7 @@ class AppState:
         for account in accounts:
             for task in account.get("tasks", []):
                 if task.get("enable", True):
-                    self.enqueue_task(account, task)
+                    self.enqueue_task(account, task, source="manual_all")
                     queued_count += 1
         return {"queued_count": queued_count}
 
@@ -694,6 +712,7 @@ class AppState:
     ) -> None:
         name = account.get("name") or account.get("mobile")
         task_title = task.get("title", "未命名任务")
+        started_at = dt.datetime.now()
         success = False
         result = {"title": task_title}
         try:
@@ -760,6 +779,42 @@ class AppState:
                 self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task_title)
         except Exception as exc:
             self.logger.error("任务《%s》缓存企业微信通知失败：%s", task_title, exc)
+
+        message = result.get("error") or result.get("message") or (
+            "签到成功" if success else "签到失败"
+        )
+        self._record_run(
+            account,
+            task,
+            source,
+            "success" if success else "failed",
+            message,
+            result,
+            started_at,
+        )
+
+    def _record_run(
+        self,
+        account: dict,
+        task: dict,
+        source: str,
+        status: str,
+        message: str,
+        result: dict,
+        started_at: dt.datetime,
+    ) -> None:
+        try:
+            self.repository.record_run(
+                account=account,
+                task=task,
+                source=source,
+                status=status,
+                message=message,
+                response_summary=result,
+                started_at=started_at,
+            )
+        except Exception as exc:
+            self.logger.error("任务《%s》运行记录保存失败：%s", task.get("title", ""), exc)
 
     def scheduler_loop(self) -> None:
         while not self.stop_event.is_set():

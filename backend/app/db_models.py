@@ -98,3 +98,24 @@ class AccountProjectRow(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
     account: Mapped[AccountRow] = relationship(back_populates="projects")
+
+
+class XxqdTaskRunRow(Base):
+    __tablename__ = "xxqd_task_runs"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    account_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    task_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    account_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    task_title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual", index=True)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False, default="normal")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    response_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now, index=True)
+    finished_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
