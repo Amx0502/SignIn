@@ -32,10 +32,6 @@ CLASS_CUBE_TENCENT_KEY = os.getenv(
     "CLASS_CUBE_TENCENT_KEY",
     "",
 )
-CLASS_CUBE_TENCENT_REGION = os.getenv(
-    "CLASS_CUBE_TENCENT_REGION",
-    "潍坊市",
-)
 CLASS_CUBE_GEOCODER_URL = os.getenv(
     "CLASS_CUBE_GEOCODER_URL",
     "https://restapi.amap.com/v3/place",

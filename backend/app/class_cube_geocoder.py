@@ -27,7 +27,6 @@ class ClassCubeGeocoder:
         provider: str = "nominatim",
         account_id: str = "",
         api_key: str = "",
-        region: str = "",
         coordinate_system: str = "gcj02",
         cache_ttl_seconds: float = 24 * 60 * 60,
         cache_limit: int = 512,
@@ -43,7 +42,6 @@ class ClassCubeGeocoder:
             self.provider = "tencent"
         self.account_id = str(account_id or "").strip()
         self.api_key = str(api_key or "").strip()
-        self.region = str(region or "").strip()
         self.coordinate_system = (
             "GCJ02"
             if str(coordinate_system or "").strip().lower() == "gcj02"
@@ -648,9 +646,7 @@ class ClassCubeGeocoder:
         if len(normalized_query) < 2:
             raise ValueError("请至少输入 2 个字符搜索地址")
         normalized_limit = min(max(int(limit), 1), 8)
-        normalized_region = "".join(
-            str(self.region if region is None else region).strip().split()
-        )
+        normalized_region = "".join(str(region or "").strip().split())
         key = (
             self._query_key(normalized_query),
             normalized_limit,

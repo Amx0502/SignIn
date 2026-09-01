@@ -351,11 +351,6 @@ class ClassCubeService:
                     else config.CLASS_CUBE_GEOCODER_KEY
                 )
             ),
-            region=(
-                config.CLASS_CUBE_TENCENT_REGION
-                if geocoder_provider == "tencent"
-                else ""
-            ),
             coordinate_system=config.CLASS_CUBE_APIHZ_COORDINATE_SYSTEM,
             shared_rate_file=config.CLASS_CUBE_GEOCODER_RATE_FILE,
         )
@@ -751,9 +746,7 @@ class ClassCubeService:
             )
         normalized_region = "".join(str(region or "").strip().split())
         if not normalized_region:
-            normalized_region = str(
-                config.CLASS_CUBE_TENCENT_REGION or "潍坊市"
-            ).strip()
+            raise ClassCubeValidationError("请先选择省份和城市")
         if not re.fullmatch(r"[\u4e00-\u9fffA-Za-z0-9·-]{2,32}", normalized_region):
             raise ClassCubeValidationError("请选择有效的搜索城市")
         try:
@@ -790,9 +783,6 @@ class ClassCubeService:
             "search_provider": str(
                 config.CLASS_CUBE_GEOCODER_PROVIDER or "tencent"
             ).lower(),
-            "search_region": str(
-                config.CLASS_CUBE_TENCENT_REGION or "潍坊市"
-            ).strip(),
             "search_notice": (
                 "地址搜索由地图服务处理，请勿输入个人住宅等敏感信息"
             ),
