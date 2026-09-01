@@ -739,12 +739,21 @@ class ClassCubeService:
     ) -> dict[str, Any]:
         self._actor_scope(actor)
         return {
-            "layers": config.class_cube_map_layers(),
+            "map_provider": "tencent_js_gl",
+            "map_sdk_url": str(
+                config.CLASS_CUBE_TENCENT_JS_URL
+                or "https://map.qq.com/api/gljs"
+            ).strip(),
+            "map_sdk_key": str(
+                config.CLASS_CUBE_TENCENT_JS_KEY or ""
+            ).strip(),
             "default_center": {
                 "latitude": 35.8617,
                 "longitude": 104.1954,
             },
             "default_zoom": 4,
+            "min_zoom": 3,
+            "max_zoom": 20,
             "coordinate_system": "GCJ02",
             "search_provider": str(
                 config.CLASS_CUBE_GEOCODER_PROVIDER or "tencent"

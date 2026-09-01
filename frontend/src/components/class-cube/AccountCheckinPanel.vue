@@ -141,7 +141,6 @@
               <el-form-item class="location-search-item" label="签到位置">
                 <LocationSearchPanel
                   v-model="form.coordinateInput"
-                  @location-acquired="applyLocatedAccuracy"
                 />
               </el-form-item>
             </div>
@@ -289,11 +288,6 @@ const resultVisible = ref(false)
 const result = ref(null)
 const batchDetails = ref([])
 const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', qrUrl: '', notify_wecom: false })
-
-function applyLocatedAccuracy(location) {
-  const accuracy = Number(location?.accuracy)
-  if (Number.isFinite(accuracy) && accuracy >= 0) form.accuracy = accuracy
-}
 
 function resetManualState() {
   Object.assign(form, {

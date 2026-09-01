@@ -85,7 +85,6 @@
               <LocationSearchPanel
                 :key="locationPanelKey"
                 v-model="draft.coordinateInput"
-                @location-acquired="applyLocatedAccuracy"
               />
             </el-form-item>
             <el-form-item label="预设密码">
@@ -181,11 +180,6 @@ const runningTaskId = ref(null)
 const locationPanelKey = ref(0)
 const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', photo_res: '', password: '', has_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
 const draft = reactive(emptyDraft())
-
-function applyLocatedAccuracy(location) {
-  const accuracy = Number(location?.accuracy)
-  if (Number.isFinite(accuracy) && accuracy >= 0) draft.accuracy = accuracy
-}
 
 function accountName(id) { const row = props.accounts.find(item => item.id === id); return row?.name || row?.remote_user_name || `账号 ${id}` }
 function courseName(id) { return props.courses.find(item => item.id === id)?.name || `课程 ${id}` }
