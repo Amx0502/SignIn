@@ -29,6 +29,8 @@ class ClassCubeNotFound(LookupError):
 
 
 class ClassCubeRepository:
+    DEFAULT_ACCOUNT_NAME = "班级魔方账号"
+
     def __init__(self, database: ClassCubeDatabase):
         self.database = database
 
@@ -112,6 +114,25 @@ class ClassCubeRepository:
             "created_at": row.created_at,
             "updated_at": row.updated_at,
         }
+
+    @classmethod
+    def _apply_remote_identity(
+        cls,
+        row: ClassCubeAccountRow,
+        remote_user_name: str,
+    ) -> None:
+        normalized_name = str(remote_user_name or "").strip()
+        if not normalized_name:
+            return
+        current_remark = str(row.name or "").strip()
+        previous_remote_name = str(row.remote_user_name or "").strip()
+        if current_remark in {
+            "",
+            cls.DEFAULT_ACCOUNT_NAME,
+            previous_remote_name,
+        }:
+            row.name = normalized_name
+        row.remote_user_name = normalized_name
 
     @staticmethod
     def _item_record(
@@ -384,7 +405,7 @@ class ClassCubeRepository:
                     self._assert_binding_capacity(session, owner_user_id)
                     row = ClassCubeAccountRow(
                         owner_user_id=owner_user_id,
-                        name=remote_user_name or "班级魔方账号",
+                        name=remote_user_name or self.DEFAULT_ACCOUNT_NAME,
                         remote_user_name=remote_user_name,
                         remote_uid=remote_uid,
                         cookie=cookie,
@@ -435,15 +456,12 @@ class ClassCubeRepository:
                     account_id=row.id,
                     assigned_by_user_id=actor_user_id or owner_user_id,
                 )
-                row.remote_user_name = (
-                    remote_user_name or row.remote_user_name
-                )
                 row.cookie = cookie
                 row.status = "active"
                 row.last_login_at = now
                 row.updated_at = now
                 session.flush()
-            row.remote_user_name = remote_user_name or row.remote_user_name
+            self._apply_remote_identity(row, remote_user_name)
             row.cookie = cookie
             row.status = "active"
             row.last_login_at = now
@@ -473,7 +491,7 @@ class ClassCubeRepository:
                 account_id=row.id,
                 assigned_by_user_id=actor_user_id,
             )
-            row.remote_user_name = remote_user_name or row.remote_user_name
+            self._apply_remote_identity(row, remote_user_name)
             row.cookie = cookie
             row.status = "active"
             row.last_login_at = now
