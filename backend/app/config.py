@@ -33,6 +33,13 @@ CLASS_CUBE_TENCENT_KEY = os.getenv(
     "CLASS_CUBE_TENCENT_KEY",
     "",
 )
+try:
+    CLASS_CUBE_TENCENT_DAILY_LIMIT = max(
+        int(os.getenv("CLASS_CUBE_TENCENT_DAILY_LIMIT", "6000")),
+        1,
+    )
+except (TypeError, ValueError):
+    CLASS_CUBE_TENCENT_DAILY_LIMIT = 6000
 CLASS_CUBE_TENCENT_JS_URL = os.getenv(
     "CLASS_CUBE_TENCENT_JS_URL",
     "https://map.qq.com/api/gljs",

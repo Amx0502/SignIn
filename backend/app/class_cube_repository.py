@@ -11,6 +11,7 @@ from .class_cube_database import ClassCubeDatabase
 from .class_cube_db_models import (
     ClassCubeAccountBindingRow,
     ClassCubeAccountRow,
+    ClassCubeApiUsageRow,
     ClassCubeCheckinItemRow,
     ClassCubeCourseRow,
     ClassCubeTaskItemClaimRow,
@@ -391,6 +392,54 @@ class ClassCubeRepository:
                 "limit": int(limit),
                 "used": used + 1,
                 "remaining": max(int(limit) - used - 1, 0),
+            }
+
+    def record_api_call(
+        self,
+        provider: str,
+        *,
+        today: date | None = None,
+    ) -> int:
+        usage_date = today or date.today()
+        normalized_provider = str(provider or "").strip()[:64]
+        if not normalized_provider:
+            raise ValueError("API 服务标识不能为空")
+        with self.database.session() as session:
+            row = session.get(
+                ClassCubeApiUsageRow,
+                (normalized_provider, usage_date),
+                with_for_update=True,
+            )
+            if row is None:
+                row = ClassCubeApiUsageRow(
+                    provider=normalized_provider,
+                    usage_date=usage_date,
+                    request_count=1,
+                )
+                session.add(row)
+            else:
+                row.request_count = int(row.request_count or 0) + 1
+                row.updated_at = datetime.now()
+            session.flush()
+            return int(row.request_count)
+
+    def get_api_usage(
+        self,
+        provider: str,
+        *,
+        today: date | None = None,
+    ) -> dict[str, Any]:
+        usage_date = today or date.today()
+        normalized_provider = str(provider or "").strip()[:64]
+        with self.database.session() as session:
+            row = session.get(
+                ClassCubeApiUsageRow,
+                (normalized_provider, usage_date),
+            )
+            return {
+                "provider": normalized_provider,
+                "date": usage_date.isoformat(),
+                "used": int(row.request_count or 0) if row else 0,
             }
 
     def assert_can_add_account(self, user_id: int, is_admin: bool) -> None:

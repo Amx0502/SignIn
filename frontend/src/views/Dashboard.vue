@@ -82,9 +82,9 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { CircleCheck, Document, Refresh, Tickets, User } from '@element-plus/icons-vue'
+import { CircleCheck, Document, Location, Refresh, Tickets, User } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
-import api from '../api'
+import api, { getTencentLocationUsageApi } from '../api'
 import classCubeApi from '../api/classCube.js'
 import { buildDashboardMetrics } from '../utils/dashboardMetrics.js'
 
@@ -102,7 +102,7 @@ const statusItems = computed(() => [
 const totalStatuses = computed(() => statusItems.value.reduce((sum, item) => sum + item.value, 0))
 const maxTypeValue = computed(() => Math.max(...metrics.value.typeDistribution.map(item => item.value), 1))
 
-const iconFor = tone => ({ blue: User, violet: Tickets, green: CircleCheck, cyan: User, orange: Document, slate: Tickets }[tone] || Document)
+const iconFor = tone => ({ blue: User, violet: Tickets, green: CircleCheck, cyan: User, orange: Document, slate: Tickets, teal: Location }[tone] || Document)
 const statusPercent = value => totalStatuses.value ? Math.max(4, Math.round(value / totalStatuses.value * 100)) : 0
 const typePercent = value => Math.max(4, Math.round(value / maxTypeValue.value * 100))
 const statusLabel = status => ({ success: '成功', already_signed: '已签到', failed: '失败', error: '失败', running: '执行中', submitting: '提交中' }[String(status || '').toLowerCase()] || '待处理')
@@ -123,11 +123,13 @@ async function loadDashboard() {
     classCubeApi.listAccounts(),
     classCubeApi.listTasks(),
     classCubeApi.listRuns({ limit: 100 }),
+    getTencentLocationUsageApi(),
   ])
   const values = results.map(result => result.status === 'fulfilled' ? result.value : null)
   const messages = []
   if (results[0].status === 'rejected' || results[1].status === 'rejected') messages.push('小小签到数据暂时不可用')
-  if (results.slice(2).some(result => result.status === 'rejected')) messages.push('班级魔方数据暂时不可用')
+  if (results.slice(2, 5).some(result => result.status === 'rejected')) messages.push('班级魔方数据暂时不可用')
+  if (results[5].status === 'rejected') messages.push('腾讯位置服务调用量暂时不可用')
   platformErrors.value = messages
   metrics.value = buildDashboardMetrics({
     xxqd: results[0].status === 'fulfilled' ? unwrap(values[0], {}) : null,
@@ -135,6 +137,7 @@ async function loadDashboard() {
     cubeAccounts: results[2].status === 'fulfilled' ? unwrap(values[2], []) : null,
     cubeTasks: results[3].status === 'fulfilled' ? unwrap(values[3], []) : null,
     cubeRuns: results[4].status === 'fulfilled' ? unwrap(values[4], []) : null,
+    locationUsage: results[5].status === 'fulfilled' ? unwrap(values[5], {}) : null,
   })
   loadedOnce.value = true
   loading.value = false
@@ -144,5 +147,5 @@ onMounted(loadDashboard)
 </script>
 
 <style scoped>
-.dashboard-page{display:grid;gap:18px}.dashboard-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:28px;border-radius:24px;color:#fff;background:linear-gradient(125deg,#1e40af,#0891b2);box-shadow:0 20px 50px #1d4ed83b}.eyebrow{margin:0;font-size:11px;letter-spacing:.18em;opacity:.8}.dashboard-hero h1{margin:9px 0 6px;font-size:30px}.dashboard-hero p:last-child{margin:0;color:#dbeafe}.refresh-button{color:#1d4ed8;background:#fff;border:0}.platform-alert{margin-bottom:0}.metric-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}.metric-card{display:flex;align-items:center;gap:12px;min-height:88px;padding:16px;border:1px solid #dbeafe;border-radius:18px;background:#fff;box-shadow:0 12px 30px #0f172a0b}.metric-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:#dbeafe;color:#2563eb}.metric-card strong,.metric-card span{display:block}.metric-card strong{font-size:25px;color:#0f172a}.metric-card span{margin-top:5px;font-size:12px;color:#64748b}.metric-violet .metric-icon{background:#ede9fe;color:#7c3aed}.metric-green .metric-icon{background:#dcfce7;color:#16a34a}.metric-cyan .metric-icon{background:#cffafe;color:#0891b2}.metric-orange .metric-icon{background:#ffedd5;color:#ea580c}.metric-slate .metric-icon{background:#e2e8f0;color:#475569}.content-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{border:1px solid #dbeafe;border-radius:22px;background:#ffffffd9}.panel-title{display:flex;align-items:center;justify-content:space-between;font-weight:700}.status-list,.type-list,.recent-list,.ranking-list{display:grid;gap:15px}.status-row{display:grid;grid-template-columns:10px 70px 38px 1fr;align-items:center;gap:10px;color:#64748b;font-size:13px}.status-row strong{color:#0f172a;text-align:right}.status-dot{width:9px;height:9px;border-radius:50%}.dot-success{background:#22c55e}.dot-failed{background:#ef4444}.dot-running{background:#f59e0b}.dot-pending{background:#94a3b8}.status-track,.type-track{height:8px;overflow:hidden;border-radius:99px;background:#eef2f7}.status-track i,.type-track i{display:block;height:100%;border-radius:inherit;background:#22c55e}.bar-failed{background:#ef4444!important}.bar-running{background:#f59e0b!important}.bar-pending{background:#94a3b8!important}.type-name{display:flex;justify-content:space-between;color:#475569;font-size:13px}.type-name strong{color:#1d4ed8}.type-track i{background:linear-gradient(90deg,#2563eb,#06b6d4)}.recent-row,.ranking-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #eef2f7}.recent-row:last-child,.ranking-row:last-child{border-bottom:0}.recent-index,.rank-number{display:grid;place-items:center;width:26px;height:26px;border-radius:9px;background:#eff6ff;color:#2563eb;font-size:12px}.recent-main{flex:1;min-width:0}.recent-main strong,.recent-main small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-main strong{color:#334155}.recent-main small{margin-top:4px;color:#94a3b8}.rank-name{flex:1;color:#334155}.rank-number.top{color:#fff;background:#2563eb}.ranking-row strong{color:#16a34a}@media(max-width:1200px){.metric-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:760px){.dashboard-hero{align-items:flex-start;flex-direction:column}.metric-grid,.content-grid{grid-template-columns:1fr}.metric-grid{grid-template-columns:repeat(2,1fr)}}
+.dashboard-page{display:grid;gap:18px}.dashboard-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:28px;border-radius:24px;color:#fff;background:linear-gradient(125deg,#1e40af,#0891b2);box-shadow:0 20px 50px #1d4ed83b}.eyebrow{margin:0;font-size:11px;letter-spacing:.18em;opacity:.8}.dashboard-hero h1{margin:9px 0 6px;font-size:30px}.dashboard-hero p:last-child{margin:0;color:#dbeafe}.refresh-button{color:#1d4ed8;background:#fff;border:0}.platform-alert{margin-bottom:0}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.metric-card{display:flex;align-items:center;gap:12px;min-height:88px;padding:16px;border:1px solid #dbeafe;border-radius:18px;background:#fff;box-shadow:0 12px 30px #0f172a0b}.metric-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:#dbeafe;color:#2563eb}.metric-card strong,.metric-card span{display:block}.metric-card strong{font-size:25px;color:#0f172a;white-space:nowrap}.metric-card span{margin-top:5px;font-size:12px;color:#64748b}.metric-violet .metric-icon{background:#ede9fe;color:#7c3aed}.metric-green .metric-icon{background:#dcfce7;color:#16a34a}.metric-cyan .metric-icon{background:#cffafe;color:#0891b2}.metric-orange .metric-icon{background:#ffedd5;color:#ea580c}.metric-slate .metric-icon{background:#e2e8f0;color:#475569}.metric-teal .metric-icon{background:#ccfbf1;color:#0f766e}.content-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{border:1px solid #dbeafe;border-radius:22px;background:#ffffffd9}.panel-title{display:flex;align-items:center;justify-content:space-between;font-weight:700}.status-list,.type-list,.recent-list,.ranking-list{display:grid;gap:15px}.status-row{display:grid;grid-template-columns:10px 70px 38px 1fr;align-items:center;gap:10px;color:#64748b;font-size:13px}.status-row strong{color:#0f172a;text-align:right}.status-dot{width:9px;height:9px;border-radius:50%}.dot-success{background:#22c55e}.dot-failed{background:#ef4444}.dot-running{background:#f59e0b}.dot-pending{background:#94a3b8}.status-track,.type-track{height:8px;overflow:hidden;border-radius:99px;background:#eef2f7}.status-track i,.type-track i{display:block;height:100%;border-radius:inherit;background:#22c55e}.bar-failed{background:#ef4444!important}.bar-running{background:#f59e0b!important}.bar-pending{background:#94a3b8!important}.type-name{display:flex;justify-content:space-between;color:#475569;font-size:13px}.type-name strong{color:#1d4ed8}.type-track i{background:linear-gradient(90deg,#2563eb,#06b6d4)}.recent-row,.ranking-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #eef2f7}.recent-row:last-child,.ranking-row:last-child{border-bottom:0}.recent-index,.rank-number{display:grid;place-items:center;width:26px;height:26px;border-radius:9px;background:#eff6ff;color:#2563eb;font-size:12px}.recent-main{flex:1;min-width:0}.recent-main strong,.recent-main small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-main strong{color:#334155}.recent-main small{margin-top:4px;color:#94a3b8}.rank-name{flex:1;color:#334155}.rank-number.top{color:#fff;background:#2563eb}.ranking-row strong{color:#16a34a}@media(max-width:760px){.dashboard-hero{align-items:flex-start;flex-direction:column}.metric-grid,.content-grid{grid-template-columns:1fr}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:420px){.metric-grid{grid-template-columns:1fr}}
 </style>

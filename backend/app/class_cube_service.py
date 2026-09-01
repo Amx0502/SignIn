@@ -68,6 +68,7 @@ _PHOTO_CONTENT_TYPES = {
     ".png": "image/png",
     ".webp": "image/webp",
 }
+TENCENT_LOCATION_USAGE_PROVIDER = "tencent_location_suggestion"
 
 
 def _photo_signature(extension: str, header: bytes) -> bool:
@@ -314,12 +315,37 @@ class ClassCubeService:
             user_agent=config.CLASS_CUBE_TENCENT_USER_AGENT,
             api_key=config.CLASS_CUBE_TENCENT_KEY,
             shared_rate_file=config.CLASS_CUBE_TENCENT_RATE_FILE,
+            request_recorder=self._record_tencent_location_request,
         )
         self._qr_targets: dict[str, _QrTarget] = {}
         self._qr_lock = RLock()
         self._execution_lock = RLock()
         self._running_task_ids: set[int] = set()
         self._closed = False
+
+    def _record_tencent_location_request(self) -> None:
+        try:
+            self.repository.record_api_call(
+                TENCENT_LOCATION_USAGE_PROVIDER
+            )
+        except Exception as exc:
+            self.logger.warning(
+                "记录腾讯位置服务调用量失败（%s）",
+                type(exc).__name__,
+            )
+
+    def get_location_api_usage(self) -> dict[str, Any]:
+        usage = self.repository.get_api_usage(
+            TENCENT_LOCATION_USAGE_PROVIDER
+        )
+        daily_limit = int(config.CLASS_CUBE_TENCENT_DAILY_LIMIT)
+        used = int(usage["used"])
+        return {
+            **usage,
+            "limit": daily_limit,
+            "remaining": max(daily_limit - used, 0),
+            "percent": round(min(used / daily_limit * 100, 100), 2),
+        }
 
     def _pop_expired_targets(
         self,

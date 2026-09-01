@@ -49,6 +49,7 @@ export const updateUserMenuOverridesApi = (userId, data) => instance.put(`/admin
 export const getMenuConfigLogsApi = (limit = 100) => instance.get('/admin/menu-config/logs', { params: { limit } })
 export const getCheckinDelaySettingsApi = () => instance.get('/admin/checkin-delay-settings')
 export const updateCheckinDelaySettingsApi = data => instance.put('/admin/checkin-delay-settings', data)
+export const getTencentLocationUsageApi = () => instance.get('/admin/tencent-location-usage')
 
 export default {
   getState: () => instance.get('/state'),

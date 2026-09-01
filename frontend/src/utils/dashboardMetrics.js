@@ -17,6 +17,12 @@ function typeLabel(mode) {
   return TYPE_LABELS[String(mode || '').toLowerCase()] || '其他签到'
 }
 
+function usageValue(value) {
+  const used = numberOrZero(value?.used)
+  const limit = numberOrZero(value?.limit)
+  return limit > 0 ? `${used}/${limit}` : '-'
+}
+
 export function buildDashboardMetrics(input = {}) {
   const xxqd = input.xxqd || {}
   const cubeAccounts = asArray(input.cubeAccounts)
@@ -59,6 +65,7 @@ export function buildDashboardMetrics(input = {}) {
       { label: '班级魔方账号', value: cubeAccounts.length, tone: 'cyan' },
       { label: '班级魔方任务', value: cubeTasks.length, tone: 'orange' },
       { label: '运行记录', value: cubeRuns.length, tone: 'slate' },
+      { label: '腾讯地址调用', value: usageValue(input.locationUsage), tone: 'teal' },
     ],
     statuses: statusCounts,
     typeDistribution: [...typeCounts.entries()]

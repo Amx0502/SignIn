@@ -23,6 +23,19 @@ class ClassCubeBase(DeclarativeBase):
     pass
 
 
+class ClassCubeApiUsageRow(ClassCubeBase):
+    __tablename__ = "class_cube_api_usage"
+
+    provider: Mapped[str] = mapped_column(String(64), primary_key=True)
+    usage_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    request_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+
 class ClassCubeAccountRow(ClassCubeBase):
     __tablename__ = "class_cube_accounts"
 

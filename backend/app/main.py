@@ -210,6 +210,17 @@ app.include_router(
 app.include_router(create_class_cube_router(get_current_user, require_menu))
 
 
+@app.get("/api/admin/tencent-location-usage")
+def get_tencent_location_usage(
+    request: Request,
+    _admin=Depends(require_admin),
+):
+    service = getattr(request.app.state, "class_cube_service", None)
+    if service is None:
+        failure("班级魔方服务尚未初始化", 503)
+    return success(service.get_location_api_usage())
+
+
 @app.get("/api/state")
 def get_state(_user=Depends(require_menu("xxqd"))):
     return success(app_state.snapshot())

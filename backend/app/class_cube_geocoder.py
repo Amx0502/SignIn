@@ -31,6 +31,7 @@ class ClassCubeGeocoder:
         shared_rate_file: str | Path | None = None,
         clock: Callable[[], float] | None = None,
         session: requests.Session | None = None,
+        request_recorder: Callable[[], Any] | None = None,
     ):
         self.base_url = str(base_url).rstrip("/")
         self.user_agent = str(user_agent).strip()
@@ -52,6 +53,7 @@ class ClassCubeGeocoder:
         self._clock = clock or time.monotonic
         self._session = session or requests.Session()
         self._owns_session = session is None
+        self._request_recorder = request_recorder
         self._cache: OrderedDict[
             tuple[str, int, str],
             tuple[float, tuple[dict[str, Any], ...]],
@@ -303,6 +305,8 @@ class ClassCubeGeocoder:
         if region:
             params["region"] = region
             params["region_fix"] = 1
+        if self._request_recorder is not None:
+            self._request_recorder()
         response = self._session.get(
             f"{self.base_url}/ws/place/v1/suggestion",
             params=params,
