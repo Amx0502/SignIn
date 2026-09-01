@@ -34,6 +34,14 @@
             {{ row.role === 'admin' || row.class_cube_account_limit == null ? '不限' : row.class_cube_account_limit }}
           </template>
         </el-table-column>
+        <el-table-column label="今日地址搜索" width="160">
+          <template #default="{ row }">
+            <span v-if="row.role === 'admin' || row.location_search_daily_limit == null">不限</span>
+            <span v-else>
+              已用 {{ row.location_search_used || 0 }} / {{ row.location_search_daily_limit }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column label="到期时间" min-width="180">
           <template #default="{ row }">
             <span :class="{ 'expired-time': isExpired(row) }">{{ formatExpiry(row) }}</span>
@@ -98,14 +106,29 @@
           </el-form-item>
           <el-form-item label="班级魔方账号额度">
             <div class="quota-row">
-              <el-switch v-model="quotaUnlimited" active-text="不限额度" />
+              <el-switch v-model="accountQuotaUnlimited" active-text="不限额度" />
               <el-input-number
-                v-if="!quotaUnlimited"
+                v-if="!accountQuotaUnlimited"
                 v-model="userForm.class_cube_account_limit"
                 :min="0"
                 :max="999"
                 controls-position="right"
               />
+            </div>
+          </el-form-item>
+          <el-form-item label="每日地址搜索额度">
+            <div class="quota-row">
+              <el-switch v-model="locationQuotaUnlimited" active-text="不限次数" />
+              <el-input-number
+                v-if="!locationQuotaUnlimited"
+                v-model="userForm.location_search_daily_limit"
+                :min="0"
+                :max="100000"
+                controls-position="right"
+              />
+            </div>
+            <div class="field-help">
+              按服务器自然日统计，设置为 100 表示该用户每天最多搜索 100 次；0 表示禁止搜索，第二天自动重新计数。
             </div>
           </el-form-item>
           <el-form-item v-if="!editingId && userForm.class_cube_only" label="初始班级魔方账号">
@@ -165,12 +188,14 @@ const userDialog = ref(false)
 const resetDialog = ref(false)
 const editingId = ref(null)
 const resetUserId = ref(null)
-const quotaUnlimited = ref(true)
+const accountQuotaUnlimited = ref(true)
+const locationQuotaUnlimited = ref(true)
 const userFormRef = ref()
 const resetFormRef = ref()
 const userForm = reactive({
   username: '', password: '', role: 'user', is_active: true,
   class_cube_only: false, class_cube_account_limit: 1,
+  location_search_daily_limit: 100,
   initial_class_cube_account_id: null,
   expires_at: null,
 })
@@ -212,10 +237,12 @@ function accountLabel(account) {
 }
 function openCreate() {
   editingId.value = null
-  quotaUnlimited.value = true
+  accountQuotaUnlimited.value = true
+  locationQuotaUnlimited.value = true
   Object.assign(userForm, {
     username: '', password: '', role: 'user', is_active: true,
     class_cube_only: false, class_cube_account_limit: 1,
+    location_search_daily_limit: 100,
     initial_class_cube_account_id: null,
     expires_at: null,
   })
@@ -223,19 +250,21 @@ function openCreate() {
 }
 function openEdit(row) {
   editingId.value = row.id
-  quotaUnlimited.value = row.class_cube_account_limit == null
+  accountQuotaUnlimited.value = row.class_cube_account_limit == null
+  locationQuotaUnlimited.value = row.location_search_daily_limit == null
   Object.assign(userForm, {
     username: row.username, password: '', role: row.role, is_active: row.is_active,
     class_cube_only: Boolean(row.class_cube_only),
     class_cube_account_limit: row.class_cube_account_limit ?? 1,
+    location_search_daily_limit: row.location_search_daily_limit ?? 100,
     initial_class_cube_account_id: null,
     expires_at: row.role === 'user' ? formExpiryValue(row.expires_at) : null,
   })
   userDialog.value = true
 }
 function handleClassCubeOnlyChange(enabled) {
-  if (enabled && quotaUnlimited.value) {
-    quotaUnlimited.value = false
+  if (enabled && accountQuotaUnlimited.value) {
+    accountQuotaUnlimited.value = false
     userForm.class_cube_account_limit = 1
   }
   if (!enabled) userForm.initial_class_cube_account_id = null
@@ -257,16 +286,20 @@ async function saveUser() {
       await updateUserApi(editingId.value, {
         username: userForm.username, role: userForm.role, is_active: userForm.is_active,
         class_cube_only: userForm.role === 'user' && userForm.class_cube_only,
-        class_cube_account_limit: userForm.role === 'user' && !quotaUnlimited.value
+        class_cube_account_limit: userForm.role === 'user' && !accountQuotaUnlimited.value
           ? userForm.class_cube_account_limit : null,
+        location_search_daily_limit: userForm.role === 'user' && !locationQuotaUnlimited.value
+          ? userForm.location_search_daily_limit : null,
         expires_at: userForm.role === 'user' ? userForm.expires_at : null,
       })
     } else {
       await createUserApi({
         ...userForm,
         class_cube_only: userForm.role === 'user' && userForm.class_cube_only,
-        class_cube_account_limit: userForm.role === 'user' && !quotaUnlimited.value
+        class_cube_account_limit: userForm.role === 'user' && !accountQuotaUnlimited.value
           ? userForm.class_cube_account_limit : null,
+        location_search_daily_limit: userForm.role === 'user' && !locationQuotaUnlimited.value
+          ? userForm.location_search_daily_limit : null,
         initial_class_cube_account_id: userForm.class_cube_only
           ? userForm.initial_class_cube_account_id : null,
         expires_at: userForm.role === 'user' ? userForm.expires_at : null,

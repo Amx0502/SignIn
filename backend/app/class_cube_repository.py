@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 import json
 from typing import Any, Iterable
 import uuid
@@ -351,6 +351,47 @@ class ClassCubeRepository:
                     f"请先解除 {count - limit} 个绑定再降低额度"
                 )
             return count
+
+    def consume_location_search_quota(
+        self,
+        user_id: int,
+        is_admin: bool,
+        *,
+        today: date | None = None,
+    ) -> dict[str, int | None]:
+        current_date = today or date.today()
+        if is_admin:
+            return {"limit": None, "used": 0, "remaining": None}
+        with self.database.session() as session:
+            policy = session.scalar(
+                select(UserFeaturePolicyRow)
+                .where(UserFeaturePolicyRow.user_id == int(user_id))
+                .with_for_update()
+            )
+            limit = (
+                policy.location_search_daily_limit
+                if policy is not None
+                else None
+            )
+            if limit is None:
+                return {"limit": None, "used": 0, "remaining": None}
+            if policy.location_search_date != current_date:
+                policy.location_search_date = current_date
+                policy.location_search_used = 0
+            used = int(policy.location_search_used or 0)
+            if used >= limit:
+                raise ValueError(
+                    f"今日地址搜索次数已用完（{used}/{limit}），"
+                    "请明天再试或联系管理员调整额度"
+                )
+            policy.location_search_used = used + 1
+            policy.updated_at = datetime.now()
+            session.flush()
+            return {
+                "limit": int(limit),
+                "used": used + 1,
+                "remaining": max(int(limit) - used - 1, 0),
+            }
 
     def assert_can_add_account(self, user_id: int, is_admin: bool) -> None:
         if is_admin:

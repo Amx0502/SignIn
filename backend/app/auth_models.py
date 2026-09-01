@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, JSON, String
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -43,6 +43,15 @@ class UserFeaturePolicyRow(AuthBase):
     )
     class_cube_account_limit: Mapped[int | None] = mapped_column(
         Integer, nullable=True
+    )
+    location_search_daily_limit: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    location_search_used: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    location_search_date: Mapped[date | None] = mapped_column(
+        Date, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now

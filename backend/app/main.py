@@ -452,6 +452,11 @@ async def create_user(
             payload.is_active,
             class_cube_only=class_cube_only,
             class_cube_account_limit=account_limit,
+            location_search_daily_limit=(
+                payload.location_search_daily_limit
+                if payload.role == "user"
+                else None
+            ),
             expires_at=payload.expires_at,
         )
         menu_result = get_menu_repository().apply_user_access_profile(
@@ -504,6 +509,14 @@ async def update_user(
             account_limit = 1
         else:
             account_limit = previous.get("class_cube_account_limit")
+        if payload.role != "user":
+            location_search_daily_limit = None
+        elif "location_search_daily_limit" in payload.model_fields_set:
+            location_search_daily_limit = payload.location_search_daily_limit
+        else:
+            location_search_daily_limit = previous.get(
+                "location_search_daily_limit"
+            )
         request.app.state.class_cube_service.repository.validate_account_limit(
             user_id,
             account_limit,
@@ -515,6 +528,7 @@ async def update_user(
             payload.is_active,
             class_cube_only=class_cube_only,
             class_cube_account_limit=account_limit,
+            location_search_daily_limit=location_search_daily_limit,
             expires_at=payload.expires_at,
         )
         if (

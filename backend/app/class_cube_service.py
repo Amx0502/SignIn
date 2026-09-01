@@ -706,7 +706,7 @@ class ClassCubeService:
         region: str,
         actor: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        self._actor_scope(actor)
+        actor_user_id, is_admin = self._actor_scope(actor)
         normalized_query = " ".join(str(query or "").strip().split())
         if len(normalized_query) < 2:
             raise ClassCubeValidationError(
@@ -717,6 +717,13 @@ class ClassCubeService:
             raise ClassCubeValidationError("请先选择省份和城市")
         if not re.fullmatch(r"[\u4e00-\u9fffA-Za-z0-9·-]{2,32}", normalized_region):
             raise ClassCubeValidationError("请选择有效的搜索城市")
+        try:
+            self.repository.consume_location_search_quota(
+                actor_user_id,
+                is_admin,
+            )
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
         try:
             return self.geocoder.search(
                 normalized_query,

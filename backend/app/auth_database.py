@@ -54,6 +54,23 @@ class AuthDatabase:
                 connection.execute(
                     text("ALTER TABLE users ADD COLUMN expires_at DATETIME NULL")
                 )
+            policy_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns(
+                    "user_feature_policies"
+                )
+            }
+            policy_definitions = {
+                "location_search_daily_limit": "INT NULL",
+                "location_search_used": "INT NOT NULL DEFAULT 0",
+                "location_search_date": "DATE NULL",
+            }
+            for name, definition in policy_definitions.items():
+                if name not in policy_columns:
+                    connection.execute(text(
+                        "ALTER TABLE user_feature_policies "
+                        f"ADD COLUMN {name} {definition}"
+                    ))
 
     @contextmanager
     def session(self) -> Iterator[Session]:

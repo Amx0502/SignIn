@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import delete, func, select, update
@@ -70,6 +70,11 @@ class AuthRepository:
     @staticmethod
     def _to_dict(row: UserRow) -> dict:
         policy = row.feature_policy
+        location_search_used = (
+            int(policy.location_search_used or 0)
+            if policy and policy.location_search_date == date.today()
+            else 0
+        )
         return {
             "id": row.id,
             "username": row.username,
@@ -85,6 +90,20 @@ class AuthRepository:
             "class_cube_only": bool(policy.class_cube_only) if policy else False,
             "class_cube_account_limit": (
                 policy.class_cube_account_limit if policy else None
+            ),
+            "location_search_daily_limit": (
+                policy.location_search_daily_limit if policy else None
+            ),
+            "location_search_used": location_search_used,
+            "location_search_remaining": (
+                max(
+                    int(policy.location_search_daily_limit)
+                    - location_search_used,
+                    0,
+                )
+                if policy
+                and policy.location_search_daily_limit is not None
+                else None
             ),
         }
 
@@ -151,6 +170,7 @@ class AuthRepository:
         *,
         class_cube_only: bool = False,
         class_cube_account_limit: int | None = None,
+        location_search_daily_limit: int | None = None,
         expires_at: datetime | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
@@ -173,6 +193,11 @@ class AuthRepository:
                     class_cube_only=bool(class_cube_only and role == "user"),
                     class_cube_account_limit=(
                         class_cube_account_limit if role == "user" else None
+                    ),
+                    location_search_daily_limit=(
+                        location_search_daily_limit
+                        if role == "user"
+                        else None
                     ),
                 )
                 session.add(policy)
@@ -197,6 +222,7 @@ class AuthRepository:
         *,
         class_cube_only: bool = False,
         class_cube_account_limit: int | None = None,
+        location_search_daily_limit: int | None = None,
         expires_at: datetime | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
@@ -228,6 +254,9 @@ class AuthRepository:
                 )
                 policy.class_cube_account_limit = (
                     class_cube_account_limit if role == "user" else None
+                )
+                policy.location_search_daily_limit = (
+                    location_search_daily_limit if role == "user" else None
                 )
                 if not is_active:
                     session.execute(delete(UserSessionRow).where(UserSessionRow.user_id == row.id))
