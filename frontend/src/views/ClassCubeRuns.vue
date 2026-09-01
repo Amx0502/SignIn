@@ -5,7 +5,6 @@
       :tasks="tasks"
       :accounts="accounts"
       :courses="courses"
-      :is-admin="isAdmin"
       :load-runs-action="loadRuns"
       :retry-claim-action="retryClaim"
     />
@@ -13,7 +12,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import RunHistoryPanel from '../components/class-cube/RunHistoryPanel.vue'
 import { useClassCube } from '../composables/useClassCube.js'
 
@@ -26,9 +25,6 @@ const {
   retryClaim,
   loadInitial,
 } = useClassCube()
-const user = JSON.parse(localStorage.getItem('user') || '{}')
-const isAdmin = computed(() => user.role === 'admin')
-
 onMounted(() => loadInitial().catch(() => {}))
 </script>
 
