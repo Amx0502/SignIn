@@ -47,6 +47,8 @@ export const getAdminMenuConfigApi = userId => instance.get('/admin/menu-config'
 export const updateGlobalMenuConfigApi = data => instance.put('/admin/menu-config/global', data)
 export const updateUserMenuOverridesApi = (userId, data) => instance.put(`/admin/menu-config/users/${userId}`, data)
 export const getMenuConfigLogsApi = (limit = 100) => instance.get('/admin/menu-config/logs', { params: { limit } })
+export const getCheckinDelaySettingsApi = () => instance.get('/admin/checkin-delay-settings')
+export const updateCheckinDelaySettingsApi = data => instance.put('/admin/checkin-delay-settings', data)
 
 export default {
   getState: () => instance.get('/state'),

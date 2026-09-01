@@ -18,6 +18,13 @@ const SYSTEM_SECTION = {
       icon: 'Menu',
       children: [],
     },
+    {
+      key: 'system.checkin-delay-settings',
+      title: '签到时间设置',
+      path: '/checkin-delay-settings',
+      icon: 'Timer',
+      children: [],
+    },
   ],
 }
 

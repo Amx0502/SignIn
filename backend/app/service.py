@@ -22,6 +22,7 @@ from .config import (
     PUBLIC_KEY,
     SETTINGS_FILE,
 )
+from .checkin_delay_settings import get_checkin_delay_range
 from .database import Database, DatabaseSettings
 from .repository import AccountRepository
 from .task_date_schedule import is_task_active_on, normalize_task_date_rule
@@ -696,9 +697,18 @@ class AppState:
         success = False
         result = {"title": task_title}
         try:
-            delay = random.uniform(0, 18)
-            time.sleep(delay)
-            self.logger.info("[%s] 任务《%s》随机延迟 %.2f 秒后执行", name, task_title, delay)
+            minimum, maximum = get_checkin_delay_range("xxqd")
+            delay = random.uniform(minimum, maximum)
+            self.logger.info(
+                "[%s] 任务《%s》将在 %.2f 秒后执行（设置范围：%s～%s 秒）",
+                name,
+                task_title,
+                delay,
+                minimum,
+                maximum,
+            )
+            if delay > 0:
+                time.sleep(delay)
             ok, result = self.service.execute_task(account, task)
             if not isinstance(result, dict):
                 result = {"title": task_title, "error": "签到接口返回结果格式无效"}

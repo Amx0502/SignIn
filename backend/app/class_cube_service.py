@@ -5,6 +5,7 @@ import json
 import math
 import os
 from pathlib import Path, PurePosixPath
+import random
 import re
 import time
 from threading import RLock
@@ -48,6 +49,7 @@ from .class_cube_settings import (
     load_class_cube_settings,
     save_class_cube_settings,
 )
+from .checkin_delay_settings import get_checkin_delay_range
 
 
 class ClassCubeValidationError(ValueError):
@@ -1155,6 +1157,17 @@ class ClassCubeService:
             notification["course_name"],
         )
         try:
+            minimum, maximum = get_checkin_delay_range("class_cube")
+            delay = random.uniform(minimum, maximum)
+            self.logger.info(
+                "班级魔方任务「%s」将在 %.2f 秒后扫描签到项（设置范围：%s～%s 秒）",
+                task.get("name", ""),
+                delay,
+                minimum,
+                maximum,
+            )
+            if delay > 0:
+                time.sleep(delay)
             items = self.sync_items(task["course_id"], actor)
             active_items = [
                 item for item in items

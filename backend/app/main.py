@@ -21,6 +21,7 @@ from .auth_repository import (
 from .models import (
     AccountCreate,
     AccountUpdate,
+    CheckinDelaySettingsUpdate,
     LoginRequest,
     PasswordChange,
     PasswordReset,
@@ -29,6 +30,11 @@ from .models import (
     TaskUpdate,
     UserCreate,
     UserUpdate,
+)
+from .checkin_delay_settings import (
+    CheckinDelaySettingsError,
+    load_checkin_delay_settings,
+    save_checkin_delay_settings,
 )
 from .database_config import load_database_config
 from .class_cube_client import ClassCubeClient
@@ -388,6 +394,25 @@ def change_password(
 @app.get("/api/users")
 def list_users(admin=Depends(require_admin)):
     return success(auth_service.repository.list_users())
+
+
+@app.get("/api/admin/checkin-delay-settings")
+def get_checkin_delay_settings(_admin=Depends(require_admin)):
+    try:
+        return success(load_checkin_delay_settings())
+    except CheckinDelaySettingsError as exc:
+        failure(str(exc))
+
+
+@app.put("/api/admin/checkin-delay-settings")
+def update_checkin_delay_settings(
+    payload: CheckinDelaySettingsUpdate,
+    _admin=Depends(require_admin),
+):
+    try:
+        return success(save_checkin_delay_settings(payload.model_dump()))
+    except CheckinDelaySettingsError as exc:
+        failure(str(exc))
 
 
 @app.post("/api/users")

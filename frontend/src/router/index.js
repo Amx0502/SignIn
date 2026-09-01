@@ -13,6 +13,7 @@ import ClassCubeLogs from '../views/ClassCubeLogs.vue'
 import UserManagement from '../views/UserManagement.vue'
 import ChangePassword from '../views/ChangePassword.vue'
 import MenuManagement from '../views/MenuManagement.vue'
+import CheckinDelaySettings from '../views/CheckinDelaySettings.vue'
 import NoAvailableMenus from '../views/NoAvailableMenus.vue'
 import Dashboard from '../views/Dashboard.vue'
 import {
@@ -26,6 +27,7 @@ const routes = [
   { path: '/change-password', name: 'ChangePassword', component: ChangePassword, meta: { title: '修改密码', requiresAuth: true } },
   { path: '/users', name: 'UserManagement', component: UserManagement, meta: { title: '用户管理', requiresAuth: true, requiresAdmin: true } },
   { path: '/menu-management', name: 'MenuManagement', component: MenuManagement, meta: { title: '菜单管理', parentTitle: '系统设置', requiresAuth: true, requiresAdmin: true } },
+  { path: '/checkin-delay-settings', name: 'CheckinDelaySettings', component: CheckinDelaySettings, meta: { title: '签到时间设置', parentTitle: '系统设置', requiresAuth: true, requiresAdmin: true } },
   { path: '/no-access', name: 'NoAvailableMenus', component: NoAvailableMenus, meta: { title: '暂无可用功能', requiresAuth: true } },
   { path: '/', redirect: '/dashboard' },
   { path: '/dashboard', name: 'Dashboard', component: Dashboard, meta: { title: '综合总览', parentTitle: '签到管理系统', requiresAuth: true, requiresAdmin: true } },

@@ -69,6 +69,13 @@ class Settings(BaseModel):
     webhook_url: str = ""
 
 
+class CheckinDelaySettingsUpdate(BaseModel):
+    xxqd_min_seconds: int = Field(default=1, ge=0, le=300)
+    xxqd_max_seconds: int = Field(default=18, ge=0, le=300)
+    class_cube_min_seconds: int = Field(default=1, ge=0, le=300)
+    class_cube_max_seconds: int = Field(default=18, ge=0, le=300)
+
+
 class User(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password_hash: str
