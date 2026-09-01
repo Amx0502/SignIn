@@ -12,8 +12,8 @@ export function createClassCubeApi(instance = defaultInstance) {
       instance.get(`${root}/qr-sessions/${encodeURIComponent(token)}`),
     getLocationConfig: () =>
       instance.get(`${root}/locations/config`),
-    searchLocations: (query, limit = 6, options = {}) =>
-      instance.post(`${root}/locations/search`, { query, limit }, {
+    searchLocations: (query, region, limit = 6, options = {}) =>
+      instance.post(`${root}/locations/search`, { query, region, limit }, {
         signal: options.signal,
         timeout: 12_000,
       }),

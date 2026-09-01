@@ -68,7 +68,7 @@ class ClassCubeGeocoder:
         self._session = session or requests.Session()
         self._owns_session = session is None
         self._cache: OrderedDict[
-            tuple[str, int],
+            tuple[str, int, str],
             tuple[float, tuple[dict[str, Any], ...]],
         ] = OrderedDict()
         self._lock = threading.RLock()
@@ -173,7 +173,7 @@ class ClassCubeGeocoder:
 
     def _cached(
         self,
-        key: tuple[str, int],
+        key: tuple[str, int, str],
         now: float,
     ) -> list[dict[str, Any]] | None:
         cached = self._cache.get(key)
@@ -478,18 +478,24 @@ class ClassCubeGeocoder:
         if status != 0:
             detail = cls._text(payload.get("message"))
             normalized_detail = detail.casefold()
-            if status in {110, 111, 112, 114, 115, 116, 160} or any(
+            if status == 121 or any(
+                token in normalized_detail
+                for token in ("每日调用量", "daily quota", "日配额")
+            ):
+                message = "腾讯地址搜索今日调用额度已用完，请提升配额或更换可用 Key"
+                retryable = False
+            elif status in {120, 122} or any(
+                token in normalized_detail
+                for token in ("quota", "qps", "配额", "频率", "限流", "调用量")
+            ):
+                message = "腾讯地址搜索调用频率或配额受限，请稍后重试"
+                retryable = True
+            elif status in {110, 111, 112, 114, 115, 116, 160} or any(
                 token in normalized_detail
                 for token in ("key", "鉴权", "权限", "签名", "授权")
             ):
                 message = "腾讯位置服务 Key 无效、未授权或未开通 WebService API"
                 retryable = False
-            elif status in {120, 121, 122} or any(
-                token in normalized_detail
-                for token in ("quota", "qps", "配额", "频率", "限流")
-            ):
-                message = "腾讯地点搜索调用额度或频率已受限"
-                retryable = True
             else:
                 message = (
                     f"腾讯地点搜索失败：{detail}"
@@ -577,6 +583,7 @@ class ClassCubeGeocoder:
         self,
         query: str,
         limit: int,
+        region: str,
     ) -> tuple[dict[str, Any], ...]:
         if not self.api_key:
             raise ClassCubeGeocoderError(
@@ -586,14 +593,14 @@ class ClassCubeGeocoder:
         params: dict[str, Any] = {
             "key": self.api_key,
             "keyword": query,
-            "page_index": 1,
             "page_size": limit,
             "output": "json",
         }
-        if self.region:
-            params["boundary"] = f"region({self.region},0)"
+        if region:
+            params["region"] = region
+            params["region_fix"] = 1
         response = self._session.get(
-            f"{self.base_url}/ws/place/v1/search",
+            f"{self.base_url}/ws/place/v1/suggestion",
             params=params,
             headers={
                 "User-Agent": self.user_agent,
@@ -634,12 +641,21 @@ class ClassCubeGeocoder:
         self,
         query: str,
         limit: int = 5,
+        *,
+        region: str | None = None,
     ) -> list[dict[str, Any]]:
         normalized_query = " ".join(str(query or "").strip().split())
         if len(normalized_query) < 2:
             raise ValueError("请至少输入 2 个字符搜索地址")
         normalized_limit = min(max(int(limit), 1), 8)
-        key = (self._query_key(normalized_query), normalized_limit)
+        normalized_region = "".join(
+            str(self.region if region is None else region).strip().split()
+        )
+        key = (
+            self._query_key(normalized_query),
+            normalized_limit,
+            normalized_region.casefold(),
+        )
 
         with self._lock:
             now = self._clock()
@@ -674,6 +690,7 @@ class ClassCubeGeocoder:
                     results = self._request_tencent(
                         normalized_query,
                         normalized_limit,
+                        normalized_region,
                     )
                 elif self.provider == "amap":
                     results = self._request_amap(

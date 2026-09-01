@@ -98,6 +98,7 @@ class ClassCubeSettingsUpdate(BaseModel):
 class ClassCubeLocationSearchRequest(BaseModel):
     query: str = Field(min_length=2, max_length=200)
     limit: int = Field(default=6, ge=1, le=8)
+    region: str = Field(default="", max_length=32)
 
 
 def task_view(task: dict[str, Any]) -> dict[str, Any]:

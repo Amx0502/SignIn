@@ -83,6 +83,7 @@
             <header><span class="section-index">02</span><div><strong>签到参数</strong><small>配置不同签到方式的预设值</small></div></header>
             <el-form-item label="签到位置">
               <LocationSearchPanel
+                :key="locationPanelKey"
                 v-model="draft.coordinateInput"
                 @location-acquired="applyLocatedAccuracy"
               />
@@ -177,6 +178,7 @@ const saving = ref(false)
 const photoUploading = ref(false)
 const photoFiles = ref([])
 const runningTaskId = ref(null)
+const locationPanelKey = ref(0)
 const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', photo_res: '', password: '', has_password: false, schedule_times: ['08:00:00'], start_date: null, end_date: null, notify_wecom: true })
 const draft = reactive(emptyDraft())
 
@@ -202,8 +204,8 @@ function resetDraft(values = {}) {
     status: 'success',
   }] : []
 }
-function openCreate() { editingId.value = null; resetDraft(); editorVisible.value = true }
-function openEdit(row) { editingId.value = row.id; resetDraft(row); emit('select-account', row.account_id); editorVisible.value = true }
+function openCreate() { editingId.value = null; resetDraft(); locationPanelKey.value += 1; editorVisible.value = true }
+function openEdit(row) { editingId.value = row.id; resetDraft(row); locationPanelKey.value += 1; emit('select-account', row.account_id); editorVisible.value = true }
 function accountChanged(id) {
   const account = props.accounts.find(item => item.id === id)
   draft.owner_user_id = account?.owner_user_id ?? null

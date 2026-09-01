@@ -147,6 +147,7 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             _service(request).search_locations,
             payload.query,
             payload.limit,
+            payload.region,
             actor,
         )
 

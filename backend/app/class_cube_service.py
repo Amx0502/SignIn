@@ -740,6 +740,7 @@ class ClassCubeService:
         self,
         query: str,
         limit: int,
+        region: str,
         actor: dict[str, Any],
     ) -> list[dict[str, Any]]:
         self._actor_scope(actor)
@@ -748,8 +749,19 @@ class ClassCubeService:
             raise ClassCubeValidationError(
                 "请至少输入 2 个字符搜索地址"
             )
+        normalized_region = "".join(str(region or "").strip().split())
+        if not normalized_region:
+            normalized_region = str(
+                config.CLASS_CUBE_TENCENT_REGION or "潍坊市"
+            ).strip()
+        if not re.fullmatch(r"[\u4e00-\u9fffA-Za-z0-9·-]{2,32}", normalized_region):
+            raise ClassCubeValidationError("请选择有效的搜索城市")
         try:
-            return self.geocoder.search(normalized_query, limit)
+            return self.geocoder.search(
+                normalized_query,
+                limit,
+                region=normalized_region,
+            )
         except ValueError as exc:
             raise ClassCubeValidationError(str(exc)) from exc
         except ClassCubeGeocoderError as exc:
@@ -778,6 +790,9 @@ class ClassCubeService:
             "search_provider": str(
                 config.CLASS_CUBE_GEOCODER_PROVIDER or "tencent"
             ).lower(),
+            "search_region": str(
+                config.CLASS_CUBE_TENCENT_REGION or "潍坊市"
+            ).strip(),
             "search_notice": (
                 "地址搜索由地图服务处理，请勿输入个人住宅等敏感信息"
             ),
