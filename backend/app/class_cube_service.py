@@ -305,33 +305,21 @@ class ClassCubeService:
         geocoder_provider = str(
             config.CLASS_CUBE_GEOCODER_PROVIDER or "tencent"
         ).lower()
+        if geocoder_provider not in {"amap", "nominatim", "tencent"}:
+            geocoder_provider = "tencent"
         self.geocoder = geocoder or ClassCubeGeocoder(
             base_url=(
-                config.CLASS_CUBE_APIHZ_URL
-                if geocoder_provider == "apihz"
-                else (
-                    config.CLASS_CUBE_TENCENT_URL
-                    if geocoder_provider == "tencent"
-                    else config.CLASS_CUBE_GEOCODER_URL
-                )
+                config.CLASS_CUBE_TENCENT_URL
+                if geocoder_provider == "tencent"
+                else config.CLASS_CUBE_GEOCODER_URL
             ),
             user_agent=config.CLASS_CUBE_GEOCODER_USER_AGENT,
             provider=geocoder_provider,
-            account_id=(
-                config.CLASS_CUBE_APIHZ_ID
-                if geocoder_provider == "apihz"
-                else ""
-            ),
             api_key=(
-                config.CLASS_CUBE_APIHZ_KEY
-                if geocoder_provider == "apihz"
-                else (
-                    config.CLASS_CUBE_TENCENT_KEY
-                    if geocoder_provider == "tencent"
-                    else config.CLASS_CUBE_GEOCODER_KEY
-                )
+                config.CLASS_CUBE_TENCENT_KEY
+                if geocoder_provider == "tencent"
+                else config.CLASS_CUBE_GEOCODER_KEY
             ),
-            coordinate_system=config.CLASS_CUBE_APIHZ_COORDINATE_SYSTEM,
             shared_rate_file=config.CLASS_CUBE_GEOCODER_RATE_FILE,
         )
         self._qr_targets: dict[str, _QrTarget] = {}
@@ -755,9 +743,7 @@ class ClassCubeService:
             "min_zoom": 3,
             "max_zoom": 20,
             "coordinate_system": "GCJ02",
-            "search_provider": str(
-                config.CLASS_CUBE_GEOCODER_PROVIDER or "tencent"
-            ).lower(),
+            "search_provider": self.geocoder.provider,
             "search_notice": (
                 "地址搜索由地图服务处理，请勿输入个人住宅等敏感信息"
             ),

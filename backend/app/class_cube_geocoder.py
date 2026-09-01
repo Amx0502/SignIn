@@ -17,7 +17,7 @@ class ClassCubeGeocoderError(RuntimeError):
 
 
 class ClassCubeGeocoder:
-    """Small Nominatim client with process-wide throttling and an in-memory cache."""
+    """Address search client with process-wide throttling and an in-memory cache."""
 
     def __init__(
         self,
@@ -25,9 +25,7 @@ class ClassCubeGeocoder:
         base_url: str,
         user_agent: str,
         provider: str = "nominatim",
-        account_id: str = "",
         api_key: str = "",
-        coordinate_system: str = "gcj02",
         cache_ttl_seconds: float = 24 * 60 * 60,
         cache_limit: int = 512,
         minimum_interval_seconds: float | None = None,
@@ -38,21 +36,14 @@ class ClassCubeGeocoder:
         self.base_url = str(base_url).rstrip("/")
         self.user_agent = str(user_agent).strip()
         self.provider = str(provider or "nominatim").strip().lower()
-        if self.provider not in {"amap", "apihz", "nominatim", "tencent"}:
+        if self.provider not in {"amap", "nominatim", "tencent"}:
             self.provider = "tencent"
-        self.account_id = str(account_id or "").strip()
         self.api_key = str(api_key or "").strip()
-        self.coordinate_system = (
-            "GCJ02"
-            if str(coordinate_system or "").strip().lower() == "gcj02"
-            else "WGS84"
-        )
         self.cache_ttl_seconds = max(float(cache_ttl_seconds), 0.0)
         self.cache_limit = max(int(cache_limit), 1)
-        default_interval = 6.1 if self.provider == "apihz" else 1.0
         self.minimum_interval_seconds = max(
             float(
-                default_interval
+                1.0
                 if minimum_interval_seconds is None
                 else minimum_interval_seconds
             ),
@@ -254,99 +245,6 @@ class ClassCubeGeocoder:
                 "coordinate_system": "WGS84",
             })
         return tuple(normalized)
-
-    @classmethod
-    def _normalize_apihz_result(
-        cls,
-        payload: Any,
-        query: str,
-        coordinate_system: str,
-    ) -> tuple[dict[str, Any], ...]:
-        if not isinstance(payload, dict):
-            raise ClassCubeGeocoderError("国内模糊地址搜索返回了无效数据")
-        try:
-            code = int(payload.get("code"))
-        except (TypeError, ValueError):
-            code = 0
-        if code != 200:
-            detail = cls._text(payload.get("msg"))
-            normalized_detail = detail.casefold()
-            credential_error = any(token in normalized_detail for token in (
-                "key", "秘钥", "密钥", "id参数", "id 参数", "用户id",
-            ))
-            raise ClassCubeGeocoderError(
-                detail or "国内模糊地址搜索失败，请稍后重试",
-                retryable=not credential_error,
-            )
-        try:
-            latitude = float(payload.get("lat"))
-            longitude = float(payload.get("lng"))
-        except (TypeError, ValueError) as exc:
-            raise ClassCubeGeocoderError(
-                "国内模糊地址搜索未返回有效坐标"
-            ) from exc
-        if (
-            not math.isfinite(latitude)
-            or not math.isfinite(longitude)
-            or not -90 <= latitude <= 90
-            or not -180 <= longitude <= 180
-        ):
-            raise ClassCubeGeocoderError(
-                "国内模糊地址搜索未返回有效坐标"
-            )
-        try:
-            score = max(0.0, min(float(payload.get("score")), 100.0))
-        except (TypeError, ValueError):
-            score = None
-        level = cls._text(payload.get("level")) or "地点"
-        result = {
-            "id": f"apihz:{latitude:.7f}:{longitude:.7f}",
-            "name": query,
-            "address": query,
-            "latitude": latitude,
-            "longitude": longitude,
-            "category": level,
-            "type": level,
-            "province": "",
-            "city": "",
-            "district": "",
-            "provider": "apihz",
-            "coordinate_system": coordinate_system,
-            "level": level,
-        }
-        if score is not None:
-            result["score"] = round(score, 1)
-        return (result,)
-
-    def _request_apihz(
-        self,
-        query: str,
-    ) -> tuple[dict[str, Any], ...]:
-        if not self.account_id or not self.api_key:
-            raise ClassCubeGeocoderError(
-                "尚未配置接口盒子用户 ID 或通讯密钥，无法使用国内模糊地址搜索",
-                retryable=False,
-            )
-        response = self._session.post(
-            f"{self.base_url}/jwjuhe.php",
-            data={
-                "id": self.account_id,
-                "key": self.api_key,
-                "address": query,
-            },
-            headers={
-                "User-Agent": self.user_agent,
-                "Accept": "application/json",
-                "Accept-Language": "zh-CN,zh;q=0.9",
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-        return self._normalize_apihz_result(
-            response.json(),
-            query,
-            self.coordinate_system,
-        )
 
     @staticmethod
     def _text(value: Any) -> str:
@@ -659,30 +557,16 @@ class ClassCubeGeocoder:
             if cached is not None:
                 return cached
 
-            if (
-                self.provider in {"apihz", "tencent"}
-                and not self.api_key
-            ):
+            if self.provider == "tencent" and not self.api_key:
                 raise ClassCubeGeocoderError(
-                    (
-                        "尚未配置腾讯位置服务 Key，无法使用腾讯地点搜索"
-                        if self.provider == "tencent"
-                        else "尚未配置接口盒子通讯密钥，无法使用国内模糊地址搜索"
-                    ),
-                    retryable=False,
-                )
-            if self.provider == "apihz" and not self.account_id:
-                raise ClassCubeGeocoderError(
-                    "尚未配置接口盒子用户 ID，无法使用国内模糊地址搜索",
+                    "尚未配置腾讯位置服务 Key，无法使用腾讯地点搜索",
                     retryable=False,
                 )
 
             self._wait_for_rate_slot()
 
             try:
-                if self.provider == "apihz":
-                    results = self._request_apihz(normalized_query)
-                elif self.provider == "tencent":
+                if self.provider == "tencent":
                     results = self._request_tencent(
                         normalized_query,
                         normalized_limit,

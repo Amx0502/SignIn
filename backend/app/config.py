@@ -47,22 +47,6 @@ CLASS_CUBE_GEOCODER_KEY = os.getenv(
     "CLASS_CUBE_GEOCODER_KEY",
     "",
 )
-CLASS_CUBE_APIHZ_URL = os.getenv(
-    "CLASS_CUBE_APIHZ_URL",
-    "https://cn.apihz.cn/api/other",
-)
-CLASS_CUBE_APIHZ_ID = os.getenv(
-    "CLASS_CUBE_APIHZ_ID",
-    "",
-)
-CLASS_CUBE_APIHZ_KEY = os.getenv(
-    "CLASS_CUBE_APIHZ_KEY",
-    "",
-)
-CLASS_CUBE_APIHZ_COORDINATE_SYSTEM = os.getenv(
-    "CLASS_CUBE_APIHZ_COORDINATE_SYSTEM",
-    "gcj02",
-)
 CLASS_CUBE_GEOCODER_USER_AGENT = os.getenv(
     "CLASS_CUBE_GEOCODER_USER_AGENT",
     "SignIn-ClassCube/1.0",
