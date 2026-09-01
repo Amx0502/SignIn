@@ -6,10 +6,26 @@ from .auth_models import (
     MenuConfigAuditLogRow,
     MenuConfigRow,
     MenuConfigStateRow,
+    UserFeaturePolicyRow,
     UserMenuOverrideRow,
     UserRow,
 )
 from .menu_catalog import MENU_CATALOG, MENU_KEYS, build_effective_menu, catalog_tree
+
+
+CLASS_CUBE_ONLY_VISIBLE_KEYS = frozenset({
+    "class_cube",
+    "class_cube.accounts",
+    "class_cube.tasks",
+    "class_cube.runs",
+})
+
+
+def _class_cube_only_overrides() -> dict[str, bool]:
+    return {
+        key: key in CLASS_CUBE_ONLY_VISIBLE_KEYS
+        for key in MENU_KEYS
+    }
 
 
 class MenuVersionConflictError(RuntimeError):
@@ -24,12 +40,40 @@ class MenuRepository:
 
     def initialize(self) -> None:
         with self.database.session() as session:
-            if session.get(MenuConfigStateRow, 1) is None:
-                session.add(MenuConfigStateRow(id=1, version=1))
+            state = session.get(MenuConfigStateRow, 1)
+            if state is None:
+                state = MenuConfigStateRow(id=1, version=1)
+                session.add(state)
             existing = set(session.scalars(select(MenuConfigRow.menu_key)).all())
             for item in MENU_CATALOG:
                 if item["key"] not in existing:
                     session.add(MenuConfigRow(menu_key=item["key"], visible=True))
+
+            desired = _class_cube_only_overrides()
+            restricted_user_ids = session.scalars(
+                select(UserFeaturePolicyRow.user_id)
+                .join(UserRow, UserRow.id == UserFeaturePolicyRow.user_id)
+                .where(
+                    UserRow.role == "user",
+                    UserFeaturePolicyRow.class_cube_only.is_(True),
+                )
+            ).all()
+            migrated = False
+            for user_id in restricted_user_ids:
+                if self._user_overrides(session, user_id) == desired:
+                    continue
+                session.execute(delete(UserMenuOverrideRow).where(
+                    UserMenuOverrideRow.user_id == user_id
+                ))
+                for key, visible in desired.items():
+                    session.add(UserMenuOverrideRow(
+                        user_id=user_id,
+                        menu_key=key,
+                        visible=visible,
+                    ))
+                migrated = True
+            if migrated:
+                state.version = int(state.version or 1) + 1
 
     def current_version(self) -> int:
         with self.database.session() as session:
@@ -222,10 +266,7 @@ class MenuRepository:
                 raise ValueError("用户不存在")
             current = self._user_overrides(session, user_id)
             if class_cube_only and user.role == "user":
-                requested = {
-                    key: (key == "class_cube" or key.startswith("class_cube."))
-                    for key in MENU_KEYS
-                }
+                requested = _class_cube_only_overrides()
             else:
                 requested = {}
             if current == requested:

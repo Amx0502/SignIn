@@ -532,7 +532,8 @@ async def update_user(
             expires_at=payload.expires_at,
         )
         if (
-            bool(previous.get("class_cube_only")) != class_cube_only
+            class_cube_only
+            or bool(previous.get("class_cube_only")) != class_cube_only
             or previous.get("role") != payload.role
         ):
             menu_result = get_menu_repository().apply_user_access_profile(

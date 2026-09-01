@@ -119,14 +119,14 @@
           </header>
           <div class="policy-grid">
             <div class="policy-card policy-card--wide">
-              <div class="policy-card__title"><strong>班级魔方单用户</strong><small>快速套用仅班级魔方的菜单权限</small></div>
+              <div class="policy-card__title"><strong>班级魔方单用户</strong><small>仅开放账号、任务和运行记录</small></div>
               <el-switch
                 v-model="userForm.class_cube_only"
-                active-text="仅显示班级魔方"
+                active-text="仅显示核心菜单"
                 inactive-text="使用自定义菜单权限"
                 @change="handleClassCubeOnlyChange"
               />
-              <p>开启后会一键隐藏“小小签到”一级菜单及全部子菜单，并显示班级魔方菜单。</p>
+              <p>开启后隐藏“小小签到”及全部子菜单，同时隐藏班级魔方的“系统概览”和“魔方日志”。</p>
             </div>
 
             <div class="policy-card">
