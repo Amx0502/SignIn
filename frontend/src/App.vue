@@ -825,6 +825,7 @@ function closeSidebar() {
   if (isMobile.value || sidebarCollapsed.value) {
     sidebarMenuRef.value?.close('menu:xxqd')
     sidebarMenuRef.value?.close('menu:class_cube')
+    sidebarMenuRef.value?.close('menu:miaoying')
     sidebarMenuRef.value?.close('menu:system')
     sidebarMenuRenderKey.value += 1
     sidebarCollapsed.value = true

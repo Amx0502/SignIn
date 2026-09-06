@@ -47,6 +47,11 @@ from .class_cube_logging import ClassCubeLogStore, create_class_cube_logger
 from .menu_events import MenuEventBroker
 from .menu_repository import MenuRepository
 from .menu_router import create_menu_guard, create_menu_router
+from .miaoying_client import MiaoyingClient
+from .miaoying_database import MiaoyingDatabase
+from .miaoying_router import create_miaoying_router
+from .miaoying_scheduler import MiaoyingScheduler
+from .miaoying_service import MiaoyingService
 from .repository import DuplicateMobileError
 from .service import AppState
 
@@ -54,6 +59,7 @@ app_state = AppState(start_scheduler=False)
 auth_service = AuthService()
 auth_database: AuthDatabase | None = None
 class_cube_database: ClassCubeDatabase | None = None
+miaoying_database: MiaoyingDatabase | None = None
 menu_repository: MenuRepository | None = None
 menu_event_broker = MenuEventBroker()
 class_cube_log_store = ClassCubeLogStore()
@@ -62,10 +68,12 @@ security = HTTPBearer()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global auth_database, class_cube_database, menu_repository
+    global auth_database, class_cube_database, miaoying_database, menu_repository
     created_auth_repository = False
     class_cube_service: ClassCubeService | None = None
     class_cube_scheduler: ClassCubeScheduler | None = None
+    miaoying_service: MiaoyingService | None = None
+    miaoying_scheduler: MiaoyingScheduler | None = None
     try:
         database_settings = load_database_config()
         app_state.initialize_database(database_settings)
@@ -97,10 +105,19 @@ async def lifespan(app: FastAPI):
         app.state.class_cube_service = class_cube_service
         class_cube_scheduler = ClassCubeScheduler(class_cube_service)
         app.state.class_cube_scheduler = class_cube_scheduler
+        miaoying_database = MiaoyingDatabase(database_settings)
+        miaoying_database.initialize()
+        miaoying_service = MiaoyingService(miaoying_database, MiaoyingClient())
+        app.state.miaoying_service = miaoying_service
+        miaoying_scheduler = MiaoyingScheduler(miaoying_service)
+        miaoying_scheduler.start()
         app_state.start_background_scheduler()
         yield
     finally:
         try:
+            if miaoying_scheduler is not None:
+                miaoying_scheduler.shutdown()
+            app.state.miaoying_scheduler = None
             if class_cube_scheduler is not None:
                 class_cube_scheduler.shutdown()
             app.state.class_cube_scheduler = None
@@ -118,6 +135,12 @@ async def lifespan(app: FastAPI):
                             class_cube_database.dispose()
                     finally:
                         class_cube_database = None
+                        if miaoying_service is not None:
+                            miaoying_service.close()
+                        app.state.miaoying_service = None
+                        if miaoying_database is not None:
+                            miaoying_database.dispose()
+                            miaoying_database = None
                         if auth_database is not None:
                             auth_database.dispose()
                             auth_database = None
@@ -208,6 +231,7 @@ app.include_router(
     )
 )
 app.include_router(create_class_cube_router(get_current_user, require_menu))
+app.include_router(create_miaoying_router(get_current_user, require_menu))
 
 
 @app.get("/api/admin/tencent-location-usage")
@@ -244,34 +268,41 @@ def get_dashboard_summary(
         failure("班级魔方服务尚未初始化", 503)
     xxqd = app_state.repository.dashboard_summary(start_at, end_at)
     class_cube = service.repository.dashboard_summary(start_at, end_at)
+    miaoying_service = getattr(request.app.state, "miaoying_service", None)
+    miaoying = miaoying_service.dashboard_summary(start_at, end_at) if miaoying_service else {
+        "accounts": 0, "tasks": 0, "enabled_tasks": 0, "executions": 0,
+        "success": 0, "failed": 0, "types": [], "recent_runs": [], "ranking": [],
+    }
 
     recent_runs = []
     for run in xxqd.pop("recent_runs", []):
         recent_runs.append({**run, "platform": "xxqd"})
     for run in class_cube.pop("recent_runs", []):
         recent_runs.append({**run, "platform": "class_cube"})
+    for run in miaoying.pop("recent_runs", []):
+        recent_runs.append({**run, "platform": "miaoying"})
     recent_runs.sort(
         key=lambda item: item.get("started_at") or datetime.min,
         reverse=True,
     )
 
     type_totals: dict[str, int] = {}
-    for platform in (xxqd, class_cube):
+    for platform in (xxqd, class_cube, miaoying):
         for item in platform.pop("types", []):
             mode = str(item.get("mode") or "unknown")
             type_totals[mode] = type_totals.get(mode, 0) + int(item.get("value") or 0)
 
     ranking = []
-    for platform_key, platform in (("xxqd", xxqd), ("class_cube", class_cube)):
+    for platform_key, platform in (("xxqd", xxqd), ("class_cube", class_cube), ("miaoying", miaoying)):
         for item in platform.pop("ranking", []):
             ranking.append({**item, "platform": platform_key})
     ranking.sort(key=lambda item: (-int(item.get("value") or 0), str(item.get("name") or "")))
 
-    executions = xxqd["executions"] + class_cube["executions"]
-    succeeded = xxqd["success"] + class_cube["success"]
-    failed = xxqd["failed"] + class_cube["failed"]
+    executions = xxqd["executions"] + class_cube["executions"] + miaoying["executions"]
+    succeeded = xxqd["success"] + class_cube["success"] + miaoying["success"]
+    failed = xxqd["failed"] + class_cube["failed"] + miaoying["failed"]
     other = max(0, executions - succeeded - failed)
-    for platform in (xxqd, class_cube):
+    for platform in (xxqd, class_cube, miaoying):
         platform["other"] = max(0, platform["executions"] - platform["success"] - platform["failed"])
         platform["success_rate"] = round(
             platform["success"] * 100 / platform["executions"], 1
@@ -289,9 +320,9 @@ def get_dashboard_summary(
             "failed": failed,
             "other": other,
             "success_rate": round(succeeded * 100 / executions, 1) if executions else 0,
-            "enabled_tasks": xxqd["enabled_tasks"] + class_cube["enabled_tasks"],
+            "enabled_tasks": xxqd["enabled_tasks"] + class_cube["enabled_tasks"] + miaoying["enabled_tasks"],
         },
-        "platforms": {"xxqd": xxqd, "class_cube": class_cube},
+        "platforms": {"xxqd": xxqd, "class_cube": class_cube, "miaoying": miaoying},
         "status_distribution": [
             {"key": "success", "label": "成功", "value": succeeded},
             {"key": "failed", "label": "失败", "value": failed},

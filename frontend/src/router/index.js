@@ -45,7 +45,13 @@ const routes = [
   { path: '/class-cube/tasks', name: 'ClassCubeTasks', component: ClassCubeTasks, meta: { title: '自动任务', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.tasks' } },
   { path: '/class-cube/runs', name: 'ClassCubeRuns', component: ClassCubeRuns, meta: { title: '运行记录', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.runs' } },
   { path: '/class-cube/logs', name: 'ClassCubeLogs', component: ClassCubeLogs, meta: { title: '魔方日志', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.logs' } },
-  { path: '/miaoying', name: 'Miaoying', component: Miaoying, meta: { title: '秒应', parentTitle: '秒应', requiresAuth: true, menuKey: 'miaoying' } }
+  { path: '/miaoying', redirect: '/miaoying/accounts' },
+  { path: '/miaoying/overview', name: 'MiaoyingOverview', component: Miaoying, meta: { title: '系统概览', parentTitle: '秒应', requiresAuth: true, requiresAdmin: true, menuKey: 'miaoying.overview' } },
+  { path: '/miaoying/accounts', name: 'MiaoyingAccounts', component: Miaoying, meta: { title: '账号管理', parentTitle: '秒应', requiresAuth: true, menuKey: 'miaoying.accounts' } },
+  { path: '/miaoying/auto', name: 'MiaoyingAuto', component: Miaoying, meta: { title: '自动签到', parentTitle: '秒应', requiresAuth: true, menuKey: 'miaoying.auto' } },
+  { path: '/miaoying/tasks', name: 'MiaoyingTasks', component: Miaoying, meta: { title: '任务管理', parentTitle: '秒应', requiresAuth: true, menuKey: 'miaoying.tasks' } },
+  { path: '/miaoying/runs', name: 'MiaoyingRuns', component: Miaoying, meta: { title: '运行记录', parentTitle: '秒应', requiresAuth: true, menuKey: 'miaoying.runs' } },
+  { path: '/miaoying/logs', name: 'MiaoyingLogs', component: Miaoying, meta: { title: '秒应日志', parentTitle: '秒应', requiresAuth: true, menuKey: 'miaoying.logs' } }
 ]
 
 const router = createRouter({

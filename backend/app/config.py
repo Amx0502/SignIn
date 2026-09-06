@@ -56,6 +56,15 @@ CLASS_CUBE_TENCENT_RATE_FILE = os.getenv(
     "CLASS_CUBE_TENCENT_RATE_FILE",
     str(Path(tempfile.gettempdir()) / "signin-class-cube-tencent.rate"),
 )
+MIAOYING_QR_API_URL = os.getenv(
+    "MIAOYING_QR_API_URL", "https://service.hui51.cn/api/weixin"
+).rstrip("/")
+MIAOYING_GRAPHQL_URL = os.getenv(
+    "MIAOYING_GRAPHQL_URL", "https://www.aiphoto8.cn/api/graphql"
+)
+MIAOYING_TOKEN_ENCRYPTION_KEY = os.getenv(
+    "MIAOYING_TOKEN_ENCRYPTION_KEY", ""
+).strip()
 PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3IbkWjuSaZWr/UtdHFsZ
 f9z9pQnPssVYzSVkhRw2pjcbdey9LrHee/63TE7Fr2jm3s+FAkDI1V+r/aJRamg7

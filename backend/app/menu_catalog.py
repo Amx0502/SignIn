@@ -101,11 +101,17 @@ MENU_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "key": "miaoying",
         "title": "秒应",
-        "path": "/miaoying",
+        "path": None,
         "parent_key": None,
         "icon": "miaoying",
         "order": 30,
     },
+    {"key":"miaoying.overview","title":"系统概览","path":"/miaoying/overview","parent_key":"miaoying","icon":"Odometer","order":31},
+    {"key":"miaoying.accounts","title":"账号管理","path":"/miaoying/accounts","parent_key":"miaoying","icon":"User","order":32},
+    {"key":"miaoying.auto","title":"自动签到","path":"/miaoying/auto","parent_key":"miaoying","icon":"Timer","order":33},
+    {"key":"miaoying.tasks","title":"任务管理","path":"/miaoying/tasks","parent_key":"miaoying","icon":"List","order":34},
+    {"key":"miaoying.runs","title":"运行记录","path":"/miaoying/runs","parent_key":"miaoying","icon":"Document","order":35},
+    {"key":"miaoying.logs","title":"秒应日志","path":"/miaoying/logs","parent_key":"miaoying","icon":"Document","order":36},
 )
 
 MENU_BY_KEY = {item["key"]: item for item in MENU_CATALOG}
