@@ -43,7 +43,15 @@
             </el-menu-item>
           </el-sub-menu>
           <el-menu-item v-else :index="parent.path">
-            <el-icon><component :is="menuIcon(parent.icon)" /></el-icon>
+            <el-icon>
+              <img
+                v-if="isImageMenuIcon(parent.icon)"
+                :src="menuImage(parent.icon)"
+                class="menu-custom-icon"
+                :alt="parent.title"
+              />
+              <component :is="menuIcon(parent.icon)" v-else />
+            </el-icon>
             <span>{{ parent.title }}</span>
           </el-menu-item>
         </template>
@@ -227,6 +235,7 @@ import { parseLogLine } from './utils/logConsole.js'
 import classCubeApi from './api/classCube.js'
 import xxqdImage from './img/xxqd.png'
 import classCubeImage from './img/bjmf.png'
+import miaoyingImage from './img/miaoying.png'
 import {
   menuState,
   resetMenuState,
@@ -264,7 +273,7 @@ const iconMap = {
   UserFilled,
   Menu,
 }
-const imageMap = { xxqd: xxqdImage, class_cube: classCubeImage }
+const imageMap = { xxqd: xxqdImage, class_cube: classCubeImage, miaoying: miaoyingImage }
 
 const isLoginPage = computed(() => route.path === '/login')
 

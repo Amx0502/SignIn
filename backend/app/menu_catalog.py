@@ -98,6 +98,14 @@ MENU_CATALOG: tuple[dict[str, Any], ...] = (
         "icon": "Document",
         "order": 25,
     },
+    {
+        "key": "miaoying",
+        "title": "秒应",
+        "path": "/miaoying",
+        "parent_key": None,
+        "icon": "miaoying",
+        "order": 30,
+    },
 )
 
 MENU_BY_KEY = {item["key"]: item for item in MENU_CATALOG}

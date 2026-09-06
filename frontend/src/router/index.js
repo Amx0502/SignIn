@@ -16,6 +16,7 @@ import MenuManagement from '../views/MenuManagement.vue'
 import CheckinDelaySettings from '../views/CheckinDelaySettings.vue'
 import NoAvailableMenus from '../views/NoAvailableMenus.vue'
 import Dashboard from '../views/Dashboard.vue'
+import Miaoying from '../views/Miaoying.vue'
 import {
   ensureMenuCatalog,
   firstAllowedPath,
@@ -43,7 +44,8 @@ const routes = [
   { path: '/class-cube/accounts', name: 'ClassCubeAccounts', component: ClassCubeAccounts, meta: { title: '账号管理', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.accounts' } },
   { path: '/class-cube/tasks', name: 'ClassCubeTasks', component: ClassCubeTasks, meta: { title: '自动任务', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.tasks' } },
   { path: '/class-cube/runs', name: 'ClassCubeRuns', component: ClassCubeRuns, meta: { title: '运行记录', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.runs' } },
-  { path: '/class-cube/logs', name: 'ClassCubeLogs', component: ClassCubeLogs, meta: { title: '魔方日志', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.logs' } }
+  { path: '/class-cube/logs', name: 'ClassCubeLogs', component: ClassCubeLogs, meta: { title: '魔方日志', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.logs' } },
+  { path: '/miaoying', name: 'Miaoying', component: Miaoying, meta: { title: '秒应', parentTitle: '秒应', requiresAuth: true, menuKey: 'miaoying' } }
 ]
 
 const router = createRouter({
