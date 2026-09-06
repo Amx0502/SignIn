@@ -20,9 +20,19 @@
               </el-space>
             </div>
           </template>
+          <div class="account-search-bar">
+            <el-input
+              v-model="accountKeyword"
+              clearable
+              :prefix-icon="Search"
+              placeholder="搜索名称或手机号"
+              aria-label="搜索小小签到账号"
+            />
+            <span>显示 {{ filteredAccounts.length }}/{{ state.accounts.length }} 个账号</span>
+          </div>
           <el-table
             ref="tableRef"
-            :data="state.accounts"
+            :data="filteredAccounts"
             row-key="mobile"
             highlight-current-row
             @current-change="onSelectAccount"
@@ -84,8 +94,8 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
-import { Plus, Key, Refresh, VideoPlay, Delete } from '@element-plus/icons-vue'
+import { computed, reactive, ref } from 'vue'
+import { Plus, Key, Refresh, VideoPlay, Delete, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAppState } from '../composables/useAppState'
 import { getAccountDeleteIndexes } from '../utils/batchDelete'
@@ -103,6 +113,15 @@ const selectedIndex = ref(-1)
 const selectedMobile = ref('')
 const selectedAccounts = ref([])
 const batchDeleting = ref(false)
+const accountKeyword = ref('')
+const filteredAccounts = computed(() => {
+  const keyword = accountKeyword.value.trim().toLowerCase()
+  if (!keyword) return state.value.accounts
+  return state.value.accounts.filter(account => (
+    [account.name, account.mobile]
+      .some(value => String(value || '').toLowerCase().includes(keyword))
+  ))
+})
 const form = reactive({
   name: '',
   mobile: '',
@@ -276,8 +295,19 @@ async function refreshAllTokens() {
 </script>
 
 <style scoped>
+.account-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.account-search-bar .el-input { max-width: 360px; }
+.account-search-bar span { flex: none; color: #64748b; font-size: 12px; }
+
 @media (max-width: 768px) {
   .card-header { flex-direction: column; align-items: flex-start; }
+  .account-search-bar { align-items: stretch; flex-direction: column; }
+  .account-search-bar .el-input { max-width: none; }
 }
 
 @media (max-width: 480px) {

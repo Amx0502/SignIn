@@ -21,6 +21,14 @@
                     :value="idx"
                   />
                 </el-select>
+                <el-button
+                  type="warning"
+                  plain
+                  :icon="Refresh"
+                  :disabled="selectedAccountIndex == null || selectedAccountIndex < 0 || tokenRefreshing"
+                  :loading="tokenRefreshing"
+                  @click="refreshSelectedAccountToken"
+                >刷新 Token</el-button>
                 <el-tag v-if="currentAccount && currentAccount.projects && currentAccount.projects.length > 0" type="info" size="small">
                   任务上限 {{ (currentAccount.tasks || []).length }}/{{ currentAccount.projects.length }}
                 </el-tag>
@@ -193,7 +201,7 @@
 
 <script setup>
 import { reactive, ref, computed, onMounted, watch } from 'vue'
-import { Search, VideoPlay, Delete } from '@element-plus/icons-vue'
+import { Search, VideoPlay, Delete, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CheckinResultDialog from './CheckinResultDialog.vue'
 import TaskDateSchedule from './TaskDateSchedule.vue'
@@ -207,6 +215,7 @@ const { state, refreshState, refreshLogs, selectedAccountIndex } = useAppState()
 const selectedActualIndex = ref(-1)
 const projects = ref([])
 const projectsLoading = ref(false)
+const tokenRefreshing = ref(false)
 const formRef = ref(null)
 const fileList = ref([])
 const checkinResultVisible = ref(false)
@@ -412,6 +421,20 @@ async function fetchProjects() {
     ElMessage.error(err.message || '项目列表获取失败')
   } finally {
     projectsLoading.value = false
+  }
+}
+
+async function refreshSelectedAccountToken() {
+  if (selectedAccountIndex.value == null || selectedAccountIndex.value < 0 || tokenRefreshing.value) return
+  tokenRefreshing.value = true
+  try {
+    await api.refreshAccountToken(selectedAccountIndex.value)
+    await Promise.all([refreshState(), refreshLogs()])
+    ElMessage.success(`账号「${currentAccount.value?.name || '当前账号'}」Token 已刷新`)
+  } catch (err) {
+    ElMessage.error(err.message || 'Token 刷新失败')
+  } finally {
+    tokenRefreshing.value = false
   }
 }
 

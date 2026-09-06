@@ -34,10 +34,21 @@
             </div>
           </div>
         </template>
+        <div v-if="accounts.length" class="account-search-bar">
+          <el-input
+            v-model="accountKeyword"
+            clearable
+            :prefix-icon="Search"
+            placeholder="搜索姓名、备注或 UID"
+            aria-label="搜索班级魔方账号"
+          />
+          <span>显示 {{ filteredAccounts.length }}/{{ accounts.length }}</span>
+        </div>
         <el-empty v-if="!accounts.length" description="暂无账号，请先扫码登录" :image-size="78" />
+        <el-empty v-else-if="!filteredAccounts.length" description="没有找到匹配账号" :image-size="68" />
         <div v-else class="account-list">
           <article
-            v-for="account in accounts"
+            v-for="account in filteredAccounts"
             :key="account.id"
             class="account-row"
             :class="{ active: account.id === selectedAccountId }"
@@ -245,7 +256,7 @@
 import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import {
   Aim, Camera, Cellphone, CircleCheck, CircleCheckFilled, CircleCloseFilled,
-  Delete, Key, Lock, MoreFilled, Plus, Position, Reading, Refresh, Timer, Upload, User, WarningFilled,
+  Delete, Key, Lock, MoreFilled, Plus, Position, Reading, Refresh, Search, Timer, Upload, User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { buildManualCheckinPayload, shouldShowManualCheckinForm } from '../../utils/classCubeCheckin.js'
@@ -295,6 +306,7 @@ const photoUploading = ref(false)
 const photoFiles = ref([])
 const batchDeleting = ref(false)
 const selectedAccountIds = ref(new Set())
+const accountKeyword = ref('')
 const selectedBatchAccountIds = ref([])
 const resultVisible = ref(false)
 const result = ref(null)
@@ -345,6 +357,14 @@ watch(
 
 const activeItems = computed(() => props.items.filter(item => item.status === 'active').length)
 const enabledTasks = computed(() => props.tasks.filter(task => task.enabled).length)
+const filteredAccounts = computed(() => {
+  const keyword = accountKeyword.value.trim().toLowerCase()
+  if (!keyword) return props.accounts
+  return props.accounts.filter(account => (
+    [account.name, account.remote_user_name, account.remote_uid, account.id]
+      .some(value => String(value ?? '').toLowerCase().includes(keyword))
+  ))
+})
 const canBatchCheckin = computed(() => (
   props.isAdmin
   && ['qr', 'password', 'gps'].includes(props.selectedItem?.mode)
@@ -605,6 +625,7 @@ function removePhoto() {
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.section-head strong,.section-head small { display: block; }.section-head strong { color: #172033; font-size: 16px; }.section-head small { margin-top: 4px; color: #64748b; font-size: 11px; }
 .checkin-card .section-head > div:first-child { min-width: 9em; flex: none; }
 .account-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.account-search-bar { display:flex;align-items:center;gap:10px;margin-bottom:12px }.account-search-bar .el-input { min-width:0;flex:1 }.account-search-bar span { flex:none;color:#64748b;font-size:11px;white-space:nowrap }
 .sync-actions { display: grid; grid-template-columns: repeat(3, max-content); align-items: center; justify-content: end; gap: 8px; }
 .sync-actions .el-button { min-width: 0; margin-left: 0; white-space: nowrap; }
 .account-list,.item-list { display: grid; gap: 9px; overflow-y: auto; overflow-x: hidden; }
@@ -654,5 +675,5 @@ function removePhoto() {
   .manual-actions .el-button{width:100%;max-width:100%;margin-left:0}
   .manual-actions :deep(.el-checkbox){min-width:0;height:auto;white-space:normal}
 }
-@media(max-width:1024px){.workspace-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.stats-grid{grid-template-columns:1fr 1fr;gap:8px}.stats-grid article{min-height:76px;padding:12px}.section-head,.manual-form__head,.selector-row,.manual-actions{align-items:stretch;flex-direction:column}.account-head-actions{display:grid;grid-template-columns:1fr}.location-grid{grid-template-columns:1fr}.section-head .el-button,.manual-actions .el-button{width:100%}}
+@media(max-width:1024px){.workspace-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.stats-grid{grid-template-columns:1fr 1fr;gap:8px}.stats-grid article{min-height:76px;padding:12px}.section-head,.manual-form__head,.selector-row,.manual-actions{align-items:stretch;flex-direction:column}.account-head-actions{display:grid;grid-template-columns:1fr}.account-search-bar{align-items:stretch;flex-direction:column}.account-search-bar span{align-self:flex-end}.location-grid{grid-template-columns:1fr}.section-head .el-button,.manual-actions .el-button{width:100%}}
 </style>
