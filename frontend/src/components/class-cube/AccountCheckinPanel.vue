@@ -203,7 +203,7 @@
                 <div class="batch-target-picker">
                   <strong>选择同班账号</strong>
                   <el-checkbox-group v-model="selectedBatchAccountIds">
-                    <el-checkbox v-for="target in batchTargets" :key="target.id" :label="target.id">
+                    <el-checkbox v-for="target in batchTargets" :key="target.id" :value="target.id">
                       {{ target.name || target.remote_user_name || `账号 ${target.id}` }}
                     </el-checkbox>
                   </el-checkbox-group>
