@@ -629,7 +629,19 @@ function removePhoto() {
 .sync-actions { display: grid; grid-template-columns: repeat(3, max-content); align-items: center; justify-content: end; gap: 8px; }
 .sync-actions .el-button { min-width: 0; margin-left: 0; white-space: nowrap; }
 .account-list,.item-list { display: grid; gap: 9px; overflow-y: auto; overflow-x: hidden; }
-.account-list { max-height: 480px; }
+.account-list {
+  max-height: 480px;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+  scrollbar-color: #60a5fa #eff6ff;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.account-list::-webkit-scrollbar { width: 10px; }
+.account-list::-webkit-scrollbar-track { border-radius: 999px; background: #eff6ff; }
+.account-list::-webkit-scrollbar-thumb { border: 2px solid #eff6ff; border-radius: 999px; background: #60a5fa; }
+.account-list::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
 .item-list {
   max-height: 150px;
   padding-right: 4px;
