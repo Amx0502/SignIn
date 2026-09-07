@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -7,6 +8,7 @@ class MiaoyingAccountUpdate(BaseModel):
     remark: str = ""
     real_name: str = ""
     school_no: str = ""
+    class_name: str = ""
     enabled: bool = True
 
 
@@ -20,6 +22,7 @@ class MiaoyingManualCheckin(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
     longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
     notify_wecom: bool = True
+    answers: dict[str, Any] = Field(default_factory=dict)
 
 
 class MiaoyingTaskPayload(BaseModel):
@@ -38,6 +41,7 @@ class MiaoyingTaskPayload(BaseModel):
     location_name: str = ""
     latitude: float | None = None
     longitude: float | None = None
+    answers: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("date_mode")
     @classmethod

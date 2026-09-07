@@ -4,7 +4,9 @@ from . import config
 
 
 class MiaoyingRemoteError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, retryable: bool = True):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 class MiaoyingClient:
@@ -72,16 +74,48 @@ class MiaoyingClient:
         data = payload.get("data")
         return data if isinstance(data, dict) and data.get("token") else None
 
-    def graphql(self, token: str, operation: str, query: str, variables: dict) -> dict:
-        response = self.session.post(
-            self.graphql_url,
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={"operationName": operation, "query": query, "variables": variables},
-            timeout=20,
-        )
+    def graphql(
+        self,
+        token: str,
+        operation: str,
+        query: str,
+        variables: dict,
+        *,
+        retryable: bool = True,
+    ) -> dict:
+        attempts = 3 if retryable else 1
+        last_error = None
+        response = None
+        for _ in range(attempts):
+            try:
+                # 秒应网关偶尔会留下不可复用的 keep-alive 连接。GraphQL
+                # 查询使用短连接并允许重试，可避免连接池中的失效连接直接
+                # 变成系统 500；写操作不重试，防止响应超时后重复提交。
+                response = requests.post(
+                    self.graphql_url,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "User-Agent": "SignIn-Miaoying/1.0",
+                    },
+                    json={"operationName": operation, "query": query, "variables": variables},
+                    timeout=(5, 15),
+                )
+                break
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                last_error = exc
+        if response is None:
+            action = "提交签到" if not retryable else "查询"
+            suffix = "；结果可能已被上游接收，请先刷新签到记录再决定是否重试" if not retryable else "，请稍后重试"
+            raise MiaoyingRemoteError(
+                f"连接秒应{action}服务超时{suffix}", retryable=retryable
+            ) from last_error
         payload = self._json(response, f"秒应 {operation}")
         if payload.get("errors"):
-            message = payload["errors"][0].get("message", "GraphQL 请求失败")
+            errors = payload["errors"]
+            first_error = errors[0] if isinstance(errors, list) else errors
+            message = first_error.get("message", "GraphQL 请求失败") if isinstance(first_error, dict) else str(first_error)
             raise MiaoyingRemoteError(message)
         return payload.get("data") or {}
 
@@ -90,12 +124,12 @@ class MiaoyingClient:
         return data.get("me") or {}
 
     def get_tongjis(self, token: str, uid: str, limit: int = 50) -> list[dict]:
-        query = """query getTongjis($uid:String!,$limit:String,$skip:String){tongjis(sort:\"-createdAt\",createdBy:$uid,limit:$limit,skip:$skip){_id title content createdAt updatedAt isClosed isRepeat repeatStartDate repeatEndDate endTime isRemove needInfo needLocation needSubmitLocation needWifi needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields infoForms{type title required} allowSubmitTimeRules{_id startTime endTime}}}"""
+        query = """query getTongjis($uid:String!,$limit:String,$skip:String){tongjis(sort:\"-createdAt\",createdBy:$uid,limit:$limit,skip:$skip){_id title content createdAt updatedAt isClosed isRepeat repeatStartDate repeatEndDate endTime isRemove noName nameLabel needInfo needLocation needSubmitLocation needWifi needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}}}"""
         rows = self.graphql(token, "getTongjis", query, {"uid": uid, "limit": str(limit), "skip": "0"}).get("tongjis") or []
         return [row for row in rows if not row.get("isRemove")]
 
     def get_tongji(self, token: str, remote_id: str) -> dict:
-        query = """query getTongji($_id:String){tongji(_id:$_id){_id title content isClosed isRepeat startTime endTime repeatStartDate repeatEndDate needInfo needLocation needSubmitLocation needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields infoForms{id type title required} allowSubmitTimeRules{_id startTime endTime}}}"""
+        query = """query getTongji($_id:String){tongji(_id:$_id){_id title content isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel needInfo needLocation needSubmitLocation needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}}}"""
         return self.graphql(token, "getTongji", query, {"_id": remote_id}).get("tongji") or {}
 
     def get_records(self, token: str, uid: str, limit: int = 100) -> list[dict]:
@@ -104,7 +138,13 @@ class MiaoyingClient:
 
     def submit(self, token: str, payload: dict) -> str:
         query = """mutation createBaomingByInput($input:createBaomingInput!){createBaomingByInput(input:$input){_id}}"""
-        result = self.graphql(token, "createBaomingByInput", query, {"input": payload}).get("createBaomingByInput") or {}
+        result = self.graphql(
+            token,
+            "createBaomingByInput",
+            query,
+            {"input": payload},
+            retryable=False,
+        ).get("createBaomingByInput") or {}
         remote_id = str(result.get("_id") or "")
         if not remote_id:
             raise MiaoyingRemoteError("秒应未返回报名记录 ID，未确认签到成功")

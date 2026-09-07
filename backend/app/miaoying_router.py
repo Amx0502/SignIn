@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 
@@ -13,6 +15,9 @@ from .miaoying_models import (
 from .miaoying_service import MiaoyingNotFound, MiaoyingValidationError
 
 
+logger = logging.getLogger(__name__)
+
+
 def create_miaoying_router(auth_dependency, menu_dependency=None):
     router = APIRouter(prefix="/api/miaoying", tags=["miaoying"])
     guard = lambda key: menu_dependency(key) if menu_dependency else auth_dependency
@@ -23,8 +28,9 @@ def create_miaoying_router(auth_dependency, menu_dependency=None):
         except MiaoyingValidationError as exc: return JSONResponse(status_code=400, content={"ok":False,"error":str(exc)})
         except ClassCubeValidationError as exc: return JSONResponse(status_code=400, content={"ok":False,"error":str(exc)})
         except ClassCubeRemoteError as exc: return JSONResponse(status_code=502, content={"ok":False,"error":exc.message,"retryable":exc.retryable})
-        except MiaoyingRemoteError as exc: return JSONResponse(status_code=502, content={"ok":False,"error":str(exc),"retryable":True})
+        except MiaoyingRemoteError as exc: return JSONResponse(status_code=502, content={"ok":False,"error":str(exc),"retryable":exc.retryable})
         except Exception:
+            logger.exception("秒应接口执行失败：%s", getattr(operation, "__name__", operation))
             return JSONResponse(status_code=500, content={"ok":False,"error":"秒应服务内部错误"})
 
     @router.post("/qr-sessions")

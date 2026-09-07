@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import uuid
 from datetime import date, datetime, time, timedelta
 
@@ -232,32 +233,19 @@ class MiaoyingService:
                 for item in records
             ):
                 raise MiaoyingValidationError("该账号已提交此签到项目")
-            if not account.real_name.strip():
-                raise MiaoyingValidationError("请先在账号资料中填写签到姓名")
-            if not account.school_no.strip():
-                raise MiaoyingValidationError("请先在账号资料中填写数字学号")
-            try:
-                number = int(account.school_no)
-            except ValueError as exc:
-                raise MiaoyingValidationError("学号必须为数字") from exc
             latitude = payload.get("latitude")
             longitude = payload.get("longitude")
             if requirements["location"] and (latitude is None or longitude is None):
                 raise MiaoyingValidationError("该项目要求位置，请先在地图中选择签到位置")
-            submission = {
-                "userId": account.remote_user_id,
-                "tongjiId": form.remote_tongji_id,
-                "infoKey": ["姓名"],
-                "infoVal": [account.real_name.strip()],
-                "signUrl": "",
-                "locationInfo": {
-                    "name": str(payload.get("location_name") or "地图选点"),
-                    "longtitude": float(longitude or 0),
-                    "lattitude": float(latitude or 0),
-                },
-                "no": number,
-                "noLabel": account.school_no,
-            }
+            submission = self._build_submission(
+                account,
+                form.remote_tongji_id,
+                requirements,
+                payload.get("answers") or {},
+                payload.get("location_name"),
+                latitude,
+                longitude,
+            )
             remote_id = self.client.submit(token, submission)
             notice = self._send_notification(
                 account=account,
@@ -287,6 +275,7 @@ class MiaoyingService:
             form = session.get(MiaoyingFormRow, payload["form_id"])
             if not form or form.account_id != account.id:
                 raise MiaoyingValidationError("签到项目与账号不匹配")
+            payload["answer_schema"] = list((form.requirements or {}).get("fields") or [])
             row = MiaoyingTaskRow(owner_user_id=self._owner(user), **payload)
             session.add(row); session.flush()
             return self._task_dict(row)
@@ -294,6 +283,10 @@ class MiaoyingService:
     def update_task(self, task_id: int, payload: dict, user: dict) -> dict:
         with self.database.session() as session:
             row = self._get_task(session, task_id, user)
+            form = session.get(MiaoyingFormRow, payload["form_id"])
+            if not form or form.account_id != payload["account_id"]:
+                raise MiaoyingValidationError("签到项目与账号不匹配")
+            payload["answer_schema"] = list((form.requirements or {}).get("fields") or [])
             for key, value in payload.items(): setattr(row, key, value)
             row.updated_at = datetime.now(); session.flush()
             return self._task_dict(row)
@@ -375,14 +368,17 @@ class MiaoyingService:
             records = self.client.get_records(self._token(account), account.remote_user_id)
             if not detail.get("isRepeat") and any(str(item.get("tongjiId")) == form.remote_tongji_id for item in records):
                 raise MiaoyingValidationError("该账号已提交此签到项目")
-            if not account.real_name.strip(): raise MiaoyingValidationError("请先在账号资料中填写签到姓名")
-            if not account.school_no.strip(): raise MiaoyingValidationError("请先在账号资料中填写数字学号")
-            info_keys, info_vals = ["姓名"], [account.real_name.strip()]
-            try: number = int(account.school_no)
-            except ValueError: raise MiaoyingValidationError("学号必须为数字")
             if requirements["location"] and (task.latitude is None or task.longitude is None):
                 raise MiaoyingValidationError("该项目要求位置，请先配置经纬度")
-            payload = {"userId": account.remote_user_id, "tongjiId": form.remote_tongji_id, "infoKey": info_keys, "infoVal": info_vals, "signUrl": "", "locationInfo": {"name": task.location_name, "longtitude": float(task.longitude or 0), "lattitude": float(task.latitude or 0)}, "no": number, "noLabel": account.school_no}
+            payload = self._build_submission(
+                account,
+                form.remote_tongji_id,
+                requirements,
+                task.answers or {},
+                task.location_name,
+                task.latitude,
+                task.longitude,
+            )
             remote_id = self.client.submit(self._token(account), payload)
             run.status="success"; run.remote_submission_id=remote_id; run.message="签到成功"; run.response_summary={"submission_id": remote_id}
             if not detail.get("isRepeat"):
@@ -439,22 +435,228 @@ class MiaoyingService:
         except (MiaoyingSettingsError, MiaoyingNotificationError):
             return {"sent": False, "reason": "send_failed"}
 
-    @staticmethod
-    def _requirements(data):
+    @classmethod
+    def _requirements(cls, data):
         unsupported=[]
-        flags=(("needWifi","Wi-Fi"),("needImages","图片"),("imageIsRequired","图片"),("needVideo","视频"),("videoIsRequired","视频"),("needAudio","录音"),("audioIsRequired","录音"),("needSignature","签名"))
+        flags=(("needWifi","Wi-Fi"),("needSignature","签名"))
         for key,label in flags:
             if data.get(key) and label not in unsupported: unsupported.append(label)
-        for field in data.get("infoForms") or []:
-            title = str(field.get("title") or "复杂必填项")
-            if field.get("required") and (field.get("type") not in (None,"text","input") or title not in {"姓名", "学号"}):
-                label=title
-                if label not in unsupported: unsupported.append(label)
-        for field in data.get("requiredFields") or []:
-            label = str(field.get("title") if isinstance(field, dict) else field)
-            if label and label not in {"姓名", "学号"} and label not in unsupported:
+        media_flags=(("needImages","imageIsRequired","图片"),("needVideo","videoIsRequired","视频"),("needAudio","audioIsRequired","录音"))
+        for enabled_key, required_key, label in media_flags:
+            if data.get(enabled_key) and data.get(required_key) and label not in unsupported:
                 unsupported.append(label)
-        return {"location": bool(data.get("needLocation") or data.get("needSubmitLocation")), "unsupported": unsupported}
+        fields = cls._normalize_fields(data)
+        supported_controls = {"text", "textarea", "single", "multiple", "select"}
+        for field in fields:
+            if field["required"] and field["control"] not in supported_controls:
+                label = field["title"] or "复杂必填项"
+                if label not in unsupported:
+                    unsupported.append(label)
+        return {
+            "location": bool(data.get("needLocation") or data.get("needSubmitLocation")),
+            "unsupported": unsupported,
+            "fields": fields,
+            "identity": {
+                "class_label": "班级",
+                "name_label": str(data.get("nameLabel") or "姓名").strip(),
+                "number_label": str(data.get("noName") or "学号").strip(),
+            },
+        }
+
+    @classmethod
+    def _normalize_fields(cls, data: dict) -> list[dict]:
+        fields: list[dict] = []
+        required_titles = {
+            str(item.get("title") if isinstance(item, dict) else item).strip()
+            for item in (data.get("requiredFields") or [])
+            if str(item.get("title") if isinstance(item, dict) else item).strip()
+        }
+
+        for index, raw in enumerate(data.get("infoForms") or []):
+            if not isinstance(raw, dict) or raw.get("isRemove"):
+                continue
+            title = str(raw.get("title") or f"字段 {index + 1}").strip()
+            fields.append(cls._normalize_field(raw, "info", index, title in required_titles))
+
+        for index, raw in enumerate(data.get("optionFields") or []):
+            if not isinstance(raw, dict):
+                continue
+            title = str(raw.get("title") or f"选项 {index + 1}").strip()
+            field = cls._normalize_field(raw, "option", index, title in required_titles)
+            if not any(item["title"] == field["title"] for item in fields):
+                fields.append(field)
+
+        existing_titles = {field["title"] for field in fields}
+        for index, title in enumerate(sorted(required_titles - existing_titles)):
+            fields.append({
+                "key": f"required:{index}:{title}",
+                "id": "",
+                "source": "required",
+                "title": title,
+                "description": "",
+                "control": "text",
+                "required": True,
+                "options": [],
+                "min_select": 1,
+                "max_select": 1,
+            })
+        return fields
+
+    @staticmethod
+    def _normalize_field(raw: dict, source: str, index: int, forced_required: bool) -> dict:
+        raw_type = str(raw.get("type") or "").lower()
+        is_multi = bool(raw.get("isMulti")) or raw_type in {"14", "checkbox", "checkboxes", "multiple", "multi", "multiselect"}
+        options = []
+        raw_options = raw.get("options") or []
+        if isinstance(raw_options, str):
+            try:
+                decoded = json.loads(raw_options)
+                raw_options = decoded if isinstance(decoded, list) else [raw_options]
+            except json.JSONDecodeError:
+                raw_options = [raw_options]
+        elif not isinstance(raw_options, list):
+            raw_options = []
+        for option in raw_options:
+            if isinstance(option, dict):
+                label = str(option.get("label") or option.get("title") or option.get("name") or option.get("value") or "").strip()
+                value = option.get("value", option.get("id", label))
+            else:
+                label = str(option).strip()
+                value = option
+            if label:
+                options.append({"label": label, "value": str(value)})
+        if bool(raw.get("isImage")):
+            control = "unsupported"
+        elif is_multi:
+            control = "multiple"
+        elif options or raw_type in {"1", "radio", "single", "select", "option"}:
+            control = "single" if raw_type in {"1", "radio", "single", "option"} else "select"
+        elif raw_type in {"textarea", "longtext"}:
+            control = "textarea"
+        elif raw_type in {"", "text", "input", "string"}:
+            control = "text"
+        else:
+            control = "unsupported"
+        title = str(raw.get("title") or f"字段 {index + 1}").strip()
+        field_id = str(raw.get("id") or raw.get("_id") or "").strip()
+        return {
+            "key": f"{source}:{field_id or f'{index}:{title}'}",
+            "id": field_id,
+            "source": source,
+            "title": title,
+            "description": str(raw.get("desc") or "").strip(),
+            "control": control,
+            "required": bool(raw.get("required")) or forced_required,
+            "options": options,
+            "min_select": MiaoyingService._safe_int(raw.get("minSelect"), 1 if raw.get("required") or forced_required else 0),
+            "max_select": MiaoyingService._safe_int(raw.get("maxSelect"), len(options) if is_multi and options else 1),
+            "max_length": MiaoyingService._safe_int(raw.get("limitCharlt"), 0),
+        }
+
+    @staticmethod
+    def _safe_int(value, default: int) -> int:
+        try:
+            return int(value) if value not in (None, "") else default
+        except (TypeError, ValueError):
+            return default
+
+    def _build_submission(
+        self,
+        account: MiaoyingAccountRow,
+        remote_tongji_id: str,
+        requirements: dict,
+        answers: dict,
+        location_name,
+        latitude,
+        longitude,
+    ) -> dict:
+        if not account.real_name.strip():
+            raise MiaoyingValidationError("请先在账号资料中填写签到姓名")
+        if not account.school_no.strip():
+            raise MiaoyingValidationError("请先在账号资料中填写数字学号")
+        try:
+            number = int(account.school_no)
+        except ValueError as exc:
+            raise MiaoyingValidationError("学号必须为数字") from exc
+
+        info_keys: list[str] = []
+        info_vals: list[str] = []
+        for field in requirements.get("fields") or []:
+            value = self._resolve_answer(field, answers, account)
+            self._validate_answer(field, value)
+            if self._is_empty_answer(value):
+                continue
+            info_keys.append(field["title"])
+            info_vals.append(self._serialize_answer(value))
+
+        if not info_keys:
+            info_keys = ["姓名"]
+            info_vals = [account.real_name.strip()]
+        elif "姓名" not in info_keys:
+            info_keys.insert(0, "姓名")
+            info_vals.insert(0, account.real_name.strip())
+
+        return {
+            "userId": account.remote_user_id,
+            "tongjiId": remote_tongji_id,
+            "infoKey": info_keys,
+            "infoVal": info_vals,
+            "signUrl": "",
+            "locationInfo": {
+                "name": str(location_name or "地图选点"),
+                "longtitude": float(longitude or 0),
+                "lattitude": float(latitude or 0),
+            },
+            "no": number,
+            "noLabel": account.school_no,
+        }
+
+    @staticmethod
+    def _resolve_answer(field: dict, answers: dict, account: MiaoyingAccountRow):
+        for key in (field.get("key"), field.get("id"), field.get("title")):
+            if key and key in answers:
+                return answers[key]
+        title = str(field.get("title") or "").replace(" ", "")
+        if "姓名" in title:
+            return account.real_name.strip()
+        if "学号" in title:
+            return account.school_no.strip()
+        if "班级" in title:
+            return account.class_name.strip()
+        return None
+
+    @staticmethod
+    def _is_empty_answer(value) -> bool:
+        return value is None or value == "" or value == []
+
+    @classmethod
+    def _validate_answer(cls, field: dict, value) -> None:
+        title = field.get("title") or "未命名字段"
+        if field.get("required") and cls._is_empty_answer(value):
+            raise MiaoyingValidationError(f"请填写必填项：{title}")
+        if cls._is_empty_answer(value):
+            return
+        values = value if isinstance(value, list) else [value]
+        if field.get("control") == "multiple":
+            minimum = int(field.get("min_select") or 0)
+            maximum = int(field.get("max_select") or 0)
+            if len(values) < minimum:
+                raise MiaoyingValidationError(f"{title}至少选择 {minimum} 项")
+            if maximum and len(values) > maximum:
+                raise MiaoyingValidationError(f"{title}最多选择 {maximum} 项")
+        allowed = {str(option.get("value")) for option in field.get("options") or []}
+        if allowed and any(str(item) not in allowed for item in values):
+            raise MiaoyingValidationError(f"{title}的选项已发生变化，请重新确认")
+
+    @staticmethod
+    def _serialize_answer(value) -> str:
+        if isinstance(value, list):
+            return "、".join(str(item) for item in value)
+        if isinstance(value, (dict, tuple)):
+            return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        if isinstance(value, bool):
+            return "是" if value else "否"
+        return str(value)
 
     @staticmethod
     def _date_allowed(task, value):
@@ -474,7 +676,7 @@ class MiaoyingService:
         if not row or (row.owner_user_id != self._owner(user) and not self._is_admin(user)): raise MiaoyingNotFound("秒应任务不存在")
         return row
     @staticmethod
-    def _account_dict(r): return {"id":r.id,"owner_user_id":r.owner_user_id,"remote_user_id":r.remote_user_id,"nickname":r.nickname,"remark":r.remark,"real_name":r.real_name,"school_no":r.school_no,"status":r.status,"enabled":r.enabled,"last_verified_at":r.last_verified_at,"last_sync_at":r.last_sync_at,"last_error":r.last_error,"updated_at":r.updated_at}
+    def _account_dict(r): return {"id":r.id,"owner_user_id":r.owner_user_id,"remote_user_id":r.remote_user_id,"nickname":r.nickname,"remark":r.remark,"real_name":r.real_name,"school_no":r.school_no,"class_name":r.class_name,"status":r.status,"enabled":r.enabled,"last_verified_at":r.last_verified_at,"last_sync_at":r.last_sync_at,"last_error":r.last_error,"updated_at":r.updated_at}
     @staticmethod
     def _form_dict(r):
         import re
@@ -487,6 +689,6 @@ class MiaoyingService:
                 if value not in remote_times: remote_times.append(value)
         return {"id":r.id,"account_id":r.account_id,"remote_tongji_id":r.remote_tongji_id,"title":r.title,"content":r.content,"is_closed":r.is_closed,"is_repeat":r.is_repeat,"requirements":r.requirements,"remote_schedule_times":remote_times,"synced_at":r.synced_at}
     @staticmethod
-    def _task_dict(r): return {"id":r.id,"owner_user_id":r.owner_user_id,"account_id":r.account_id,"form_id":r.form_id,"name":r.name,"enabled":r.enabled,"schedule_times":r.schedule_times,"start_date":r.start_date,"end_date":r.end_date,"date_mode":r.date_mode,"run_dates":r.run_dates,"skip_dates":r.skip_dates,"skip_weekends":r.skip_weekends,"auto_disable_after_finish":r.auto_disable_after_finish,"location_name":r.location_name,"latitude":float(r.latitude) if r.latitude is not None else None,"longitude":float(r.longitude) if r.longitude is not None else None,"updated_at":r.updated_at}
+    def _task_dict(r): return {"id":r.id,"owner_user_id":r.owner_user_id,"account_id":r.account_id,"form_id":r.form_id,"name":r.name,"enabled":r.enabled,"schedule_times":r.schedule_times,"start_date":r.start_date,"end_date":r.end_date,"date_mode":r.date_mode,"run_dates":r.run_dates,"skip_dates":r.skip_dates,"skip_weekends":r.skip_weekends,"auto_disable_after_finish":r.auto_disable_after_finish,"location_name":r.location_name,"latitude":float(r.latitude) if r.latitude is not None else None,"longitude":float(r.longitude) if r.longitude is not None else None,"answers":r.answers or {},"answer_schema":r.answer_schema or [],"updated_at":r.updated_at}
     @staticmethod
     def _run_dict(r): return {"id":r.id,"task_id":r.task_id,"account_id":r.account_id,"form_id":r.form_id,"trigger":r.trigger,"status":r.status,"remote_submission_id":r.remote_submission_id,"message":r.message,"started_at":r.started_at,"finished_at":r.finished_at}
