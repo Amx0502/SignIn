@@ -23,7 +23,7 @@
         <div v-if="filteredAccounts.length" class="account-list">
           <article v-for="item in filteredAccounts" :key="item.id" class="account-card" :class="{ active: item.id === selectedAccountId }" @click="selectAccount(item.id)">
             <div class="avatar">{{ (item.remark || item.nickname || '秒').slice(0,1) }}</div>
-            <div class="account-info"><b>{{ item.remark || item.nickname }}</b><span>{{ item.nickname }} · UID {{ item.remote_user_id }}</span><small>{{ item.class_name || '未填写班级' }} · {{ item.real_name || '未填写姓名' }} · {{ item.school_no || '未填写学号' }}</small></div>
+            <div class="account-info"><b>{{ item.remark || item.nickname }}</b><span>{{ item.nickname }} · UID {{ item.remote_user_id }}</span></div>
             <el-tag :type="item.status === 'active' ? 'success' : 'danger'">{{ item.status === 'active' ? '有效' : '需重登' }}</el-tag>
             <el-dropdown @command="command => accountCommand(command,item)" @click.stop><el-button text>•••</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">编辑资料</el-dropdown-item><el-dropdown-item command="sync">同步项目</el-dropdown-item><el-dropdown-item command="relogin">重新扫码</el-dropdown-item><el-dropdown-item command="delete" divided>删除</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
           </article>
