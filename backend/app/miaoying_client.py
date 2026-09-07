@@ -18,7 +18,20 @@ class MiaoyingClient:
         self.session.close()
 
     def create_qr(self) -> dict:
-        return self._json(self.session.post(f"{self.qr_url}/qrcodeLogin", timeout=12), "创建秒应二维码")
+        last_error = None
+        for _ in range(2):
+            try:
+                # 秒应当前接口要求请求具有 JSON 语义；完全空的 POST 偶发会被
+                # 上游网关挂起，最终被本系统转换成 502。
+                response = self.session.post(
+                    f"{self.qr_url}/qrcodeLogin",
+                    json={},
+                    timeout=(5, 12),
+                )
+                return self._json(response, "创建秒应二维码")
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                last_error = exc
+        raise MiaoyingRemoteError("连接秒应二维码服务超时，请稍后重试") from last_error
 
     def poll_qr(self, scene_id: str) -> dict | None:
         payload = self._json(self.session.get(f"{self.qr_url}/getUserWithSceneId/{scene_id}", timeout=12), "查询扫码状态")
@@ -67,9 +80,20 @@ class MiaoyingClient:
     def _json(response: requests.Response, action: str) -> dict:
         try:
             response.raise_for_status()
+        except requests.HTTPError as exc:
+            message = ""
+            try:
+                error_payload = response.json()
+                if isinstance(error_payload, dict):
+                    message = str(error_payload.get("message") or error_payload.get("error") or "").strip()
+            except ValueError:
+                pass
+            detail = f"：{message}" if message else ""
+            raise MiaoyingRemoteError(f"{action}失败（上游 HTTP {response.status_code}）{detail}") from exc
+        try:
             payload = response.json()
-        except (requests.RequestException, ValueError) as exc:
-            raise MiaoyingRemoteError(f"{action}失败") from exc
+        except ValueError as exc:
+            raise MiaoyingRemoteError(f"{action}返回格式异常") from exc
         if not isinstance(payload, dict):
             raise MiaoyingRemoteError(f"{action}返回格式异常")
         if payload.get("statusCode") not in (None, 200):
