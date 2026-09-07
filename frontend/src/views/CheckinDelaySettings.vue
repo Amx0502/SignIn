@@ -18,7 +18,9 @@
     <div class="platform-grid" v-loading="loading">
       <el-card shadow="never" class="platform-card xxqd-card">
         <div class="platform-header">
-          <div class="platform-icon">小</div>
+          <div class="platform-icon">
+            <img :src="xxqdImage" alt="小小签到图标" />
+          </div>
           <div>
             <h3>小小签到</h3>
             <p>适用于自动任务及任务列表中的立即执行。</p>
@@ -56,7 +58,9 @@
 
       <el-card shadow="never" class="platform-card cube-card">
         <div class="platform-header">
-          <div class="platform-icon cube-icon">魔</div>
+          <div class="platform-icon">
+            <img :src="classCubeImage" alt="班级魔方图标" />
+          </div>
           <div>
             <h3>班级魔方</h3>
             <p>适用于班级魔方自动任务的定时执行和立即执行。</p>
@@ -94,7 +98,9 @@
 
       <el-card shadow="never" class="platform-card miaoying-card">
         <div class="platform-header">
-          <div class="platform-icon miaoying-icon">秒</div>
+          <div class="platform-icon">
+            <img :src="miaoyingImage" alt="秒应图标" />
+          </div>
           <div>
             <h3>秒应</h3>
             <p>适用于秒应自动任务的定时执行和立即执行。</p>
@@ -163,6 +169,9 @@ import {
   getCheckinDelaySettingsApi,
   updateCheckinDelaySettingsApi,
 } from '../api'
+import xxqdImage from '../img/xxqd.png'
+import classCubeImage from '../img/bjmf.png'
+import miaoyingImage from '../img/miaoying.png'
 
 const DEFAULTS = {
   xxqd_min_seconds: 1,
@@ -283,27 +292,20 @@ onMounted(loadSettings)
 }
 
 .platform-icon {
-  display: grid;
   flex: 0 0 48px;
   width: 48px;
   height: 48px;
-  place-items: center;
   border-radius: 15px;
-  background: linear-gradient(145deg, #55b9ff, #2e78f5);
-  box-shadow: 0 9px 20px rgba(47, 126, 246, 0.24);
-  color: #fff;
-  font-size: 20px;
-  font-weight: 800;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 9px 20px rgba(47, 126, 246, 0.16);
 }
 
-.cube-icon {
-  background: linear-gradient(145deg, #55cda2, #2a9f78);
-  box-shadow: 0 9px 20px rgba(42, 159, 120, 0.2);
-}
-
-.miaoying-icon {
-  background: linear-gradient(145deg, #31b5d8, #2586d9);
-  box-shadow: 0 9px 20px rgba(37, 134, 217, 0.22);
+.platform-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .range-editor {
