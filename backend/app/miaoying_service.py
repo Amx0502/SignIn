@@ -63,6 +63,26 @@ class MiaoyingService:
     def create_qr(self, user: dict) -> dict:
         if self.cipher is None:
             raise MiaoyingValidationError("请先配置 MIAOYING_TOKEN_ENCRYPTION_KEY 再扫码登录")
+        now = datetime.now()
+        with self.database.session() as session:
+            existing = session.scalar(
+                select(MiaoyingQrSessionRow)
+                .where(
+                    MiaoyingQrSessionRow.owner_user_id == self._owner(user),
+                    MiaoyingQrSessionRow.status == "waiting",
+                    MiaoyingQrSessionRow.expires_at > now,
+                )
+                .order_by(MiaoyingQrSessionRow.created_at.desc())
+                .limit(1)
+            )
+            if existing:
+                return {
+                    "id": existing.id,
+                    "qr_content": existing.qr_content,
+                    "expires_at": existing.expires_at,
+                    "status": "waiting",
+                }
+
         remote = self.client.create_qr().get("data") or {}
         scene_id, content = str(remote.get("sceneId") or ""), str(remote.get("url") or "")
         if not scene_id or not content:

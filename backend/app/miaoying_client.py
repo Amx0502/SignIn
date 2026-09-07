@@ -19,16 +19,31 @@ class MiaoyingClient:
 
     def create_qr(self) -> dict:
         last_error = None
-        for _ in range(2):
+        qr_headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Origin": "https://miaoying.hui51.cn",
+            "Referer": "https://miaoying.hui51.cn/",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/140.0.0.0 Safari/537.36"
+            ),
+        }
+        for _ in range(3):
             try:
                 # 秒应当前接口要求请求具有 JSON 语义；完全空的 POST 偶发会被
                 # 上游网关挂起，最终被本系统转换成 502。
-                response = self.session.post(
-                    f"{self.qr_url}/qrcodeLogin",
-                    json={},
-                    timeout=(5, 12),
-                )
-                return self._json(response, "创建秒应二维码")
+                # 创建二维码使用独立短连接，避免复用轮询连接后遇到上游失效的
+                # keep-alive 连接；请求头与秒应网页保持一致以提高网关兼容性。
+                with requests.Session() as qr_session:
+                    response = qr_session.post(
+                        f"{self.qr_url}/qrcodeLogin",
+                        headers=qr_headers,
+                        json={},
+                        timeout=(5, 12),
+                    )
+                    return self._json(response, "创建秒应二维码")
             except (requests.Timeout, requests.ConnectionError) as exc:
                 last_error = exc
         raise MiaoyingRemoteError("连接秒应二维码服务超时，请稍后重试") from last_error
