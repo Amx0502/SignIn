@@ -768,6 +768,34 @@ class ClassCubeService:
                 retryable=exc.retryable,
             ) from exc
 
+    def reverse_location(
+        self,
+        latitude: float,
+        longitude: float,
+        actor: dict[str, Any],
+    ) -> dict[str, Any]:
+        actor_user_id, is_admin = self._actor_scope(actor)
+        try:
+            self.repository.consume_location_search_quota(
+                actor_user_id,
+                is_admin,
+            )
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
+        try:
+            return self.geocoder.reverse(latitude, longitude)
+        except ValueError as exc:
+            raise ClassCubeValidationError(str(exc)) from exc
+        except ClassCubeGeocoderError as exc:
+            self.logger.warning(
+                "坐标位置解析失败（%s）",
+                type(exc).__name__,
+            )
+            raise ClassCubeRemoteError(
+                str(exc),
+                retryable=exc.retryable,
+            ) from exc
+
     def get_location_config(
         self,
         actor: dict[str, Any],

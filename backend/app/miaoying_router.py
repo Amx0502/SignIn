@@ -3,7 +3,10 @@ import logging
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 
-from .class_cube_models import ClassCubeLocationSearchRequest
+from .class_cube_models import (
+    ClassCubeLocationReverseRequest,
+    ClassCubeLocationSearchRequest,
+)
 from .class_cube_service import ClassCubeRemoteError, ClassCubeValidationError
 from .miaoying_client import MiaoyingRemoteError
 from .miaoying_models import (
@@ -53,6 +56,8 @@ def create_miaoying_router(auth_dependency, menu_dependency=None):
     def location_config(request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto","miaoying.tasks")))): return invoke(request, request.app.state.class_cube_service.get_location_config, user)
     @router.post("/locations/search")
     def search_locations(payload: ClassCubeLocationSearchRequest, request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto","miaoying.tasks")))): return invoke(request, request.app.state.class_cube_service.search_locations, payload.query, payload.limit, payload.region, user)
+    @router.post("/locations/reverse")
+    def reverse_location(payload: ClassCubeLocationReverseRequest, request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto","miaoying.tasks")))): return invoke(request, request.app.state.class_cube_service.reverse_location, payload.latitude, payload.longitude, user)
     @router.get("/settings")
     def get_settings(request: Request, user=Depends(guard("miaoying.overview"))): return invoke(request, request.app.state.miaoying_service.get_settings, user)
     @router.put("/settings")

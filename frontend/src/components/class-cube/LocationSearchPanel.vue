@@ -143,7 +143,7 @@ const props = defineProps({
   modelValue: { type: String, default: '' },
   locationApi: { type: Object, default: () => classCubeApi },
 })
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'select-location'])
 
 const DEFAULT_MAP_CONFIG = {
   map_sdk_url: 'https://map.qq.com/api/gljs',
@@ -393,6 +393,7 @@ function selectResult(result) {
     zoom: 17,
     announceText: `已选择 ${result.name}`,
   })
+  emit('select-location', result)
 }
 
 function normalizedMapConfig(response) {

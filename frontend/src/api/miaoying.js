@@ -17,6 +17,10 @@ export default {
       signal: options.signal,
       timeout: 12_000,
     }),
+  reverseLocation: (latitude, longitude) =>
+    data(instance.post(`${root}/locations/reverse`, { latitude, longitude }, {
+      timeout: 12_000,
+    })),
   getSettings: () => data(instance.get(`${root}/settings`)),
   updateSettings: payload => data(instance.put(`${root}/settings`, payload)),
   listTasks: () => data(instance.get(`${root}/tasks`)),

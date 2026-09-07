@@ -58,6 +58,10 @@ class ClassCubeGeocoder:
             tuple[str, int, str],
             tuple[float, tuple[dict[str, Any], ...]],
         ] = OrderedDict()
+        self._reverse_cache: OrderedDict[
+            tuple[float, float],
+            tuple[float, dict[str, Any]],
+        ] = OrderedDict()
         self._lock = threading.RLock()
         self._last_request_at: float | None = None
 
@@ -320,6 +324,151 @@ class ClassCubeGeocoder:
         response.raise_for_status()
         return self._normalize_tencent_results(response.json())
 
+    @classmethod
+    def _normalize_tencent_reverse(
+        cls,
+        payload: Any,
+    ) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ClassCubeGeocoderError("腾讯坐标解析返回了无效数据")
+        try:
+            status = int(payload.get("status"))
+        except (TypeError, ValueError):
+            status = -1
+        if status != 0:
+            detail = cls._text(payload.get("message"))
+            normalized_detail = detail.casefold()
+            if status == 121 or any(
+                token in normalized_detail
+                for token in ("每日调用量", "daily quota", "日配额")
+            ):
+                message = "腾讯坐标解析今日调用额度已用完，请提升配额或更换可用 Key"
+                retryable = False
+            elif status in {120, 122} or any(
+                token in normalized_detail
+                for token in ("quota", "qps", "配额", "频率", "限流", "调用量")
+            ):
+                message = "腾讯坐标解析调用频率或配额受限，请稍后重试"
+                retryable = True
+            elif status in {110, 111, 112, 114, 115, 116, 160} or any(
+                token in normalized_detail
+                for token in ("key", "鉴权", "权限", "签名", "授权")
+            ):
+                message = "腾讯位置服务 Key 无效、未授权或未开通 WebService API"
+                retryable = False
+            else:
+                message = f"腾讯坐标解析失败：{detail}" if detail else "腾讯坐标解析暂时不可用"
+                retryable = status >= 300 or status < 0
+            raise ClassCubeGeocoderError(message, retryable=retryable)
+
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise ClassCubeGeocoderError("腾讯坐标解析返回了无效数据")
+        location = result.get("location")
+        if not isinstance(location, dict):
+            location = {}
+        try:
+            latitude = float(location.get("lat"))
+            longitude = float(location.get("lng"))
+        except (TypeError, ValueError) as exc:
+            raise ClassCubeGeocoderError("腾讯坐标解析未返回有效坐标") from exc
+
+        component = result.get("address_component")
+        if not isinstance(component, dict):
+            component = {}
+        formatted = result.get("formatted_addresses")
+        if not isinstance(formatted, dict):
+            formatted = {}
+        references = result.get("address_reference")
+        if not isinstance(references, dict):
+            references = {}
+
+        def reference_title(key: str) -> str:
+            value = references.get(key)
+            return cls._text(value.get("title")) if isinstance(value, dict) else ""
+
+        pois = result.get("pois")
+        if not isinstance(pois, list):
+            pois = []
+        nearest_poi = next(
+            (
+                cls._text(item.get("title"))
+                for item in pois
+                if isinstance(item, dict) and cls._text(item.get("title"))
+            ),
+            "",
+        )
+
+        province = cls._text(component.get("province"))
+        city = cls._text(component.get("city"))
+        district = cls._text(component.get("district"))
+        street = (
+            cls._text(component.get("street"))
+            or reference_title("street")
+            or reference_title("crossroad")
+        )
+        street_number = cls._text(component.get("street_number"))
+        road = f"{street}{street_number}" if street_number and street_number not in street else street
+        landmark = (
+            reference_title("landmark_l2")
+            or reference_title("landmark_l1")
+            or nearest_poi
+            or cls._text(formatted.get("recommend"))
+            or cls._text(formatted.get("rough"))
+        )
+        address = cls._text(result.get("address"))
+        name = road or landmark
+        if not name:
+            fallback = cls._text(formatted.get("recommend")) or address
+            for prefix in (province, city, district):
+                if prefix and fallback.startswith(prefix):
+                    fallback = fallback[len(prefix):]
+            name = fallback
+        if not name:
+            raise ClassCubeGeocoderError("未识别到该坐标的道路或地点名称", retryable=False)
+        return {
+            "name": name,
+            "display_name": "-".join(dict.fromkeys(part for part in (road, landmark) if part)),
+            "address": address or "".join(part for part in (province, city, district, name) if part),
+            "province": province,
+            "city": city,
+            "district": district,
+            "street": street,
+            "landmark": landmark,
+            "latitude": latitude,
+            "longitude": longitude,
+        }
+
+    def _request_tencent_reverse(
+        self,
+        latitude: float,
+        longitude: float,
+    ) -> dict[str, Any]:
+        if not self.api_key:
+            raise ClassCubeGeocoderError(
+                "尚未配置腾讯位置服务 Key，无法识别坐标位置",
+                retryable=False,
+            )
+        if self._request_recorder is not None:
+            self._request_recorder()
+        response = self._session.get(
+            f"{self.base_url}/ws/geocoder/v1/",
+            params={
+                "key": self.api_key,
+                "location": f"{latitude:.7f},{longitude:.7f}",
+                "get_poi": 1,
+                "output": "json",
+            },
+            headers={
+                "User-Agent": self.user_agent,
+                "Accept": "application/json",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        return self._normalize_tencent_reverse(response.json())
+
     def search(
         self,
         query: str,
@@ -376,8 +525,47 @@ class ClassCubeGeocoder:
                 self._cache.popitem(last=False)
             return self._copy_results(results)
 
+    def reverse(self, latitude: float, longitude: float) -> dict[str, Any]:
+        normalized_latitude = float(latitude)
+        normalized_longitude = float(longitude)
+        if (
+            not math.isfinite(normalized_latitude)
+            or not math.isfinite(normalized_longitude)
+            or not -90 <= normalized_latitude <= 90
+            or not -180 <= normalized_longitude <= 180
+        ):
+            raise ValueError("请输入有效的纬度和经度")
+        key = (round(normalized_latitude, 6), round(normalized_longitude, 6))
+        with self._lock:
+            now = self._clock()
+            cached = self._reverse_cache.get(key)
+            if cached is not None:
+                stored_at, result = cached
+                if now - stored_at <= self.cache_ttl_seconds:
+                    self._reverse_cache.move_to_end(key)
+                    return dict(result)
+                self._reverse_cache.pop(key, None)
+
+            self._wait_for_rate_slot()
+            try:
+                result = self._request_tencent_reverse(
+                    normalized_latitude,
+                    normalized_longitude,
+                )
+            except ClassCubeGeocoderError:
+                raise
+            except (requests.RequestException, ValueError, TypeError) as exc:
+                raise ClassCubeGeocoderError("腾讯坐标解析服务暂时不可用") from exc
+
+            self._reverse_cache[key] = (self._clock(), dict(result))
+            self._reverse_cache.move_to_end(key)
+            while len(self._reverse_cache) > self.cache_limit:
+                self._reverse_cache.popitem(last=False)
+            return dict(result)
+
     def close(self) -> None:
         with self._lock:
             self._cache.clear()
+            self._reverse_cache.clear()
             if self._owns_session:
                 self._session.close()

@@ -113,6 +113,11 @@ class ClassCubeLocationSearchRequest(BaseModel):
     region: str = Field(default="", max_length=32)
 
 
+class ClassCubeLocationReverseRequest(BaseModel):
+    latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
+
+
 def task_view(task: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": task.get("id"),
