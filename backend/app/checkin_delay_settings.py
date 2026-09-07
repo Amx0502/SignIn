@@ -51,11 +51,21 @@ def normalize_checkin_delay_settings(payload: dict | None) -> dict:
             data.get("class_cube_max_seconds", DEFAULT_MAX_SECONDS),
             "班级魔方最长等待时间",
         ),
+        "miaoying_min_seconds": _integer(
+            data.get("miaoying_min_seconds", DEFAULT_MIN_SECONDS),
+            "秒应最短等待时间",
+        ),
+        "miaoying_max_seconds": _integer(
+            data.get("miaoying_max_seconds", DEFAULT_MAX_SECONDS),
+            "秒应最长等待时间",
+        ),
     }
     if result["xxqd_min_seconds"] > result["xxqd_max_seconds"]:
         raise CheckinDelaySettingsError("小小签到最短等待时间不能大于最长等待时间")
     if result["class_cube_min_seconds"] > result["class_cube_max_seconds"]:
         raise CheckinDelaySettingsError("班级魔方最短等待时间不能大于最长等待时间")
+    if result["miaoying_min_seconds"] > result["miaoying_max_seconds"]:
+        raise CheckinDelaySettingsError("秒应最短等待时间不能大于最长等待时间")
     return result
 
 
@@ -107,4 +117,6 @@ def get_checkin_delay_range(platform: str) -> tuple[int, int]:
             settings["class_cube_min_seconds"],
             settings["class_cube_max_seconds"],
         )
+    if platform == "miaoying":
+        return settings["miaoying_min_seconds"], settings["miaoying_max_seconds"]
     raise CheckinDelaySettingsError("未知的签到平台")

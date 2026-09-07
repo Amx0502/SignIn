@@ -3,7 +3,7 @@
     <div class="page-heading">
       <div>
         <h2>签到时间设置</h2>
-        <p>分别设置两套签到任务到达计划时间后、真正提交前的随机等待范围。</p>
+        <p>分别设置三套签到任务到达计划时间后、真正提交前的随机等待范围。</p>
       </div>
       <el-tag type="info" effect="plain">仅管理员可配置</el-tag>
     </div>
@@ -91,6 +91,44 @@
           {{ rangeDescription('class_cube') }}
         </div>
       </el-card>
+
+      <el-card shadow="never" class="platform-card miaoying-card">
+        <div class="platform-header">
+          <div class="platform-icon miaoying-icon">秒</div>
+          <div>
+            <h3>秒应</h3>
+            <p>适用于秒应自动任务的定时执行和立即执行。</p>
+          </div>
+        </div>
+        <div class="range-editor">
+          <label>
+            <span>最短等待</span>
+            <el-input-number
+              v-model="form.miaoying_min_seconds"
+              :min="0"
+              :max="300"
+              :precision="0"
+              controls-position="right"
+            />
+            <em>秒</em>
+          </label>
+          <span class="range-separator">至</span>
+          <label>
+            <span>最长等待</span>
+            <el-input-number
+              v-model="form.miaoying_max_seconds"
+              :min="0"
+              :max="300"
+              :precision="0"
+              controls-position="right"
+            />
+            <em>秒</em>
+          </label>
+        </div>
+        <div class="range-summary" :class="{ invalid: !miaoyingValid }">
+          {{ rangeDescription('miaoying') }}
+        </div>
+      </el-card>
     </div>
 
     <el-card shadow="never" class="explanation-card">
@@ -131,6 +169,8 @@ const DEFAULTS = {
   xxqd_max_seconds: 18,
   class_cube_min_seconds: 1,
   class_cube_max_seconds: 18,
+  miaoying_min_seconds: 1,
+  miaoying_max_seconds: 18,
 }
 
 const loading = ref(false)
@@ -140,7 +180,8 @@ const saved = ref({ ...DEFAULTS })
 
 const xxqdValid = computed(() => form.xxqd_min_seconds <= form.xxqd_max_seconds)
 const classCubeValid = computed(() => form.class_cube_min_seconds <= form.class_cube_max_seconds)
-const formValid = computed(() => xxqdValid.value && classCubeValid.value)
+const miaoyingValid = computed(() => form.miaoying_min_seconds <= form.miaoying_max_seconds)
+const formValid = computed(() => xxqdValid.value && classCubeValid.value && miaoyingValid.value)
 const dirty = computed(() => Object.keys(DEFAULTS).some(key => form[key] !== saved.value[key]))
 
 function assignSettings(target, settings) {
@@ -224,7 +265,7 @@ onMounted(loadSettings)
 
 .platform-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
 }
 
@@ -258,6 +299,11 @@ onMounted(loadSettings)
 .cube-icon {
   background: linear-gradient(145deg, #55cda2, #2a9f78);
   box-shadow: 0 9px 20px rgba(42, 159, 120, 0.2);
+}
+
+.miaoying-icon {
+  background: linear-gradient(145deg, #31b5d8, #2586d9);
+  box-shadow: 0 9px 20px rgba(37, 134, 217, 0.22);
 }
 
 .range-editor {
@@ -344,6 +390,12 @@ onMounted(loadSettings)
   background: rgba(255, 255, 255, 0.86);
   color: #718096;
   box-shadow: 0 12px 30px rgba(30, 88, 154, 0.08);
+}
+
+@media (max-width: 1200px) {
+  .platform-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {

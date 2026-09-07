@@ -1,14 +1,17 @@
 import base64
 import hashlib
 import json
+import random
 import uuid
 from datetime import date, datetime, time, timedelta
+from time import sleep
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from . import config
+from .checkin_delay_settings import get_checkin_delay_range
 from .miaoying_client import MiaoyingClient, MiaoyingRemoteError
 from .miaoying_database import MiaoyingDatabase
 from .miaoying_db_models import MiaoyingAccountRow, MiaoyingFormRow, MiaoyingQrSessionRow, MiaoyingRunRow, MiaoyingTaskRow
@@ -383,6 +386,10 @@ class MiaoyingService:
         try:
             if not account or not form: raise MiaoyingValidationError("任务关联数据不存在")
             if not account.enabled or account.status != "active": raise MiaoyingValidationError("秒应账号不可用，请重新扫码")
+            minimum, maximum = get_checkin_delay_range("miaoying")
+            delay = random.uniform(minimum, maximum)
+            if delay > 0:
+                sleep(delay)
             detail = self.client.get_tongji(self._token(account), form.remote_tongji_id)
             requirements = self._requirements(detail)
             blocked = requirements["unsupported"]

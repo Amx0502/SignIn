@@ -74,6 +74,8 @@ class CheckinDelaySettingsUpdate(BaseModel):
     xxqd_max_seconds: int = Field(default=18, ge=0, le=300)
     class_cube_min_seconds: int = Field(default=1, ge=0, le=300)
     class_cube_max_seconds: int = Field(default=18, ge=0, le=300)
+    miaoying_min_seconds: int = Field(default=1, ge=0, le=300)
+    miaoying_max_seconds: int = Field(default=18, ge=0, le=300)
 
 
 class User(BaseModel):

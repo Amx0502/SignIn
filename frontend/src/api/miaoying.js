@@ -23,6 +23,6 @@ export default {
   createTask: payload => data(instance.post(`${root}/tasks`, payload)),
   updateTask: (id, payload) => data(instance.put(`${root}/tasks/${id}`, payload)),
   deleteTask: id => data(instance.delete(`${root}/tasks/${id}`)),
-  runTask: id => data(instance.post(`${root}/tasks/${id}/run`, null, { timeout: 60_000 })),
+  runTask: id => data(instance.post(`${root}/tasks/${id}/run`, null, { timeout: 360_000 })),
   listRuns: (limit = 200) => data(instance.get(`${root}/runs`, { params: { limit } })),
 }
