@@ -457,7 +457,14 @@ class MiaoyingService:
             "unsupported": unsupported,
             "fields": fields,
             "identity": {
-                "class_label": "班级",
+                "class_label": str(data.get("groupLabelName") or "班级").strip(),
+                "fixed": bool(data.get("fixedNo") or data.get("showNameList")),
+                "roster": [
+                    {"name": str(row.get("name") or ""), "no": row.get("no"),
+                     "groupName": str(row.get("groupName") or ""),
+                     "noLabel": str(row.get("noLabel") if row.get("noLabel") is not None else row.get("no", ""))}
+                    for row in (data.get("nameList") or []) if isinstance(row, dict)
+                ],
                 "name_label": str(data.get("nameLabel") or "姓名").strip(),
                 "number_label": str(data.get("noName") or "学号").strip(),
             },
@@ -570,13 +577,27 @@ class MiaoyingService:
         latitude,
         longitude,
     ) -> dict:
-        if not account.real_name.strip():
+        identity = requirements.get("identity") or {}
+        selected = answers.get("__identity") or {}
+        if not isinstance(selected, dict):
+            raise MiaoyingValidationError("签到身份格式无效，请重新选择班级和姓名")
+        roster_entry = None
+        if identity.get("fixed"):
+            matches = [row for row in identity.get("roster", [])
+                       if all(str(row.get(key, "")) == str(selected.get(key, ""))
+                              for key in ("no", "noLabel", "name", "groupName"))]
+            if len(matches) != 1:
+                raise MiaoyingValidationError("请选择当前项目的班级和姓名；名单可能已更新，请重新同步并选择")
+            roster_entry = matches[0]
+        real_name = roster_entry["name"] if roster_entry else account.real_name.strip()
+        school_no = roster_entry["noLabel"] if roster_entry else account.school_no.strip()
+        if not real_name:
             raise MiaoyingValidationError("请先在账号资料中填写签到姓名")
-        if not account.school_no.strip():
+        if not school_no:
             raise MiaoyingValidationError("请先在账号资料中填写数字学号")
         try:
-            number = int(account.school_no)
-        except ValueError as exc:
+            number = int(roster_entry["no"] if roster_entry else school_no)
+        except (ValueError, TypeError) as exc:
             raise MiaoyingValidationError("学号必须为数字") from exc
 
         info_keys: list[str] = []
@@ -589,12 +610,15 @@ class MiaoyingService:
             info_keys.append(field["title"])
             info_vals.append(self._serialize_answer(value))
 
+        name_label = identity.get("name_label") or "姓名"
         if not info_keys:
-            info_keys = ["姓名"]
-            info_vals = [account.real_name.strip()]
-        elif "姓名" not in info_keys:
-            info_keys.insert(0, "姓名")
-            info_vals.insert(0, account.real_name.strip())
+            info_keys = [name_label]
+            info_vals = [real_name]
+        elif name_label not in info_keys:
+            info_keys.insert(0, name_label)
+            info_vals.insert(0, real_name)
+        elif roster_entry:
+            info_vals[info_keys.index(name_label)] = real_name
 
         return {
             "userId": account.remote_user_id,
@@ -608,7 +632,7 @@ class MiaoyingService:
                 "lattitude": float(latitude or 0),
             },
             "no": number,
-            "noLabel": account.school_no,
+            "noLabel": school_no,
         }
 
     @staticmethod

@@ -125,11 +125,13 @@ class MiaoyingClient:
 
     def get_tongjis(self, token: str, uid: str, limit: int = 50) -> list[dict]:
         query = """query getTongjis($uid:String!,$limit:String,$skip:String){tongjis(sort:\"-createdAt\",createdBy:$uid,limit:$limit,skip:$skip){_id title content createdAt updatedAt isClosed isRepeat repeatStartDate repeatEndDate endTime isRemove noName nameLabel needInfo needLocation needSubmitLocation needWifi needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}}}"""
+        query = query.replace("noName nameLabel", "noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel}")
         rows = self.graphql(token, "getTongjis", query, {"uid": uid, "limit": str(limit), "skip": "0"}).get("tongjis") or []
         return [row for row in rows if not row.get("isRemove")]
 
     def get_tongji(self, token: str, remote_id: str) -> dict:
         query = """query getTongji($_id:String){tongji(_id:$_id){_id title content isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel needInfo needLocation needSubmitLocation needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}}}"""
+        query = query.replace("noName nameLabel", "noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel}")
         return self.graphql(token, "getTongji", query, {"_id": remote_id}).get("tongji") or {}
 
     def get_records(self, token: str, uid: str, limit: int = 100) -> list[dict]:
