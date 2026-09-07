@@ -766,14 +766,34 @@ class MiaoyingService:
             "infoKey": info_keys,
             "infoVal": info_vals,
             "signUrl": "",
-            "locationInfo": {
-                "name": str(location_name or "").strip() or "地图选点",
-                "longtitude": float(longitude or 0),
-                "lattitude": float(latitude or 0),
-            },
+            "locationInfo": self._build_location_info(
+                location_name,
+                latitude,
+                longitude,
+            ),
             "no": number,
             "noLabel": school_no,
         }
+
+    @staticmethod
+    def _build_location_info(location_name, latitude, longitude) -> dict:
+        """Map Tencent's road-landmark display text to Miaoying's fields."""
+        display_name = str(location_name or "").strip() or "地图选点"
+        street = ""
+        name = display_name
+        if "-" in display_name:
+            street_part, name_part = display_name.split("-", 1)
+            if street_part.strip() and name_part.strip():
+                street = street_part.strip()
+                name = name_part.strip()
+        location_info = {
+            "name": name,
+            "longtitude": float(longitude or 0),
+            "lattitude": float(latitude or 0),
+        }
+        if street:
+            location_info["street"] = street
+        return location_info
 
     @staticmethod
     def _submission_request_summary(submission: dict) -> dict:
@@ -784,6 +804,7 @@ class MiaoyingService:
             "tongji_id": str(submission.get("tongjiId") or ""),
             "location_info": {
                 "name": str(location.get("name") or ""),
+                "street": str(location.get("street") or ""),
                 "lattitude": float(location.get("lattitude") or 0),
                 "longtitude": float(location.get("longtitude") or 0),
             },
@@ -815,10 +836,11 @@ class MiaoyingService:
         session.flush()
         logger.info(
             "秒应上游签到请求 audit_id=%s form_id=%s operation=%s "
-            "location_name=%r latitude=%.6f longitude=%.6f",
+            "location_street=%r location_name=%r latitude=%.6f longitude=%.6f",
             row.id,
             form_id,
             summary["operation"],
+            location["street"],
             location["name"],
             location["lattitude"],
             location["longtitude"],
