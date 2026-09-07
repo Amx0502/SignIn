@@ -13,7 +13,6 @@
         </el-form>
         <el-alert v-else :closable="false" :type="settings.webhook_configured ? 'success' : 'info'" :title="settings.webhook_configured ? '管理员已配置企业微信机器人' : '管理员尚未配置企业微信机器人'" />
       </section>
-      <section class="panel"><header><h2>最近运行</h2></header><RunList :runs="runs.slice(0, 8)" /></section>
     </template>
 
     <section v-else-if="isAccounts" class="accounts-workspace">
@@ -25,7 +24,7 @@
             <div class="avatar">{{ (item.remark || item.nickname || '秒').slice(0,1) }}</div>
             <div class="account-info"><b>{{ item.remark || item.nickname }}</b><span>{{ item.nickname }} · UID {{ item.remote_user_id }}</span></div>
             <el-tag :type="item.status === 'active' ? 'success' : 'danger'">{{ item.status === 'active' ? '有效' : '需重登' }}</el-tag>
-            <el-dropdown @command="command => accountCommand(command,item)" @click.stop><el-button text>•••</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">编辑资料</el-dropdown-item><el-dropdown-item command="sync">同步项目</el-dropdown-item><el-dropdown-item command="relogin">重新扫码</el-dropdown-item><el-dropdown-item command="delete" divided>删除</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+            <el-dropdown trigger="click" @command="command => accountCommand(command,item)" @click.stop><el-button text>•••</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="rescan">重新扫码</el-dropdown-item><el-dropdown-item command="rename">编辑备注</el-dropdown-item><el-dropdown-item command="sync">同步项目</el-dropdown-item><el-dropdown-item command="delete" divided>删除账号</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
           </article>
         </div><el-empty v-else :description="accounts.length ? '没有找到匹配账号' : '暂无账号，请先扫码登录'" />
       </div>
@@ -90,7 +89,6 @@
     <el-dialog v-model="qrVisible" title="微信扫码登录秒应" width="420px" destroy-on-close @closed="stopQr">
       <div class="qr-box"><canvas ref="qrCanvas"></canvas><b>{{ qrStatus }}</b><span>请使用微信扫码，二维码 5 分钟内有效</span></div>
     </el-dialog>
-    <el-dialog v-model="editVisible" title="编辑秒应账号" width="520px"><el-form label-width="82px"><el-form-item label="备注"><el-input v-model="accountForm.remark" /></el-form-item><el-form-item label="班级"><el-input v-model="accountForm.class_name" placeholder="作为签到项目班级字段的默认值" /></el-form-item><el-form-item label="姓名"><el-input v-model="accountForm.real_name" /></el-form-item><el-form-item label="学号"><el-input v-model="accountForm.school_no" /></el-form-item><el-form-item label="启用"><el-switch v-model="accountForm.enabled" /></el-form-item></el-form><template #footer><el-button @click="editVisible=false">取消</el-button><el-button type="primary" @click="saveAccount">保存</el-button></template></el-dialog>
   </div>
 </template>
 
@@ -110,7 +108,7 @@ const LocationSearchPanel=defineAsyncComponent(()=>import('../components/class-c
 
 const route=useRoute(), router=useRouter(), loading=ref(false), keyword=ref(''), accounts=ref([]),forms=ref([]),tasks=ref([]),runs=ref([])
 const qrVisible=ref(false),qrCanvas=ref(),qrStatus=ref('正在生成二维码…'),qrId=ref('');let qrTimer
-const editVisible=ref(false),editingAccount=ref(null),accountForm=reactive({remark:'',class_name:'',real_name:'',school_no:'',enabled:true}),editingId=ref(null)
+const editingId=ref(null)
 const user=JSON.parse(localStorage.getItem('user')||'{}'),isAdmin=computed(()=>user.role==='admin')
 const settings=reactive({miaoying_webhook_url:'',webhook_configured:false}),settingsSaving=ref(false)
 const selectedAccountId=ref(null),selectedFormId=ref(null),accountForms=ref([]),formsSyncing=ref(false)
@@ -145,8 +143,12 @@ async function load(){loading.value=true;try{if(isAccounts.value){accounts.value
 async function openQr(){qrVisible.value=true;qrStatus.value='正在生成二维码…';try{const data=await api.createQr();qrId.value=data.id;await nextTick();await QRCode.toCanvas(qrCanvas.value,data.qr_content,{width:250,margin:2,color:{dark:'#0f172a',light:'#ffffff'}});qrStatus.value='等待扫码确认';qrTimer=window.setInterval(pollQr,1800)}catch(e){qrStatus.value=e.message;ElMessage.error(e.message)}}
 async function pollQr(){if(!qrId.value)return;try{const data=await api.pollQr(qrId.value);if(data.status==='completed'){stopQr();qrStatus.value='登录成功';ElMessage.success('秒应账号添加成功');setTimeout(()=>{qrVisible.value=false;load()},500)}else if(data.status==='expired'){stopQr();qrStatus.value='二维码已过期，请关闭后重试'}}catch(e){stopQr();qrStatus.value=e.message}}
 function stopQr(){if(qrTimer)window.clearInterval(qrTimer);qrTimer=null;qrId.value=''}
-async function accountCommand(command,item){if(command==='edit'){editingAccount.value=item;Object.assign(accountForm,{remark:item.remark,class_name:item.class_name||'',real_name:item.real_name,school_no:item.school_no,enabled:item.enabled});editVisible.value=true}else if(command==='sync'){const synced=await api.syncForms(item.id);if(item.id===selectedAccountId.value){accountForms.value=synced;selectedFormId.value=synced[0]?.id||null;manualAnswers.value=seedAnswers(manualFields.value,selectedAccount.value,{})}ElMessage.success('项目同步完成')}else if(command==='relogin')openQr();else if(command==='delete'){await ElMessageBox.confirm('删除账号会同时删除关联项目和任务，是否继续？','删除账号',{type:'warning'});await api.deleteAccount(item.id);ElMessage.success('已删除');load()}}
-async function saveAccount(){await api.updateAccount(editingAccount.value.id,{...accountForm});editVisible.value=false;ElMessage.success('保存成功');load()}
+async function accountCommand(command,item){
+  if(command==='rescan')return openQr()
+  if(command==='sync'){const synced=await api.syncForms(item.id);if(item.id===selectedAccountId.value){accountForms.value=synced;selectedFormId.value=synced[0]?.id||null;manualAnswers.value=seedAnswers(manualFields.value,selectedAccount.value,{})}ElMessage.success('项目同步完成');return}
+  if(command==='rename'){let value;try{({value}=await ElMessageBox.prompt('请输入账号备注','编辑账号',{inputValue:item.remark||item.nickname||'',inputPattern:/\S+/,inputErrorMessage:'备注不能为空'}))}catch{return}await api.updateAccount(item.id,{remark:value.trim(),class_name:item.class_name||'',real_name:item.real_name||'',school_no:item.school_no||'',enabled:item.enabled});ElMessage.success('备注已更新');await load();return}
+  if(command==='delete'){try{await ElMessageBox.confirm(`删除账号「${item.remark||item.nickname}」及其项目和任务？`,'删除账号',{type:'warning'})}catch{return}await api.deleteAccount(item.id);ElMessage.success('已删除');await load()}
+}
 function syncManualProfile(){Object.assign(manualProfile,{class_name:selectedAccount.value?.class_name||'',real_name:selectedAccount.value?.real_name||'',school_no:selectedAccount.value?.school_no||''})}
 async function loadAccountForms(){accountForms.value=selectedAccountId.value?await api.listForms(selectedAccountId.value):[];if(!accountForms.value.some(item=>item.id===selectedFormId.value))selectedFormId.value=accountForms.value[0]?.id||null;syncManualProfile();manualCoordinate.value='';manualLocationName.value='';manualAnswers.value=seedAnswers(manualFields.value,{...selectedAccount.value,...manualProfile},{})}
 async function selectAccount(id){if(id===selectedAccountId.value)return;selectedAccountId.value=id;selectedFormId.value=null;await loadAccountForms()}
