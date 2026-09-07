@@ -1,30 +1,49 @@
 <template>
   <div class="my-page" v-loading="loading">
-    <section class="hero">
-      <img src="../img/miaoying.png" alt="秒应" />
-      <div><p>MIAOYING AUTOMATION</p><h1>{{ pageTitle }}</h1><span>微信扫码登录，集中管理签到项目、日期计划与执行结果。</span></div>
-      <el-button v-if="isAccounts" type="primary" @click="openQr">微信扫码添加账号</el-button>
-      <el-button v-else :icon="Refresh" @click="load">刷新数据</el-button>
-    </section>
-
     <template v-if="isOverview">
       <div class="metrics">
         <article><b>{{ accounts.length }}</b><span>登录账号</span></article><article><b>{{ tasks.length }}</b><span>全部任务</span></article>
         <article><b>{{ tasks.filter(v => v.enabled).length }}</b><span>启用任务</span></article><article><b>{{ runs.filter(v => v.status === 'success').length }}</b><span>成功执行</span></article>
       </div>
+      <section class="panel settings-panel">
+        <header><div><h2>企业微信机器人通知</h2><p>配置秒应签到结果通知，与小小签到和班级魔方相互独立。</p></div><el-tag :type="settings.webhook_configured ? 'success' : 'info'">{{ settings.webhook_configured ? '已配置' : '未配置' }}</el-tag></header>
+        <el-form v-if="isAdmin" label-position="top">
+          <el-form-item label="机器人 Webhook"><el-input v-model="settings.miaoying_webhook_url" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." /></el-form-item>
+          <el-button type="primary" :loading="settingsSaving" @click="saveSettings">保存配置</el-button>
+        </el-form>
+        <el-alert v-else :closable="false" :type="settings.webhook_configured ? 'success' : 'info'" :title="settings.webhook_configured ? '管理员已配置企业微信机器人' : '管理员尚未配置企业微信机器人'" />
+      </section>
       <section class="panel"><header><h2>最近运行</h2></header><RunList :runs="runs.slice(0, 8)" /></section>
     </template>
 
-    <section v-else-if="isAccounts" class="panel">
-      <header><div><h2>秒应账号</h2><p>仅支持微信扫码登录，凭据加密保存。</p></div><el-input v-model="keyword" clearable placeholder="搜索昵称、备注或用户 ID" :prefix-icon="Search" /></header>
-      <div v-if="filteredAccounts.length" class="account-grid">
-        <article v-for="item in filteredAccounts" :key="item.id" class="account-card">
-          <div class="avatar">{{ (item.remark || item.nickname || '秒').slice(0,1) }}</div>
-          <div class="account-info"><b>{{ item.remark || item.nickname }}</b><span>{{ item.nickname }} · UID {{ item.remote_user_id }}</span><small>最近验证 {{ format(item.last_verified_at) }}</small></div>
-          <el-tag :type="item.status === 'active' ? 'success' : 'danger'">{{ item.status === 'active' ? '有效' : '需重登' }}</el-tag>
-          <el-dropdown @command="command => accountCommand(command,item)"><el-button text>•••</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">编辑资料</el-dropdown-item><el-dropdown-item command="sync">同步项目</el-dropdown-item><el-dropdown-item command="relogin">重新扫码</el-dropdown-item><el-dropdown-item command="delete" divided>删除</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
-        </article>
-      </div><el-empty v-else description="暂无秒应账号" />
+    <section v-else-if="isAccounts" class="accounts-workspace">
+      <div class="panel accounts-pane">
+        <header><div><h2>秒应账号</h2><p>微信扫码登录并管理签到资料</p></div><el-button type="primary" @click="openQr">扫码添加</el-button></header>
+        <div v-if="accounts.length" class="account-search"><el-input v-model="keyword" clearable placeholder="搜索昵称、备注或用户 ID" :prefix-icon="Search" /><span>显示 {{ filteredAccounts.length }}/{{ accounts.length }}</span></div>
+        <div v-if="filteredAccounts.length" class="account-list">
+          <article v-for="item in filteredAccounts" :key="item.id" class="account-card" :class="{ active: item.id === selectedAccountId }" @click="selectAccount(item.id)">
+            <div class="avatar">{{ (item.remark || item.nickname || '秒').slice(0,1) }}</div>
+            <div class="account-info"><b>{{ item.remark || item.nickname }}</b><span>{{ item.nickname }} · UID {{ item.remote_user_id }}</span><small>{{ item.real_name || '未填写姓名' }} · {{ item.school_no || '未填写学号' }}</small></div>
+            <el-tag :type="item.status === 'active' ? 'success' : 'danger'">{{ item.status === 'active' ? '有效' : '需重登' }}</el-tag>
+            <el-dropdown @command="command => accountCommand(command,item)" @click.stop><el-button text>•••</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">编辑资料</el-dropdown-item><el-dropdown-item command="sync">同步项目</el-dropdown-item><el-dropdown-item command="relogin">重新扫码</el-dropdown-item><el-dropdown-item command="delete" divided>删除</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+          </article>
+        </div><el-empty v-else :description="accounts.length ? '没有找到匹配账号' : '暂无账号，请先扫码登录'" />
+      </div>
+      <div class="panel checkin-pane">
+        <header><div><h2>签到中心</h2><p>选择签到项目后可直接地图选点并提交</p></div><el-button :icon="Refresh" :disabled="!selectedAccountId" :loading="formsSyncing" @click="syncAccountForms">同步签到项目</el-button></header>
+        <el-select v-model="selectedFormId" class="form-select" :disabled="!selectedAccountId" placeholder="请选择签到项目">
+          <el-option v-for="item in accountForms" :key="item.id" :value="item.id" :label="item.title"><span>{{ item.title }}</span><small class="option-state">{{ item.is_closed ? '已关闭' : item.requirements?.location ? '需要位置' : '普通签到' }}</small></el-option>
+        </el-select>
+        <el-empty v-if="!selectedAccountId" description="请先选择秒应账号" />
+        <el-empty v-else-if="!accountForms.length" description="暂无签到项目，请点击同步签到项目" />
+        <div v-else-if="selectedManualForm" class="manual-checkin">
+          <div class="manual-head"><div><el-tag size="small" type="primary">{{ selectedManualForm.requirements?.location ? '位置签到' : '普通签到' }}</el-tag><strong>{{ selectedManualForm.title }}</strong></div><small>{{ selectedManualForm.content || '按项目要求提交签到' }}</small></div>
+          <el-alert v-if="selectedManualForm.is_closed" type="warning" :closable="false" title="该签到项目已关闭" />
+          <el-alert v-else-if="selectedManualForm.requirements?.unsupported?.length" type="warning" :closable="false" :title="`暂不支持：${selectedManualForm.requirements.unsupported.join('、')}`" />
+          <LocationSearchPanel v-if="selectedManualForm.requirements?.location" v-model="manualCoordinate" :location-api="api" />
+          <div class="manual-actions"><el-checkbox v-model="manualNotify">发送企业微信通知</el-checkbox><el-button type="primary" size="large" :loading="manualChecking" :disabled="!canManualCheckin" @click="submitManualCheckin">执行签到</el-button></div>
+        </div>
+      </div>
     </section>
 
     <section v-else-if="isAuto" class="workspace">
@@ -38,7 +57,7 @@
           <el-form-item label="每日时间" required><el-select v-model="form.schedule_times" multiple allow-create filterable default-first-option placeholder="输入 08:00:00 后回车" /></el-form-item>
           <el-form-item label="有效范围"><div class="range"><el-date-picker v-model="form.start_date" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" /><el-date-picker v-model="form.end_date" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" /></div></el-form-item>
           <el-form-item label="日期计划"><TaskDateSchedule v-model:date-mode="form.date_mode" v-model:run-dates="form.run_dates" v-model:skip-dates="form.skip_dates" v-model:skip-weekends="form.skip_weekends" v-model:auto-disable-after-finish="form.auto_disable_after_finish" :times="form.schedule_times" :min-date="form.start_date || ''" :max-date="form.end_date || ''" /></el-form-item>
-          <el-form-item label="签到位置"><div class="location"><el-input v-model="form.location_name" placeholder="位置名称（项目要求位置时填写）" /><el-input-number v-model="form.latitude" :precision="8" placeholder="纬度" /><el-input-number v-model="form.longitude" :precision="8" placeholder="经度" /></div></el-form-item>
+          <el-form-item label="签到位置"><LocationSearchPanel v-model="taskCoordinate" :location-api="api" /></el-form-item>
           <el-form-item><el-checkbox v-model="form.enabled">保存后启用</el-checkbox><el-button type="primary" @click="saveTask">保存任务</el-button><el-button @click="resetForm">重置</el-button></el-form-item>
         </el-form>
       </div>
@@ -58,31 +77,53 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import api from '../api/miaoying.js'
 import TaskDateSchedule from '../components/TaskDateSchedule.vue'
+import { parseCoordinates } from '../utils/classCubeTaskForm.js'
+
+const LocationSearchPanel=defineAsyncComponent(()=>import('../components/class-cube/LocationSearchPanel.vue'))
 
 const route=useRoute(), router=useRouter(), loading=ref(false), keyword=ref(''), accounts=ref([]),forms=ref([]),tasks=ref([]),runs=ref([])
 const qrVisible=ref(false),qrCanvas=ref(),qrStatus=ref('正在生成二维码…'),qrId=ref('');let qrTimer
 const editVisible=ref(false),editingAccount=ref(null),accountForm=reactive({remark:'',real_name:'',school_no:'',enabled:true}),editingId=ref(null)
+const user=JSON.parse(localStorage.getItem('user')||'{}'),isAdmin=computed(()=>user.role==='admin')
+const settings=reactive({miaoying_webhook_url:'',webhook_configured:false}),settingsSaving=ref(false)
+const selectedAccountId=ref(null),selectedFormId=ref(null),accountForms=ref([]),formsSyncing=ref(false)
+const manualCoordinate=ref(''),manualNotify=ref(true),manualChecking=ref(false)
 const emptyForm=()=>({account_id:null,form_id:null,name:'',enabled:true,schedule_times:['08:00:00'],start_date:null,end_date:null,date_mode:'daily',run_dates:[],skip_dates:[],skip_weekends:false,auto_disable_after_finish:true,location_name:'',latitude:null,longitude:null})
 const form=reactive(emptyForm())
 const path=computed(()=>route.path),isOverview=computed(()=>path.value.endsWith('/overview')),isAccounts=computed(()=>path.value.endsWith('/accounts')),isAuto=computed(()=>path.value.endsWith('/auto')),isTasks=computed(()=>path.value.endsWith('/tasks')),isLogs=computed(()=>path.value.endsWith('/logs'))
-const pageTitle=computed(()=>isOverview.value?'秒应系统概览':isAccounts.value?'秒应账号管理':isAuto.value?'秒应自动签到':isTasks.value?'秒应任务管理':isLogs.value?'秒应日志':'秒应运行记录')
 const filteredAccounts=computed(()=>accounts.value.filter(v=>`${v.nickname}${v.remark}${v.remote_user_id}`.toLowerCase().includes(keyword.value.toLowerCase())))
 const filteredTasks=computed(()=>tasks.value.filter(v=>v.name.toLowerCase().includes(keyword.value.toLowerCase())))
+const selectedManualForm=computed(()=>accountForms.value.find(item=>item.id===selectedFormId.value)||null)
+const canManualCheckin=computed(()=>{
+  const item=selectedManualForm.value
+  if(!item||item.is_closed||item.requirements?.unsupported?.length)return false
+  if(!item.requirements?.location)return true
+  try{return Boolean(parseCoordinates(manualCoordinate.value))}catch{return false}
+})
+const taskCoordinate=computed({
+  get:()=>form.latitude==null||form.longitude==null?'':`${form.latitude}, ${form.longitude}`,
+  set:value=>{try{const point=parseCoordinates(value);form.latitude=point.latitude;form.longitude=point.longitude;form.location_name='地图选点'}catch{form.latitude=null;form.longitude=null;if(!String(value||'').trim())form.location_name=''}},
+})
 const format=v=>v?new Date(v).toLocaleString('zh-CN',{hour12:false}):'—'
 const RunList=defineComponent({props:{runs:{type:Array,default:()=>[]}},setup(p){return()=>p.runs.length?h('div',{class:'run-list'},p.runs.map(v=>h('article',{class:`run ${v.status}`},[h('i'),h('div',[h('b',v.message||v.status),h('span',`${v.trigger==='manual'?'手动执行':'自动调度'} · ${format(v.started_at)}`)]),h('em',v.status==='success'?'成功':'失败')]))):h('div',{class:'empty-inline'},'暂无运行记录')}})
-async function load(){loading.value=true;try{if(isAccounts.value){accounts.value=await api.listAccounts()}else if(isAuto.value){[accounts.value,tasks.value]=await Promise.all([api.listAccounts(),api.listTasks()]);if(form.account_id)forms.value=await api.listForms(form.account_id)}else if(isTasks.value){tasks.value=await api.listTasks()}else if(isOverview.value){[accounts.value,tasks.value,runs.value]=await Promise.all([api.listAccounts(),api.listTasks(),api.listRuns()])}else{runs.value=await api.listRuns()}}catch(e){ElMessage.error(e.message)}finally{loading.value=false}}
+async function load(){loading.value=true;try{if(isAccounts.value){accounts.value=await api.listAccounts();if(!accounts.value.some(item=>item.id===selectedAccountId.value))selectedAccountId.value=accounts.value[0]?.id||null;await loadAccountForms()}else if(isAuto.value){[accounts.value,tasks.value]=await Promise.all([api.listAccounts(),api.listTasks()]);if(form.account_id)forms.value=await api.listForms(form.account_id)}else if(isTasks.value){tasks.value=await api.listTasks()}else if(isOverview.value){[accounts.value,tasks.value,runs.value]=await Promise.all([api.listAccounts(),api.listTasks(),api.listRuns()]);Object.assign(settings,await api.getSettings())}else{runs.value=await api.listRuns()}}catch(e){ElMessage.error(e.message)}finally{loading.value=false}}
 async function openQr(){qrVisible.value=true;qrStatus.value='正在生成二维码…';try{const data=await api.createQr();qrId.value=data.id;await nextTick();await QRCode.toCanvas(qrCanvas.value,data.qr_content,{width:250,margin:2,color:{dark:'#0f172a',light:'#ffffff'}});qrStatus.value='等待扫码确认';qrTimer=window.setInterval(pollQr,1800)}catch(e){qrStatus.value=e.message;ElMessage.error(e.message)}}
 async function pollQr(){if(!qrId.value)return;try{const data=await api.pollQr(qrId.value);if(data.status==='completed'){stopQr();qrStatus.value='登录成功';ElMessage.success('秒应账号添加成功');setTimeout(()=>{qrVisible.value=false;load()},500)}else if(data.status==='expired'){stopQr();qrStatus.value='二维码已过期，请关闭后重试'}}catch(e){stopQr();qrStatus.value=e.message}}
 function stopQr(){if(qrTimer)window.clearInterval(qrTimer);qrTimer=null;qrId.value=''}
-async function accountCommand(command,item){if(command==='edit'){editingAccount.value=item;Object.assign(accountForm,{remark:item.remark,real_name:item.real_name,school_no:item.school_no,enabled:item.enabled});editVisible.value=true}else if(command==='sync'){await api.syncForms(item.id);ElMessage.success('项目同步完成')}else if(command==='relogin')openQr();else if(command==='delete'){await ElMessageBox.confirm('删除账号会同时删除关联项目和任务，是否继续？','删除账号',{type:'warning'});await api.deleteAccount(item.id);ElMessage.success('已删除');load()}}
+async function accountCommand(command,item){if(command==='edit'){editingAccount.value=item;Object.assign(accountForm,{remark:item.remark,real_name:item.real_name,school_no:item.school_no,enabled:item.enabled});editVisible.value=true}else if(command==='sync'){const synced=await api.syncForms(item.id);if(item.id===selectedAccountId.value){accountForms.value=synced;selectedFormId.value=synced[0]?.id||null}ElMessage.success('项目同步完成')}else if(command==='relogin')openQr();else if(command==='delete'){await ElMessageBox.confirm('删除账号会同时删除关联项目和任务，是否继续？','删除账号',{type:'warning'});await api.deleteAccount(item.id);ElMessage.success('已删除');load()}}
 async function saveAccount(){await api.updateAccount(editingAccount.value.id,{...accountForm});editVisible.value=false;ElMessage.success('保存成功');load()}
+async function loadAccountForms(){accountForms.value=selectedAccountId.value?await api.listForms(selectedAccountId.value):[];if(!accountForms.value.some(item=>item.id===selectedFormId.value))selectedFormId.value=accountForms.value[0]?.id||null;manualCoordinate.value=''}
+async function selectAccount(id){if(id===selectedAccountId.value)return;selectedAccountId.value=id;selectedFormId.value=null;await loadAccountForms()}
+async function syncAccountForms(){if(!selectedAccountId.value)return;formsSyncing.value=true;try{accountForms.value=await api.syncForms(selectedAccountId.value);selectedFormId.value=accountForms.value[0]?.id||null;ElMessage.success('签到项目同步完成')}catch(e){ElMessage.error(e.message)}finally{formsSyncing.value=false}}
+async function submitManualCheckin(){const item=selectedManualForm.value;if(!item)return;let point={latitude:null,longitude:null};if(item.requirements?.location){try{point=parseCoordinates(manualCoordinate.value)}catch(e){ElMessage.warning(e.message);return}}manualChecking.value=true;try{const result=await api.manualCheckin(item.id,{account_id:selectedAccountId.value,location_name:'地图选点',...point,notify_wecom:manualNotify.value});ElMessage.success(result.message||'签到成功');if(result.notification?.reason==='send_failed')ElMessage.warning('签到成功，但企业微信通知发送失败')}catch(e){ElMessage.error(e.message)}finally{manualChecking.value=false}}
+async function saveSettings(){settingsSaving.value=true;try{Object.assign(settings,await api.updateSettings({miaoying_webhook_url:settings.miaoying_webhook_url}));ElMessage.success('秒应通知配置已保存')}catch(e){ElMessage.error(e.message)}finally{settingsSaving.value=false}}
 async function accountChanged(){forms.value=form.account_id?await api.listForms(form.account_id):[];form.form_id=null}
 async function syncSelected(){forms.value=await api.syncForms(form.account_id);ElMessage.success('项目同步完成')}
 function selectForm(item){form.form_id=item.id;if(!form.name)form.name=item.title;if(item.remote_schedule_times?.length)form.schedule_times=[...item.remote_schedule_times]}
@@ -92,10 +133,11 @@ async function toggleTask(row){await api.updateTask(row.id,{...row});ElMessage.s
 async function runNow(row){const result=await api.runTask(row.id);result.status==='success'?ElMessage.success(result.message):ElMessage.error(result.message);load()}
 function editTask(row){editingId.value=row.id;Object.assign(form,JSON.parse(JSON.stringify(row)));router.push('/miaoying/auto')}
 async function removeTask(row){await ElMessageBox.confirm(`确认删除任务“${row.name}”？`,'删除任务',{type:'warning'});await api.deleteTask(row.id);ElMessage.success('已删除');load()}
+watch(selectedFormId,()=>{manualCoordinate.value=''})
 watch(()=>route.path,load);onMounted(load);onUnmounted(stopQr)
 </script>
 
 <style scoped>
-.my-page{display:grid;gap:18px;min-width:0}.hero{display:flex;align-items:center;gap:18px;padding:22px 26px;border:1px solid #dbeafe;border-radius:22px;background:linear-gradient(125deg,#eff8ff,#f0fdf4);box-shadow:0 16px 38px #0f172a0d}.hero img{width:64px;height:64px;padding:6px;border-radius:18px;background:#fff}.hero div{flex:1;min-width:0}.hero p{margin:0;color:#168ac5;font-size:11px;font-weight:800;letter-spacing:.15em}.hero h1{margin:5px 0 4px;font-size:25px;color:#0f172a}.hero span,.panel p{color:#64748b;font-size:13px}.panel{min-width:0;padding:20px;border:1px solid #dbeafe;border-radius:20px;background:#ffffffde;box-shadow:0 14px 34px #0f172a0a}.panel>header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px}.panel h2{margin:0;color:#172033;font-size:18px}.panel header p{margin:4px 0 0}.panel header .el-input{max-width:320px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metrics article{display:grid;gap:5px;padding:22px;border:1px solid #dbeafe;border-radius:18px;background:#fff}.metrics b{font-size:28px;color:#1677ff}.metrics span{color:#64748b}.account-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-height:560px;overflow:auto;padding-right:6px}.account-card{display:flex;align-items:center;gap:12px;min-width:0;padding:16px;border:1px solid #dbeafe;border-radius:16px;background:#f8fbff}.avatar{display:grid;place-items:center;width:44px;height:44px;flex:none;border-radius:14px;color:white;font-weight:800;background:linear-gradient(135deg,#2563eb,#06b6d4)}.account-info{display:grid;min-width:0;flex:1}.account-info span,.account-info small{overflow:hidden;color:#64748b;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.workspace{display:grid;grid-template-columns:minmax(280px,.72fr) minmax(480px,1.28fr);gap:16px}.picker>.el-select{width:100%;margin-bottom:10px}.picker>.el-button{width:100%;margin:0 0 14px}.form-list{display:grid;gap:8px;max-height:520px;overflow:auto}.form-list button{display:grid;gap:4px;padding:13px;text-align:left;border:1px solid #dbeafe;border-radius:13px;background:#f8fbff;color:#1e293b;cursor:pointer}.form-list button.active{border-color:#60a5fa;background:#eff6ff;box-shadow:inset 3px 0 #3b82f6}.form-list span{font-size:12px;color:#64748b}.range,.location{display:flex;gap:8px;width:100%;flex-wrap:wrap}.range>*{flex:1}.location .el-input{flex:2;min-width:220px}.location .el-input-number{flex:1;min-width:160px}.qr-box{display:grid;place-items:center;gap:10px;text-align:center}.qr-box canvas{border:1px solid #dbeafe;border-radius:16px}.qr-box span{color:#64748b;font-size:12px}:deep(.run-list){display:grid;gap:9px}:deep(.run){display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}:deep(.run i){width:10px;height:10px;border-radius:50%;background:#ef4444}:deep(.run.success i){background:#22c55e}:deep(.run div){display:grid;flex:1}:deep(.run span){color:#64748b;font-size:12px}:deep(.run em){font-style:normal;color:#ef4444}:deep(.run.success em){color:#16a34a}:deep(.empty-inline){padding:50px;text-align:center;color:#94a3b8}
-@media(max-width:1050px){.workspace{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.hero{align-items:flex-start;flex-wrap:wrap}.hero img{width:52px;height:52px}.hero h1{font-size:21px}.account-grid,.metrics{grid-template-columns:1fr}.panel>header{align-items:flex-start;flex-direction:column}.panel header .el-input{max-width:none}.editor{padding:14px}:deep(.editor .el-form-item){display:block}:deep(.editor .el-form-item__label){justify-content:flex-start}.location>*{min-width:100%!important}}
+.my-page{display:grid;gap:18px;min-width:0}.panel p{color:#64748b;font-size:13px}.panel{min-width:0;padding:20px;border:1px solid #dbeafe;border-radius:20px;background:#ffffffde;box-shadow:0 14px 34px #0f172a0a}.panel>header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px}.panel h2{margin:0;color:#172033;font-size:18px}.panel header p{margin:4px 0 0}.panel header .el-input{max-width:320px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metrics article{display:grid;gap:5px;padding:22px;border:1px solid #dbeafe;border-radius:18px;background:#fff}.metrics b{font-size:28px;color:#1677ff}.metrics span{color:#64748b}.settings-panel{max-width:none}.accounts-workspace{display:grid;grid-template-columns:minmax(320px,.42fr) minmax(520px,.58fr);align-items:start;gap:16px}.accounts-pane,.checkin-pane{min-height:420px}.account-search{display:flex;align-items:center;gap:10px;margin-bottom:14px}.account-search .el-input{flex:1}.account-search span{flex:none;color:#64748b;font-size:12px}.account-list{display:grid;gap:10px;max-height:620px;padding-right:6px;overflow-y:auto;scrollbar-gutter:stable}.account-card{display:flex;align-items:center;gap:12px;min-width:0;padding:14px;border:1px solid #dbeafe;border-radius:16px;background:#f8fbff;cursor:pointer;transition:.18s}.account-card:hover,.account-card.active{border-color:#60a5fa;background:#eff6ff;box-shadow:0 8px 20px #2563eb12}.avatar{display:grid;place-items:center;width:44px;height:44px;flex:none;border-radius:14px;color:white;font-weight:800;background:linear-gradient(135deg,#2563eb,#06b6d4)}.account-info{display:grid;min-width:0;flex:1}.account-info span,.account-info small{overflow:hidden;color:#64748b;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.form-select{width:100%;margin-bottom:14px}.option-state{float:right;margin-left:24px;color:#94a3b8}.manual-checkin{display:grid;gap:14px}.manual-head{display:grid;gap:6px;padding:14px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff}.manual-head>div{display:flex;align-items:center;gap:9px}.manual-head small{overflow:hidden;color:#64748b;text-overflow:ellipsis;white-space:nowrap}.manual-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-top:4px}.manual-actions .el-button{min-width:150px}.workspace{display:grid;grid-template-columns:minmax(280px,.72fr) minmax(480px,1.28fr);gap:16px}.picker>.el-select{width:100%;margin-bottom:10px}.picker>.el-button{width:100%;margin:0 0 14px}.form-list{display:grid;gap:8px;max-height:520px;overflow:auto}.form-list button{display:grid;gap:4px;padding:13px;text-align:left;border:1px solid #dbeafe;border-radius:13px;background:#f8fbff;color:#1e293b;cursor:pointer}.form-list button.active{border-color:#60a5fa;background:#eff6ff;box-shadow:inset 3px 0 #3b82f6}.form-list span{font-size:12px;color:#64748b}.range{display:flex;gap:8px;width:100%;flex-wrap:wrap}.range>*{flex:1}.qr-box{display:grid;place-items:center;gap:10px;text-align:center}.qr-box canvas{border:1px solid #dbeafe;border-radius:16px}.qr-box span{color:#64748b;font-size:12px}:deep(.run-list){display:grid;gap:9px}:deep(.run){display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}:deep(.run i){width:10px;height:10px;border-radius:50%;background:#ef4444}:deep(.run.success i){background:#22c55e}:deep(.run div){display:grid;flex:1}:deep(.run span){color:#64748b;font-size:12px}:deep(.run em){font-style:normal;color:#ef4444}:deep(.run.success em){color:#16a34a}:deep(.empty-inline){padding:50px;text-align:center;color:#94a3b8}
+@media(max-width:1180px){.accounts-workspace,.workspace{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.metrics{grid-template-columns:1fr}.panel>header{align-items:flex-start;flex-direction:column}.panel header .el-input{max-width:none}.account-search{align-items:flex-start;flex-direction:column}.account-search .el-input{width:100%}.editor{padding:14px}:deep(.editor .el-form-item){display:block}:deep(.editor .el-form-item__label){justify-content:flex-start}.manual-actions{align-items:stretch;flex-direction:column}.manual-actions .el-button{width:100%;margin:0}.range>*{min-width:100%!important}}
 </style>

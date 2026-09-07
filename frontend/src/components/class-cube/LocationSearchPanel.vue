@@ -141,6 +141,7 @@ import { parseCoordinates } from '../../utils/classCubeTaskForm.js'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
+  locationApi: { type: Object, default: () => classCubeApi },
 })
 const emit = defineEmits(['update:modelValue'])
 
@@ -368,7 +369,7 @@ async function searchAddress() {
   searchError.value = ''
   announce('正在搜索地址')
   try {
-    const response = await classCubeApi.searchLocations(normalizedQuery, selectedCity.value, 6, {
+    const response = await props.locationApi.searchLocations(normalizedQuery, selectedCity.value, 6, {
       signal: searchController.signal,
     })
     if (sequence !== requestSequence) return
@@ -459,7 +460,7 @@ async function initializeMap() {
   tileStatus.value = 'loading'
   mapNotice.value = ''
   try {
-    const configResponse = await classCubeApi.getLocationConfig()
+    const configResponse = await props.locationApi.getLocationConfig()
     mapConfig.value = normalizedMapConfig(configResponse)
     TMap = await loadTencentMapSdk({
       key: mapConfig.value.map_sdk_key,

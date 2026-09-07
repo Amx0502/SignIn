@@ -10,6 +10,18 @@ class MiaoyingAccountUpdate(BaseModel):
     enabled: bool = True
 
 
+class MiaoyingSettingsUpdate(BaseModel):
+    miaoying_webhook_url: str = Field(default="", max_length=2048)
+
+
+class MiaoyingManualCheckin(BaseModel):
+    account_id: int = Field(gt=0)
+    location_name: str = Field(default="", max_length=255)
+    latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    notify_wecom: bool = True
+
+
 class MiaoyingTaskPayload(BaseModel):
     account_id: int
     form_id: int

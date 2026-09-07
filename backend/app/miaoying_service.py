@@ -11,6 +11,12 @@ from . import config
 from .miaoying_client import MiaoyingClient, MiaoyingRemoteError
 from .miaoying_database import MiaoyingDatabase
 from .miaoying_db_models import MiaoyingAccountRow, MiaoyingFormRow, MiaoyingQrSessionRow, MiaoyingRunRow, MiaoyingTaskRow
+from .miaoying_notifier import MiaoyingNotificationError, MiaoyingNotifier
+from .miaoying_settings import (
+    MiaoyingSettingsError,
+    load_miaoying_settings,
+    save_miaoying_settings,
+)
 
 
 class MiaoyingValidationError(ValueError):
@@ -185,6 +191,91 @@ class MiaoyingService:
             account = self._get_account(session, account_id, user)
             return [self._form_dict(row) for row in session.scalars(select(MiaoyingFormRow).where(MiaoyingFormRow.account_id == account.id).order_by(MiaoyingFormRow.synced_at.desc()))]
 
+    def get_settings(self, user: dict) -> dict:
+        try:
+            settings = load_miaoying_settings()
+        except MiaoyingSettingsError as exc:
+            raise MiaoyingValidationError(str(exc)) from exc
+        if not self._is_admin(user):
+            settings.pop("miaoying_webhook_url", None)
+        return settings
+
+    def update_settings(self, payload: dict, user: dict) -> dict:
+        if not self._is_admin(user):
+            raise MiaoyingNotFound("秒应设置不存在")
+        try:
+            return save_miaoying_settings(payload.get("miaoying_webhook_url", ""))
+        except MiaoyingSettingsError as exc:
+            raise MiaoyingValidationError(str(exc)) from exc
+
+    def manual_checkin(self, form_id: int, payload: dict, user: dict) -> dict:
+        with self.database.session() as session:
+            account = self._get_account(session, payload["account_id"], user)
+            form = session.get(MiaoyingFormRow, form_id)
+            if not form or form.account_id != account.id:
+                raise MiaoyingValidationError("签到项目与账号不匹配")
+            if not account.enabled or account.status != "active":
+                raise MiaoyingValidationError("秒应账号不可用，请重新扫码")
+            token = self._token(account)
+            detail = self.client.get_tongji(token, form.remote_tongji_id)
+            requirements = self._requirements(detail)
+            if requirements["unsupported"]:
+                raise MiaoyingValidationError(
+                    "该项目需要当前版本不支持的字段："
+                    + "、".join(requirements["unsupported"])
+                )
+            if detail.get("isClosed"):
+                raise MiaoyingValidationError("秒应项目已关闭")
+            records = self.client.get_records(token, account.remote_user_id)
+            if not detail.get("isRepeat") and any(
+                str(item.get("tongjiId")) == form.remote_tongji_id
+                for item in records
+            ):
+                raise MiaoyingValidationError("该账号已提交此签到项目")
+            if not account.real_name.strip():
+                raise MiaoyingValidationError("请先在账号资料中填写签到姓名")
+            if not account.school_no.strip():
+                raise MiaoyingValidationError("请先在账号资料中填写数字学号")
+            try:
+                number = int(account.school_no)
+            except ValueError as exc:
+                raise MiaoyingValidationError("学号必须为数字") from exc
+            latitude = payload.get("latitude")
+            longitude = payload.get("longitude")
+            if requirements["location"] and (latitude is None or longitude is None):
+                raise MiaoyingValidationError("该项目要求位置，请先在地图中选择签到位置")
+            submission = {
+                "userId": account.remote_user_id,
+                "tongjiId": form.remote_tongji_id,
+                "infoKey": ["姓名"],
+                "infoVal": [account.real_name.strip()],
+                "signUrl": "",
+                "locationInfo": {
+                    "name": str(payload.get("location_name") or "地图选点"),
+                    "longtitude": float(longitude or 0),
+                    "lattitude": float(latitude or 0),
+                },
+                "no": number,
+                "noLabel": account.school_no,
+            }
+            remote_id = self.client.submit(token, submission)
+            notice = self._send_notification(
+                account=account,
+                form=form,
+                status="success",
+                message="签到成功",
+                trigger="manual",
+                latitude=latitude,
+                longitude=longitude,
+                enabled=bool(payload.get("notify_wecom", True)),
+            )
+            return {
+                "status": "success",
+                "message": "签到成功",
+                "submission_id": remote_id,
+                "notification": notice,
+            }
+
     def list_tasks(self, user: dict) -> list[dict]:
         with self.database.session() as session:
             stmt = self._scope(select(MiaoyingTaskRow), MiaoyingTaskRow, user).order_by(MiaoyingTaskRow.updated_at.desc())
@@ -303,8 +394,50 @@ class MiaoyingService:
                     task.enabled = False
         except Exception as exc:
             run.status="failed"; run.message=str(exc)[:1000]
+        if account and form:
+            self._send_notification(
+                account=account,
+                form=form,
+                status=run.status,
+                message=run.message,
+                trigger=trigger,
+                latitude=task.latitude,
+                longitude=task.longitude,
+            )
         run.finished_at=datetime.now(); session.flush()
         return self._run_dict(run)
+
+    @staticmethod
+    def _send_notification(
+        *,
+        account,
+        form,
+        status,
+        message,
+        trigger,
+        latitude=None,
+        longitude=None,
+        enabled=True,
+    ) -> dict:
+        if not enabled:
+            return {"sent": False, "reason": "disabled"}
+        try:
+            webhook = load_miaoying_settings().get("miaoying_webhook_url", "")
+            if not webhook:
+                return {"sent": False, "reason": "not_configured"}
+            MiaoyingNotifier().send(
+                webhook,
+                account_name=account.remark or account.nickname,
+                form_name=form.title,
+                status=status,
+                message=message,
+                trigger=trigger,
+                latitude=latitude,
+                longitude=longitude,
+            )
+            return {"sent": True}
+        except (MiaoyingSettingsError, MiaoyingNotificationError):
+            return {"sent": False, "reason": "send_failed"}
 
     @staticmethod
     def _requirements(data):
