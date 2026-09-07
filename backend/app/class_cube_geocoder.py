@@ -419,10 +419,12 @@ class ClassCubeGeocoder:
             or cls._text(formatted.get("rough"))
         )
         address = cls._text(result.get("address"))
-        # 秒应结果按“省-市-区-街道-name”展示。街道会由秒应根据
-        # 经纬度生成，因此这里优先把附近地标/POI 作为 name，避免
-        # 把同一条道路重复显示两次。
-        name = landmark or road or formatted_name
+        display_name = "-".join(dict.fromkeys(
+            part for part in (road, landmark or formatted_name) if part
+        ))
+        # 秒应不会稳定地根据经纬度补出 street，因此把道路和附近
+        # 地标组合为 locationInfo.name，确保结果页完整显示选点名称。
+        name = display_name
         if not name:
             fallback = address
             for prefix in (province, city, district):
@@ -431,11 +433,10 @@ class ClassCubeGeocoder:
             name = fallback
         if not name:
             raise ClassCubeGeocoderError("未识别到该坐标的道路或地点名称", retryable=False)
+        display_name = display_name or name
         return {
             "name": name,
-            "display_name": "-".join(dict.fromkeys(
-                part for part in (road, landmark or formatted_name) if part
-            )),
+            "display_name": display_name,
             "address": address or "".join(part for part in (province, city, district, name) if part),
             "province": province,
             "city": city,
