@@ -785,7 +785,10 @@ class MiaoyingService:
             street_part, name_part = display_name.split("-", 1)
             if street_part.strip() and name_part.strip():
                 street = street_part.strip()
-                name = name_part.strip()
+                # 秒应会把 locationInfo.name 放在公开位置的道路段，并根据
+                # 经纬度自行生成最后的地点段；因此这里提交道路名称，地点
+                # 名称由附近 POI 的精确坐标交给秒应解析。
+                name = street
         location_info = {
             "name": name,
             "longtitude": float(longitude or 0),
