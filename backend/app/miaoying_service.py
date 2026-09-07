@@ -523,7 +523,7 @@ class MiaoyingService:
                 raw_options = [raw_options]
         elif not isinstance(raw_options, list):
             raw_options = []
-        for option in raw_options:
+        for option_index, option in enumerate(raw_options):
             if isinstance(option, dict):
                 label = str(option.get("label") or option.get("title") or option.get("name") or option.get("value") or "").strip()
                 value = option.get("value", option.get("id", label))
@@ -531,7 +531,13 @@ class MiaoyingService:
                 label = str(option).strip()
                 value = option
             if label:
-                options.append({"label": label, "value": str(value)})
+                options.append({
+                    "label": label,
+                    "value": str(value),
+                    # 秒应新版 infoForms 的选项提交值不是显示文本，而是
+                    # 该选项在 options 数组中的零基序号。
+                    "submit_value": str(option_index) if source == "info" else str(value),
+                })
         if bool(raw.get("isImage")):
             control = "unsupported"
         elif is_multi:
@@ -608,7 +614,7 @@ class MiaoyingService:
             if self._is_empty_answer(value):
                 continue
             info_keys.append(field["title"])
-            info_vals.append(self._serialize_answer(value))
+            info_vals.append(self._serialize_field_answer(field, value))
 
         name_label = identity.get("name_label") or "姓名"
         if not info_keys:
@@ -668,7 +674,12 @@ class MiaoyingService:
                 raise MiaoyingValidationError(f"{title}至少选择 {minimum} 项")
             if maximum and len(values) > maximum:
                 raise MiaoyingValidationError(f"{title}最多选择 {maximum} 项")
-        allowed = {str(option.get("value")) for option in field.get("options") or []}
+        allowed = {
+            str(candidate)
+            for option in field.get("options") or []
+            for candidate in (option.get("value"), option.get("label"), option.get("submit_value"))
+            if candidate is not None
+        }
         if allowed and any(str(item) not in allowed for item in values):
             raise MiaoyingValidationError(f"{title}的选项已发生变化，请重新确认")
 
@@ -681,6 +692,30 @@ class MiaoyingService:
         if isinstance(value, bool):
             return "是" if value else "否"
         return str(value)
+
+    @classmethod
+    def _serialize_field_answer(cls, field: dict, value) -> str:
+        """把界面值转换成秒应实际接收的选项编码。
+
+        前端和旧任务可能保存显示文字，也可能保存 value；这里统一按当前
+        项目定义解析，避免项目选项变更时静默提交错误答案。
+        """
+        options = field.get("options") or []
+        if not options:
+            return cls._serialize_answer(value)
+
+        lookup: dict[str, str] = {}
+        for option in options:
+            submit_value = str(option.get("submit_value", option.get("value", "")))
+            for candidate in (option.get("value"), option.get("label"), submit_value):
+                if candidate is not None:
+                    lookup[str(candidate)] = submit_value
+
+        values = value if isinstance(value, list) else [value]
+        encoded = [lookup[str(item)] for item in values]
+        # 上游 infoVal 的元素本身是字符串；多选在一个元素中以英文逗号
+        # 连接选项序号，单选则直接提交单个序号。
+        return ",".join(encoded)
 
     @staticmethod
     def _date_allowed(task, value):
