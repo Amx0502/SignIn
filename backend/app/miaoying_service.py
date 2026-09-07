@@ -633,7 +633,7 @@ class MiaoyingService:
             "infoVal": info_vals,
             "signUrl": "",
             "locationInfo": {
-                "name": str(location_name or "地图选点"),
+                "name": str(location_name or "").strip() or "地图选点",
                 "longtitude": float(longitude or 0),
                 "lattitude": float(latitude or 0),
             },

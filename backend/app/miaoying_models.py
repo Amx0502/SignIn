@@ -38,7 +38,7 @@ class MiaoyingTaskPayload(BaseModel):
     skip_dates: list[str] = Field(default_factory=list)
     skip_weekends: bool = False
     auto_disable_after_finish: bool = True
-    location_name: str = ""
+    location_name: str = Field(default="", max_length=255)
     latitude: float | None = None
     longitude: float | None = None
     answers: dict[str, Any] = Field(default_factory=dict)
