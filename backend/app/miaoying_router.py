@@ -74,4 +74,6 @@ def create_miaoying_router(auth_dependency, menu_dependency=None):
     def run_task(task_id: int, request: Request, user=Depends(guard(("miaoying.auto","miaoying.tasks")))): return invoke(request, request.app.state.miaoying_service.run_task, task_id, user)
     @router.get("/runs")
     def runs(request: Request, limit: int=Query(100,ge=1,le=500), user=Depends(guard(("miaoying.runs","miaoying.logs","miaoying.overview")))): return invoke(request, request.app.state.miaoying_service.list_runs, user, limit)
+    @router.get("/submission-audits")
+    def submission_audits(request: Request, limit: int=Query(100,ge=1,le=500), user=Depends(guard("miaoying.logs"))): return invoke(request, request.app.state.miaoying_service.list_submission_audits, user, limit)
     return router

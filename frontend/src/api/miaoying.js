@@ -29,4 +29,5 @@ export default {
   deleteTask: id => data(instance.delete(`${root}/tasks/${id}`)),
   runTask: id => data(instance.post(`${root}/tasks/${id}/run`, null, { timeout: 360_000 })),
   listRuns: (limit = 200) => data(instance.get(`${root}/runs`, { params: { limit } })),
+  listSubmissionAudits: (limit = 200) => data(instance.get(`${root}/submission-audits`, { params: { limit } })),
 }

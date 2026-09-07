@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import logging
 import random
 import uuid
 from datetime import date, datetime, time, timedelta
@@ -14,13 +15,23 @@ from . import config
 from .checkin_delay_settings import get_checkin_delay_range
 from .miaoying_client import MiaoyingClient, MiaoyingRemoteError
 from .miaoying_database import MiaoyingDatabase
-from .miaoying_db_models import MiaoyingAccountRow, MiaoyingFormRow, MiaoyingQrSessionRow, MiaoyingRunRow, MiaoyingTaskRow
+from .miaoying_db_models import (
+    MiaoyingAccountRow,
+    MiaoyingFormRow,
+    MiaoyingQrSessionRow,
+    MiaoyingRunRow,
+    MiaoyingSubmissionAuditRow,
+    MiaoyingTaskRow,
+)
 from .miaoying_notifier import MiaoyingNotificationError, MiaoyingNotifier
 from .miaoying_settings import (
     MiaoyingSettingsError,
     load_miaoying_settings,
     save_miaoying_settings,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class MiaoyingValidationError(ValueError):
@@ -239,6 +250,8 @@ class MiaoyingService:
             raise MiaoyingValidationError(str(exc)) from exc
 
     def manual_checkin(self, form_id: int, payload: dict, user: dict) -> dict:
+        submit_error = None
+        result = None
         with self.database.session() as session:
             account = self._get_account(session, payload["account_id"], user)
             form = session.get(MiaoyingFormRow, form_id)
@@ -276,23 +289,47 @@ class MiaoyingService:
                 latitude,
                 longitude,
             )
-            remote_id = self.client.submit(token, submission)
-            notice = self._send_notification(
-                account=account,
-                form=form,
-                status="success",
-                message="签到成功",
+            audit = self._start_submission_audit(
+                session,
+                owner_user_id=self._owner(user),
+                account_id=account.id,
+                form_id=form.id,
+                task_id=None,
                 trigger="manual",
-                latitude=latitude,
-                longitude=longitude,
-                enabled=bool(payload.get("notify_wecom", True)),
+                submission=submission,
             )
-            return {
-                "status": "success",
-                "message": "签到成功",
-                "submission_id": remote_id,
-                "notification": notice,
-            }
+            try:
+                remote_id = self.client.submit(token, submission)
+            except Exception as exc:
+                submit_error = exc
+                self._finish_submission_audit(audit, status="failed", message=str(exc))
+            else:
+                self._finish_submission_audit(
+                    audit,
+                    status="success",
+                    message="签到成功",
+                    remote_submission_id=remote_id,
+                )
+                notice = self._send_notification(
+                    account=account,
+                    form=form,
+                    status="success",
+                    message="签到成功",
+                    trigger="manual",
+                    latitude=latitude,
+                    longitude=longitude,
+                    enabled=bool(payload.get("notify_wecom", True)),
+                )
+                result = {
+                    "status": "success",
+                    "message": "签到成功",
+                    "submission_id": remote_id,
+                    "audit_id": audit.id,
+                    "notification": notice,
+                }
+        if submit_error is not None:
+            raise submit_error
+        return result
 
     def list_tasks(self, user: dict) -> list[dict]:
         with self.database.session() as session:
@@ -328,6 +365,17 @@ class MiaoyingService:
         with self.database.session() as session:
             stmt = self._scope(select(MiaoyingRunRow), MiaoyingRunRow, user).order_by(MiaoyingRunRow.started_at.desc()).limit(min(max(limit, 1), 500))
             return [self._run_dict(row) for row in session.scalars(stmt)]
+
+    def list_submission_audits(self, user: dict, limit: int = 100) -> list[dict]:
+        with self.database.session() as session:
+            stmt = self._scope(
+                select(MiaoyingSubmissionAuditRow),
+                MiaoyingSubmissionAuditRow,
+                user,
+            ).order_by(MiaoyingSubmissionAuditRow.started_at.desc()).limit(
+                min(max(limit, 1), 500)
+            )
+            return [self._submission_audit_dict(row) for row in session.scalars(stmt)]
 
     def dashboard_summary(self, start_at: datetime, end_at: datetime) -> dict:
         with self.database.session() as session:
@@ -381,6 +429,7 @@ class MiaoyingService:
     def _execute(self, session, task, trigger, schedule_key):
         account = session.get(MiaoyingAccountRow, task.account_id); form = session.get(MiaoyingFormRow, task.form_id)
         run = MiaoyingRunRow(owner_user_id=task.owner_user_id, task_id=task.id, account_id=task.account_id, form_id=task.form_id, schedule_key=schedule_key, trigger=trigger)
+        audit = None
         try:
             with session.begin_nested():
                 session.add(run)
@@ -415,8 +464,23 @@ class MiaoyingService:
                 task.latitude,
                 task.longitude,
             )
+            audit = self._start_submission_audit(
+                session,
+                owner_user_id=task.owner_user_id,
+                account_id=task.account_id,
+                form_id=task.form_id,
+                task_id=task.id,
+                trigger=trigger,
+                submission=payload,
+            )
             remote_id = self.client.submit(token, payload)
             run.status="success"; run.remote_submission_id=remote_id; run.message="签到成功"; run.response_summary={"submission_id": remote_id}
+            self._finish_submission_audit(
+                audit,
+                status="success",
+                message="签到成功",
+                remote_submission_id=remote_id,
+            )
             if not detail.get("isRepeat"):
                 task.enabled = False
             elif task.auto_disable_after_finish and task.date_mode == "specific" and task.run_dates:
@@ -426,6 +490,8 @@ class MiaoyingService:
                     task.enabled = False
         except Exception as exc:
             run.status="failed"; run.message=str(exc)[:1000]
+            if audit is not None:
+                self._finish_submission_audit(audit, status="failed", message=str(exc))
         if account and form:
             self._send_notification(
                 account=account,
@@ -710,6 +776,77 @@ class MiaoyingService:
         }
 
     @staticmethod
+    def _submission_request_summary(submission: dict) -> dict:
+        """Keep only fields needed to prove what location was sent upstream."""
+        location = submission.get("locationInfo") or {}
+        return {
+            "operation": "createBaomingByInput",
+            "tongji_id": str(submission.get("tongjiId") or ""),
+            "location_info": {
+                "name": str(location.get("name") or ""),
+                "lattitude": float(location.get("lattitude") or 0),
+                "longtitude": float(location.get("longtitude") or 0),
+            },
+        }
+
+    def _start_submission_audit(
+        self,
+        session,
+        *,
+        owner_user_id: int,
+        account_id: int,
+        form_id: int,
+        task_id: int | None,
+        trigger: str,
+        submission: dict,
+    ) -> MiaoyingSubmissionAuditRow:
+        summary = self._submission_request_summary(submission)
+        location = summary["location_info"]
+        row = MiaoyingSubmissionAuditRow(
+            owner_user_id=owner_user_id,
+            task_id=task_id,
+            account_id=account_id,
+            form_id=form_id,
+            trigger=trigger,
+            operation=summary["operation"],
+            request_summary=summary,
+        )
+        session.add(row)
+        session.flush()
+        logger.info(
+            "秒应上游签到请求 audit_id=%s form_id=%s operation=%s "
+            "location_name=%r latitude=%.6f longitude=%.6f",
+            row.id,
+            form_id,
+            summary["operation"],
+            location["name"],
+            location["lattitude"],
+            location["longtitude"],
+        )
+        return row
+
+    @staticmethod
+    def _finish_submission_audit(
+        row: MiaoyingSubmissionAuditRow,
+        *,
+        status: str,
+        message: str,
+        remote_submission_id: str = "",
+    ) -> None:
+        row.status = status
+        row.message = str(message)[:1000]
+        row.remote_submission_id = str(remote_submission_id or "")
+        row.finished_at = datetime.now()
+        log = logger.info if status == "success" else logger.warning
+        log(
+            "秒应上游签到响应 audit_id=%s status=%s submission_id=%s message=%s",
+            row.id,
+            status,
+            row.remote_submission_id or "-",
+            row.message,
+        )
+
+    @staticmethod
     def _resolve_answer(field: dict, answers: dict, account: MiaoyingAccountRow):
         for key in (field.get("key"), field.get("id"), field.get("title")):
             if key and key in answers:
@@ -822,3 +959,5 @@ class MiaoyingService:
     def _task_dict(r): return {"id":r.id,"owner_user_id":r.owner_user_id,"account_id":r.account_id,"form_id":r.form_id,"name":r.name,"enabled":r.enabled,"schedule_times":r.schedule_times,"start_date":r.start_date,"end_date":r.end_date,"date_mode":r.date_mode,"run_dates":r.run_dates,"skip_dates":r.skip_dates,"skip_weekends":r.skip_weekends,"auto_disable_after_finish":r.auto_disable_after_finish,"location_name":r.location_name,"latitude":float(r.latitude) if r.latitude is not None else None,"longitude":float(r.longitude) if r.longitude is not None else None,"answers":r.answers or {},"answer_schema":r.answer_schema or [],"updated_at":r.updated_at}
     @staticmethod
     def _run_dict(r): return {"id":r.id,"task_id":r.task_id,"account_id":r.account_id,"form_id":r.form_id,"trigger":r.trigger,"status":r.status,"remote_submission_id":r.remote_submission_id,"message":r.message,"started_at":r.started_at,"finished_at":r.finished_at}
+    @staticmethod
+    def _submission_audit_dict(r): return {"id":r.id,"task_id":r.task_id,"account_id":r.account_id,"form_id":r.form_id,"trigger":r.trigger,"operation":r.operation,"status":r.status,"remote_submission_id":r.remote_submission_id,"request_summary":r.request_summary or {},"message":r.message,"started_at":r.started_at,"finished_at":r.finished_at}

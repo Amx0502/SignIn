@@ -100,3 +100,22 @@ class MiaoyingRunRow(MiaoyingBase):
     response_summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class MiaoyingSubmissionAuditRow(MiaoyingBase):
+    """Sanitized audit trail for outbound Miaoying check-in submissions."""
+
+    __tablename__ = "miaoying_submission_audits"
+    id: Mapped[int] = mapped_column(PK, primary_key=True, autoincrement=True)
+    owner_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    task_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    form_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    trigger: Mapped[str] = mapped_column(String(24), nullable=False, default="manual")
+    operation: Mapped[str] = mapped_column(String(64), nullable=False, default="createBaomingByInput")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="running")
+    remote_submission_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    request_summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
