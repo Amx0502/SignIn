@@ -55,6 +55,12 @@
           </div>
           <DynamicFormFields v-if="manualFields.length" v-model="manualAnswers" :fields="manualFields" />
           <div v-if="selectedManualForm.requirements?.location" class="location-editor">
+            <el-alert
+              v-if="selectedManualForm.requirements?.location_detail_visible === false"
+              type="info"
+              :closable="false"
+              title="该项目的原生位置只公开省、市；系统会把完整地址和经纬度作为“打卡实时位置（详细）”一并提交。"
+            />
             <el-input v-model="manualLocationName" clearable maxlength="255" show-word-limit placeholder="位置名称，例如：教学楼、宿舍楼或图书馆" />
             <LocationSearchPanel v-model="manualCoordinate" :location-api="api" />
           </div>
@@ -94,14 +100,23 @@
 
     <section v-else class="panel"><header><h2>{{ isLogs ? '秒应日志' : '运行记录' }}</h2></header><RunList :runs="runs" /></section>
 
-    <el-dialog v-model="qrVisible" title="微信扫码登录秒应" width="420px" destroy-on-close @closed="stopQr">
-      <div class="qr-box"><canvas ref="qrCanvas"></canvas><b>{{ qrStatus }}</b><span>请使用微信扫码，二维码 5 分钟内有效</span></div>
-    </el-dialog>
+    <QrLoginDialog
+      v-model="qrVisible"
+      :session="miaoyingQrSession"
+      :qr-remaining-seconds="qrRemainingSeconds"
+      :loading="qrLoading"
+      :countdown-total-seconds="120"
+      title="微信扫码登录"
+      subtitle="使用秒应绑定的微信扫码"
+      image-alt="秒应微信登录二维码"
+      @regenerate="openQr"
+      @update:model-value="value => { if (!value) stopQr() }"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, defineComponent, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
@@ -110,12 +125,14 @@ import api from '../api/miaoying.js'
 import TaskDateSchedule from '../components/TaskDateSchedule.vue'
 import DynamicFormFields from '../components/miaoying/DynamicFormFields.vue'
 import RosterIdentity from '../components/miaoying/RosterIdentity.vue'
+import QrLoginDialog from '../components/class-cube/QrLoginDialog.vue'
 import { parseCoordinates } from '../utils/classCubeTaskForm.js'
 
 const LocationSearchPanel=defineAsyncComponent(()=>import('../components/class-cube/LocationSearchPanel.vue'))
 
 const route=useRoute(), router=useRouter(), loading=ref(false), keyword=ref(''), accounts=ref([]),forms=ref([]),tasks=ref([]),runs=ref([])
-const qrVisible=ref(false),qrCanvas=ref(),qrStatus=ref('正在生成二维码…'),qrId=ref('');let qrTimer
+const qrVisible=ref(false),qrImage=ref(''),qrState=ref('pending'),qrId=ref(''),qrLoading=ref(false),qrRemainingSeconds=ref(0),qrExpiresAt=ref(0);let qrTimer,qrCountdownTimer
+const miaoyingQrSession=computed(()=>({status:qrState.value,qrImage:qrImage.value}))
 const editingId=ref(null)
 const user=JSON.parse(localStorage.getItem('user')||'{}'),isAdmin=computed(()=>user.role==='admin')
 const settings=reactive({miaoying_webhook_url:'',webhook_configured:false}),settingsSaving=ref(false)
@@ -152,10 +169,12 @@ const taskCoordinate=computed({
 const format=v=>v?new Date(v).toLocaleString('zh-CN',{hour12:false}):'—'
 const RunList=defineComponent({props:{runs:{type:Array,default:()=>[]}},setup(p){return()=>p.runs.length?h('div',{class:'run-list'},p.runs.map(v=>h('article',{class:`run ${v.status}`},[h('i'),h('div',[h('b',v.message||v.status),h('span',`${v.trigger==='manual'?'手动执行':'自动调度'} · ${format(v.started_at)}`)]),h('em',v.status==='success'?'成功':'失败')]))):h('div',{class:'empty-inline'},'暂无运行记录')}})
 async function load(){loading.value=true;try{if(isAccounts.value){accounts.value=await api.listAccounts();if(!accounts.value.some(item=>item.id===selectedAccountId.value))selectedAccountId.value=accounts.value[0]?.id||null;await loadAccountForms()}else if(isAuto.value){[accounts.value,tasks.value]=await Promise.all([api.listAccounts(),api.listTasks()]);if(form.account_id)forms.value=await api.listForms(form.account_id)}else if(isTasks.value){tasks.value=await api.listTasks()}else if(isOverview.value){[accounts.value,tasks.value,runs.value]=await Promise.all([api.listAccounts(),api.listTasks(),api.listRuns()]);Object.assign(settings,await api.getSettings())}else{runs.value=await api.listRuns()}}catch(e){ElMessage.error(e.message)}finally{loading.value=false}}
-async function openQr(){stopQr();qrVisible.value=true;qrStatus.value='正在生成二维码…';try{const data=await api.createQr();qrId.value=data.id;await nextTick();await QRCode.toCanvas(qrCanvas.value,data.qr_content,{width:250,margin:2,color:{dark:'#0f172a',light:'#ffffff'}});qrStatus.value='等待扫码确认';scheduleQrPoll(100)}catch(e){qrStatus.value=e.message;ElMessage.error(e.message)}}
+async function openQr(){stopQr();qrVisible.value=true;qrLoading.value=true;qrState.value='pending';try{const data=await api.createQr();qrId.value=data.id;qrImage.value=await QRCode.toDataURL(data.qr_content,{width:440,margin:2,color:{dark:'#000000',light:'#ffffff'}});qrExpiresAt.value=new Date(data.expires_at).getTime();updateQrCountdown();qrCountdownTimer=window.setInterval(updateQrCountdown,1000);scheduleQrPoll(100)}catch(e){qrState.value='error';ElMessage.error(e.message)}finally{qrLoading.value=false}}
 function scheduleQrPoll(delay=800){if(qrTimer)window.clearTimeout(qrTimer);qrTimer=window.setTimeout(pollQr,delay)}
-async function pollQr(){const sessionId=qrId.value;if(!sessionId)return;try{const data=await api.pollQr(sessionId);if(qrId.value!==sessionId)return;if(data.status==='completed'){stopQr();qrStatus.value='登录成功';ElMessage.success('秒应账号添加成功');setTimeout(()=>{qrVisible.value=false;load()},250)}else if(data.status==='expired'){stopQr();qrStatus.value='二维码已过期，请关闭后重试'}else scheduleQrPoll()}catch(e){if(qrId.value===sessionId){qrStatus.value='状态查询暂时失败，正在重试…';scheduleQrPoll(1400)}}}
-function stopQr(){if(qrTimer)window.clearTimeout(qrTimer);qrTimer=null;qrId.value=''}
+function updateQrCountdown(){qrRemainingSeconds.value=Math.max(0,Math.ceil((qrExpiresAt.value-Date.now())/1000));if(qrExpiresAt.value&&qrRemainingSeconds.value===0){qrState.value='expired';clearQrTimers()}}
+function clearQrTimers(){if(qrTimer)window.clearTimeout(qrTimer);if(qrCountdownTimer)window.clearInterval(qrCountdownTimer);qrTimer=null;qrCountdownTimer=null}
+async function pollQr(){const sessionId=qrId.value;if(!sessionId)return;try{const data=await api.pollQr(sessionId);if(qrId.value!==sessionId)return;if(data.status==='completed'){clearQrTimers();qrState.value='success';ElMessage.success('秒应账号添加成功');window.setTimeout(()=>{qrVisible.value=false;stopQr();load()},700)}else if(data.status==='expired'){clearQrTimers();qrState.value='expired'}else scheduleQrPoll()}catch(e){if(qrId.value===sessionId){scheduleQrPoll(1400)}}}
+function stopQr(){clearQrTimers();qrId.value='';qrImage.value='';qrExpiresAt.value=0;qrRemainingSeconds.value=0;qrState.value='pending';qrLoading.value=false}
 const defaultFormId=items=>items.find(item=>!item.is_closed)?.id||items[0]?.id||null
 async function accountCommand(command,item){
   if(command==='rescan')return openQr()
@@ -186,7 +205,7 @@ watch(()=>route.path,load);onMounted(load);onUnmounted(stopQr)
 </script>
 
 <style scoped>
-.my-page{display:grid;gap:18px;min-width:0}.panel p{color:#64748b;font-size:13px}.panel{min-width:0;padding:20px;border:1px solid #dbeafe;border-radius:20px;background:#ffffffde;box-shadow:0 14px 34px #0f172a0a}.panel>header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px}.panel h2{margin:0;color:#172033;font-size:18px}.panel header p{margin:4px 0 0}.panel header .el-input{max-width:320px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metrics article{display:grid;gap:5px;padding:22px;border:1px solid #dbeafe;border-radius:18px;background:#fff}.metrics b{font-size:28px;color:#1677ff}.metrics span{color:#64748b}.settings-panel{max-width:none}.accounts-workspace{display:grid;grid-template-columns:minmax(320px,.42fr) minmax(520px,.58fr);align-items:start;gap:16px}.accounts-pane,.checkin-pane{min-height:420px}.account-search{display:flex;align-items:center;gap:10px;margin-bottom:14px}.account-search .el-input{flex:1}.account-search span{flex:none;color:#64748b;font-size:12px}.account-list{display:grid;gap:10px;max-height:620px;padding-right:6px;overflow-y:auto;scrollbar-gutter:stable}.account-card{display:flex;align-items:center;gap:12px;min-width:0;padding:14px;border:1px solid #dbeafe;border-radius:16px;background:#f8fbff;cursor:pointer;transition:.18s}.account-card:hover,.account-card.active{border-color:#60a5fa;background:#eff6ff;box-shadow:0 8px 20px #2563eb12}.avatar{display:grid;place-items:center;width:44px;height:44px;flex:none;border-radius:14px;color:white;font-weight:800;background:linear-gradient(135deg,#2563eb,#06b6d4)}.account-info{display:grid;min-width:0;flex:1}.account-info span,.account-info small{overflow:hidden;color:#64748b;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.form-select{width:100%;margin-bottom:14px}.option-state{float:right;margin-left:24px;color:#94a3b8}.manual-checkin{display:grid;gap:14px}.manual-head{display:grid;gap:6px;padding:14px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff}.manual-head>div{display:flex;align-items:center;gap:9px}.manual-head small{overflow:hidden;color:#64748b;text-overflow:ellipsis;white-space:nowrap}.manual-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-top:4px}.manual-actions .el-button{min-width:150px}.workspace{display:grid;grid-template-columns:minmax(280px,.72fr) minmax(480px,1.28fr);gap:16px}.picker>.el-select{width:100%;margin-bottom:10px}.picker>.el-button{width:100%;margin:0 0 14px}.form-list{display:grid;gap:12px;max-height:520px;overflow:auto}.form-group{display:grid;gap:8px}.form-group>strong{padding:2px 4px;color:#64748b;font-size:12px}.form-group.closed{padding-top:10px;border-top:1px solid #e2e8f0}.form-group.closed button{opacity:.72}.form-list button{display:grid;gap:4px;padding:13px;text-align:left;border:1px solid #dbeafe;border-radius:13px;background:#f8fbff;color:#1e293b;cursor:pointer}.form-list button.active{border-color:#60a5fa;background:#eff6ff;box-shadow:inset 3px 0 #3b82f6}.form-list span{font-size:12px;color:#64748b}.range{display:flex;gap:8px;width:100%;flex-wrap:wrap}.range>*{flex:1}.task-dynamic-fields{margin:0 0 18px 88px}.qr-box{display:grid;place-items:center;gap:10px;text-align:center}.qr-box canvas{border:1px solid #dbeafe;border-radius:16px}.qr-box span{color:#64748b;font-size:12px}:deep(.run-list){display:grid;gap:9px}:deep(.run){display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}:deep(.run i){width:10px;height:10px;border-radius:50%;background:#ef4444}:deep(.run.success i){background:#22c55e}:deep(.run div){display:grid;flex:1}:deep(.run span){color:#64748b;font-size:12px}:deep(.run em){font-style:normal;color:#ef4444}:deep(.run.success em){color:#16a34a}:deep(.empty-inline){padding:50px;text-align:center;color:#94a3b8}
+.my-page{display:grid;gap:18px;min-width:0}.panel p{color:#64748b;font-size:13px}.panel{min-width:0;padding:20px;border:1px solid #dbeafe;border-radius:20px;background:#ffffffde;box-shadow:0 14px 34px #0f172a0a}.panel>header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px}.panel h2{margin:0;color:#172033;font-size:18px}.panel header p{margin:4px 0 0}.panel header .el-input{max-width:320px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metrics article{display:grid;gap:5px;padding:22px;border:1px solid #dbeafe;border-radius:18px;background:#fff}.metrics b{font-size:28px;color:#1677ff}.metrics span{color:#64748b}.settings-panel{max-width:none}.accounts-workspace{display:grid;grid-template-columns:minmax(320px,.42fr) minmax(520px,.58fr);align-items:start;gap:16px}.accounts-pane,.checkin-pane{min-height:420px}.account-search{display:flex;align-items:center;gap:10px;margin-bottom:14px}.account-search .el-input{flex:1}.account-search span{flex:none;color:#64748b;font-size:12px}.account-list{display:grid;gap:10px;max-height:620px;padding-right:6px;overflow-y:auto;scrollbar-gutter:stable}.account-card{display:flex;align-items:center;gap:12px;min-width:0;padding:14px;border:1px solid #dbeafe;border-radius:16px;background:#f8fbff;cursor:pointer;transition:.18s}.account-card:hover,.account-card.active{border-color:#60a5fa;background:#eff6ff;box-shadow:0 8px 20px #2563eb12}.avatar{display:grid;place-items:center;width:44px;height:44px;flex:none;border-radius:14px;color:white;font-weight:800;background:linear-gradient(135deg,#2563eb,#06b6d4)}.account-info{display:grid;min-width:0;flex:1}.account-info span,.account-info small{overflow:hidden;color:#64748b;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.form-select{width:100%;margin-bottom:14px}.option-state{float:right;margin-left:24px;color:#94a3b8}.manual-checkin{display:grid;gap:14px}.manual-head{display:grid;gap:6px;padding:14px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff}.manual-head>div{display:flex;align-items:center;gap:9px}.manual-head small{overflow:hidden;color:#64748b;text-overflow:ellipsis;white-space:nowrap}.manual-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-top:4px}.manual-actions .el-button{min-width:150px}.workspace{display:grid;grid-template-columns:minmax(280px,.72fr) minmax(480px,1.28fr);gap:16px}.picker>.el-select{width:100%;margin-bottom:10px}.picker>.el-button{width:100%;margin:0 0 14px}.form-list{display:grid;gap:12px;max-height:520px;overflow:auto}.form-group{display:grid;gap:8px}.form-group>strong{padding:2px 4px;color:#64748b;font-size:12px}.form-group.closed{padding-top:10px;border-top:1px solid #e2e8f0}.form-group.closed button{opacity:.72}.form-list button{display:grid;gap:4px;padding:13px;text-align:left;border:1px solid #dbeafe;border-radius:13px;background:#f8fbff;color:#1e293b;cursor:pointer}.form-list button.active{border-color:#60a5fa;background:#eff6ff;box-shadow:inset 3px 0 #3b82f6}.form-list span{font-size:12px;color:#64748b}.range{display:flex;gap:8px;width:100%;flex-wrap:wrap}.range>*{flex:1}.task-dynamic-fields{margin:0 0 18px 88px}:deep(.run-list){display:grid;gap:9px}:deep(.run){display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc}:deep(.run i){width:10px;height:10px;border-radius:50%;background:#ef4444}:deep(.run.success i){background:#22c55e}:deep(.run div){display:grid;flex:1}:deep(.run span){color:#64748b;font-size:12px}:deep(.run em){font-style:normal;color:#ef4444}:deep(.run.success em){color:#16a34a}:deep(.empty-inline){padding:50px;text-align:center;color:#94a3b8}
 .identity-fields{display:grid;gap:12px;padding:15px;border:1px solid #bfdbfe;border-radius:16px;background:#fff}.identity-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.identity-title strong,.identity-title small{display:block}.identity-title small{margin-top:3px;color:#64748b;font-size:12px}.identity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.identity-grid label{display:grid;gap:6px;min-width:0}.identity-grid label>span{color:#475569;font-size:13px}
 .location-editor{display:grid;gap:10px;width:100%;min-width:0}.location-editor>.el-input{width:100%}
 @media(max-width:1180px){.accounts-workspace,.workspace{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.metrics{grid-template-columns:1fr}.panel>header{align-items:flex-start;flex-direction:column}.panel header .el-input{max-width:none}.account-search{align-items:flex-start;flex-direction:column}.account-search .el-input{width:100%}.editor{padding:14px}:deep(.editor .el-form-item){display:block}:deep(.editor .el-form-item__label){justify-content:flex-start}.task-dynamic-fields{margin-left:0}.identity-title{align-items:flex-start}.identity-grid{grid-template-columns:1fr}.manual-actions{align-items:stretch;flex-direction:column}.manual-actions .el-button{width:100%;margin:0}.range>*{min-width:100%!important}}

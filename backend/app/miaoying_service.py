@@ -82,6 +82,8 @@ class MiaoyingService:
                     MiaoyingQrSessionRow.status == "waiting",
                     # 不复用即将过期的二维码，避免刚显示就失效。
                     MiaoyingQrSessionRow.expires_at > now + timedelta(seconds=20),
+                    # 旧版本创建过 5 分钟会话；切换到 2 分钟后不再复用。
+                    MiaoyingQrSessionRow.expires_at <= now + timedelta(minutes=2),
                 )
                 .order_by(MiaoyingQrSessionRow.created_at.desc())
                 .limit(1)
@@ -99,7 +101,7 @@ class MiaoyingService:
         if not scene_id or not content:
             raise MiaoyingRemoteError("秒应未返回有效二维码")
         local_id = uuid.uuid4().hex
-        expires_at = datetime.now() + timedelta(minutes=5)
+        expires_at = datetime.now() + timedelta(minutes=2)
         with self.database.session() as session:
             session.add(MiaoyingQrSessionRow(id=local_id, owner_user_id=self._owner(user), remote_scene_id=scene_id, qr_content=content, expires_at=expires_at))
         return {"id": local_id, "qr_content": content, "expires_at": expires_at, "status": "waiting"}
@@ -488,6 +490,9 @@ class MiaoyingService:
                     unsupported.append(label)
         return {
             "location": bool(data.get("needLocation") or data.get("needSubmitLocation")),
+            # 秒应由项目创建者决定结果页是否公开详细位置。关闭时仍需提交
+            # 精确经纬度，但秒应结果页通常只展示省、市。
+            "location_detail_visible": bool(data.get("openLocationInfo")),
             "unsupported": unsupported,
             "fields": fields,
             "identity": {
@@ -631,6 +636,10 @@ class MiaoyingService:
             roster_entry = matches[0]
         real_name = roster_entry["name"] if roster_entry else account.real_name.strip()
         school_no = roster_entry["noLabel"] if roster_entry else account.school_no.strip()
+        class_name = (
+            str(roster_entry.get("groupName") or "").strip()
+            if roster_entry else account.class_name.strip()
+        )
         if not real_name:
             raise MiaoyingValidationError("请先在账号资料中填写签到姓名")
         if not school_no:
@@ -651,6 +660,7 @@ class MiaoyingService:
             info_vals.append(self._serialize_field_answer(field, value))
 
         name_label = identity.get("name_label") or "姓名"
+        class_label = identity.get("class_label") or "班级"
         if not info_keys:
             info_keys = [name_label]
             info_vals = [real_name]
@@ -659,6 +669,30 @@ class MiaoyingService:
             info_vals.insert(0, real_name)
         elif roster_entry:
             info_vals[info_keys.index(name_label)] = real_name
+
+        # 固定名单的班级并不是 infoForms 字段，上游不会从 no/noLabel 自动
+        # 展示它，因此显式写入 infoKey/infoVal，确保报名结果能看到班级。
+        if class_name:
+            if class_label in info_keys:
+                info_vals[info_keys.index(class_label)] = class_name
+            else:
+                info_keys.insert(0, class_label)
+                info_vals.insert(0, class_name)
+
+        # openLocationInfo=false 时，秒应原生结果页只公开省、市。将完整
+        # 地址和坐标同时作为报名字段提交，保证用户仍能看到本次实际点位。
+        if latitude is not None and longitude is not None:
+            location_label = "打卡实时位置（详细）"
+            location_text = str(location_name or "").strip() or "地图选点"
+            location_value = (
+                f"{location_text}（{float(latitude):.6f}, "
+                f"{float(longitude):.6f}）"
+            )
+            if location_label in info_keys:
+                info_vals[info_keys.index(location_label)] = location_value
+            else:
+                info_keys.append(location_label)
+                info_vals.append(location_value)
 
         return {
             "userId": account.remote_user_id,
@@ -774,13 +808,16 @@ class MiaoyingService:
     def _form_dict(r):
         import re
         remote_times = []
-        for rule in (r.raw_snapshot or {}).get("allowSubmitTimeRules") or []:
+        snapshot = r.raw_snapshot or {}
+        for rule in snapshot.get("allowSubmitTimeRules") or []:
             match = re.search(r"(?:T|\s|^)(\d{2}:\d{2}(?::\d{2})?)", str(rule.get("startTime") or ""))
             if match:
                 value = match.group(1)
                 if len(value) == 5: value += ":00"
                 if value not in remote_times: remote_times.append(value)
-        return {"id":r.id,"account_id":r.account_id,"remote_tongji_id":r.remote_tongji_id,"title":r.title,"content":r.content,"is_closed":r.is_closed,"is_repeat":r.is_repeat,"requirements":r.requirements,"remote_schedule_times":remote_times,"synced_at":r.synced_at}
+        requirements = dict(r.requirements or {})
+        requirements["location_detail_visible"] = bool(snapshot.get("openLocationInfo"))
+        return {"id":r.id,"account_id":r.account_id,"remote_tongji_id":r.remote_tongji_id,"title":r.title,"content":r.content,"is_closed":r.is_closed,"is_repeat":r.is_repeat,"requirements":requirements,"remote_schedule_times":remote_times,"synced_at":r.synced_at}
     @staticmethod
     def _task_dict(r): return {"id":r.id,"owner_user_id":r.owner_user_id,"account_id":r.account_id,"form_id":r.form_id,"name":r.name,"enabled":r.enabled,"schedule_times":r.schedule_times,"start_date":r.start_date,"end_date":r.end_date,"date_mode":r.date_mode,"run_dates":r.run_dates,"skip_dates":r.skip_dates,"skip_weekends":r.skip_weekends,"auto_disable_after_finish":r.auto_disable_after_finish,"location_name":r.location_name,"latitude":float(r.latitude) if r.latitude is not None else None,"longitude":float(r.longitude) if r.longitude is not None else None,"answers":r.answers or {},"answer_schema":r.answer_schema or [],"updated_at":r.updated_at}
     @staticmethod

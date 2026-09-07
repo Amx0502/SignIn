@@ -10,12 +10,12 @@
     <template #header>
       <div class="qr-title">
         <span class="qr-title__icon"><el-icon><Cellphone /></el-icon></span>
-        <div><strong>微信扫码登录</strong><small>使用班级魔方绑定的微信扫码</small></div>
+        <div><strong>{{ title }}</strong><small>{{ subtitle }}</small></div>
       </div>
     </template>
     <div class="qr-body" :class="`is-${session?.status || 'pending'}`">
       <div class="qr-stage">
-        <img v-if="session?.qrImage" :src="session.qrImage" alt="班级魔方微信登录二维码" />
+        <img v-if="session?.qrImage" :src="session.qrImage" :alt="imageAlt" />
         <el-skeleton v-else animated><template #template><el-skeleton-item variant="image" class="qr-skeleton" /></template></el-skeleton>
         <div v-if="session?.status === 'success'" class="qr-overlay"><el-icon><CircleCheckFilled /></el-icon><strong>登录成功</strong></div>
       </div>
@@ -52,6 +52,10 @@ const props = defineProps({
   session: { type: Object, default: null },
   qrRemainingSeconds: { type: Number, default: 0 },
   loading: { type: Boolean, default: false },
+  title: { type: String, default: '微信扫码登录' },
+  subtitle: { type: String, default: '使用班级魔方绑定的微信扫码' },
+  imageAlt: { type: String, default: '班级魔方微信登录二维码' },
+  countdownTotalSeconds: { type: Number, default: 120 },
 })
 const emit = defineEmits(['update:modelValue', 'regenerate'])
 
@@ -63,7 +67,9 @@ const statusMap = {
 }
 const statusMeta = computed(() => statusMap[props.session?.status] || statusMap.pending)
 const countdownPercent = computed(() =>
-  Math.max(0, Math.min(100, Math.round(props.qrRemainingSeconds / 120 * 100))),
+  Math.max(0, Math.min(100, Math.round(
+    props.qrRemainingSeconds / Math.max(1, props.countdownTotalSeconds) * 100,
+  ))),
 )
 </script>
 
