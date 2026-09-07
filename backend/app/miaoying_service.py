@@ -80,7 +80,8 @@ class MiaoyingService:
                 .where(
                     MiaoyingQrSessionRow.owner_user_id == self._owner(user),
                     MiaoyingQrSessionRow.status == "waiting",
-                    MiaoyingQrSessionRow.expires_at > now,
+                    # 不复用即将过期的二维码，避免刚显示就失效。
+                    MiaoyingQrSessionRow.expires_at > now + timedelta(seconds=20),
                 )
                 .order_by(MiaoyingQrSessionRow.created_at.desc())
                 .limit(1)
@@ -244,7 +245,9 @@ class MiaoyingService:
             if not account.enabled or account.status != "active":
                 raise MiaoyingValidationError("秒应账号不可用，请重新扫码")
             token = self._token(account)
-            detail = self.client.get_tongji(token, form.remote_tongji_id)
+            detail, records = self.client.get_checkin_context(
+                token, form.remote_tongji_id, account.remote_user_id
+            )
             requirements = self._requirements(detail)
             if requirements["unsupported"]:
                 raise MiaoyingValidationError(
@@ -253,7 +256,6 @@ class MiaoyingService:
                 )
             if detail.get("isClosed"):
                 raise MiaoyingValidationError("秒应项目已关闭")
-            records = self.client.get_records(token, account.remote_user_id)
             if not detail.get("isRepeat") and any(
                 str(item.get("tongjiId")) == form.remote_tongji_id
                 for item in records
@@ -390,12 +392,14 @@ class MiaoyingService:
             delay = random.uniform(minimum, maximum)
             if delay > 0:
                 sleep(delay)
-            detail = self.client.get_tongji(self._token(account), form.remote_tongji_id)
+            token = self._token(account)
+            detail, records = self.client.get_checkin_context(
+                token, form.remote_tongji_id, account.remote_user_id
+            )
             requirements = self._requirements(detail)
             blocked = requirements["unsupported"]
             if blocked: raise MiaoyingValidationError("该项目需要当前版本不支持的字段：" + "、".join(blocked))
             if detail.get("isClosed"): raise MiaoyingValidationError("秒应项目已关闭")
-            records = self.client.get_records(self._token(account), account.remote_user_id)
             if not detail.get("isRepeat") and any(str(item.get("tongjiId")) == form.remote_tongji_id for item in records):
                 raise MiaoyingValidationError("该账号已提交此签到项目")
             if requirements["location"] and (task.latitude is None or task.longitude is None):
@@ -409,7 +413,7 @@ class MiaoyingService:
                 task.latitude,
                 task.longitude,
             )
-            remote_id = self.client.submit(self._token(account), payload)
+            remote_id = self.client.submit(token, payload)
             run.status="success"; run.remote_submission_id=remote_id; run.message="签到成功"; run.response_summary={"submission_id": remote_id}
             if not detail.get("isRepeat"):
                 task.enabled = False

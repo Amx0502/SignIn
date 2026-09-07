@@ -32,20 +32,18 @@ class MiaoyingClient:
                 "Chrome/140.0.0.0 Safari/537.36"
             ),
         }
-        for _ in range(3):
+        for _ in range(2):
             try:
                 # 秒应当前接口要求请求具有 JSON 语义；完全空的 POST 偶发会被
                 # 上游网关挂起，最终被本系统转换成 502。
-                # 创建二维码使用独立短连接，避免复用轮询连接后遇到上游失效的
-                # keep-alive 连接；请求头与秒应网页保持一致以提高网关兼容性。
-                with requests.Session() as qr_session:
-                    response = qr_session.post(
-                        f"{self.qr_url}/qrcodeLogin",
-                        headers=qr_headers,
-                        json={},
-                        timeout=(5, 12),
-                    )
-                    return self._json(response, "创建秒应二维码")
+                # 创建与轮询复用同一连接，减少首次轮询重复 TLS 握手。
+                response = self.session.post(
+                    f"{self.qr_url}/qrcodeLogin",
+                    headers=qr_headers,
+                    json={},
+                    timeout=(4, 8),
+                )
+                return self._json(response, "创建秒应二维码")
             except (requests.Timeout, requests.ConnectionError) as exc:
                 last_error = exc
         raise MiaoyingRemoteError("连接秒应二维码服务超时，请稍后重试") from last_error
@@ -137,6 +135,19 @@ class MiaoyingClient:
     def get_records(self, token: str, uid: str, limit: int = 100) -> list[dict]:
         query = """query getAllBaomingRecords($uid:String,$limit:String){baomings(userId:$uid,sort:\"-createdAt\",limit:$limit){_id tongjiId createdAt infoKey infoVal}}"""
         return self.graphql(token, "getAllBaomingRecords", query, {"uid": uid, "limit": str(limit)}).get("baomings") or []
+
+    def get_checkin_context(
+        self, token: str, remote_id: str, uid: str, limit: int = 100
+    ) -> tuple[dict, list[dict]]:
+        """一次请求取得项目详情与用户记录，减少签到前的网络往返。"""
+        query = """query getCheckinContext($_id:String,$uid:String,$limit:String){tongji(_id:$_id){_id title content createdAt updatedAt isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel} needInfo needLocation needSubmitLocation needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}} baomings(userId:$uid,sort:\"-createdAt\",limit:$limit){_id tongjiId createdAt}}"""
+        data = self.graphql(
+            token,
+            "getCheckinContext",
+            query,
+            {"_id": remote_id, "uid": uid, "limit": str(limit)},
+        )
+        return data.get("tongji") or {}, data.get("baomings") or []
 
     def submit(self, token: str, payload: dict) -> str:
         query = """mutation createBaomingByInput($input:createBaomingInput!){createBaomingByInput(input:$input){_id}}"""
