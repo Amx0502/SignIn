@@ -34,7 +34,26 @@ class MiaoyingClient:
         raise MiaoyingRemoteError("连接秒应二维码服务超时，请稍后重试") from last_error
 
     def poll_qr(self, scene_id: str) -> dict | None:
-        payload = self._json(self.session.get(f"{self.qr_url}/getUserWithSceneId/{scene_id}", timeout=12), "查询扫码状态")
+        try:
+            response = self.session.get(
+                f"{self.qr_url}/getUserWithSceneId/{scene_id}",
+                timeout=(5, 12),
+            )
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            raise MiaoyingRemoteError("连接秒应扫码状态服务超时，请稍后重试") from exc
+
+        # 该接口以 HTTP 400 表示二维码仍在等待扫码，而不是请求失败。
+        # 仅识别这个明确的业务消息，其他 400 仍交给统一错误处理。
+        if response.status_code == 400:
+            try:
+                waiting_payload = response.json()
+            except ValueError:
+                waiting_payload = {}
+            waiting_message = str(waiting_payload.get("message") or "")
+            if "等待用户扫码" in waiting_message:
+                return None
+
+        payload = self._json(response, "查询扫码状态")
         data = payload.get("data")
         return data if isinstance(data, dict) and data.get("token") else None
 
