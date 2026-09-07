@@ -413,13 +413,18 @@ class ClassCubeGeocoder:
             reference_title("landmark_l2")
             or reference_title("landmark_l1")
             or nearest_poi
-            or cls._text(formatted.get("recommend"))
+        )
+        formatted_name = (
+            cls._text(formatted.get("recommend"))
             or cls._text(formatted.get("rough"))
         )
         address = cls._text(result.get("address"))
-        name = road or landmark
+        # 秒应结果按“省-市-区-街道-name”展示。街道会由秒应根据
+        # 经纬度生成，因此这里优先把附近地标/POI 作为 name，避免
+        # 把同一条道路重复显示两次。
+        name = landmark or road or formatted_name
         if not name:
-            fallback = cls._text(formatted.get("recommend")) or address
+            fallback = address
             for prefix in (province, city, district):
                 if prefix and fallback.startswith(prefix):
                     fallback = fallback[len(prefix):]
@@ -428,7 +433,9 @@ class ClassCubeGeocoder:
             raise ClassCubeGeocoderError("未识别到该坐标的道路或地点名称", retryable=False)
         return {
             "name": name,
-            "display_name": "-".join(dict.fromkeys(part for part in (road, landmark) if part)),
+            "display_name": "-".join(dict.fromkeys(
+                part for part in (road, landmark or formatted_name) if part
+            )),
             "address": address or "".join(part for part in (province, city, district, name) if part),
             "province": province,
             "city": city,
