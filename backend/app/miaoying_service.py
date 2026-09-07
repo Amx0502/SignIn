@@ -185,12 +185,35 @@ class MiaoyingService:
             account.last_sync_at = now
             account.last_error = ""
             session.flush()
-            return [self._form_dict(row) for row in session.scalars(select(MiaoyingFormRow).where(MiaoyingFormRow.account_id == account.id).order_by(MiaoyingFormRow.synced_at.desc()))]
+            form_rows = list(session.scalars(select(MiaoyingFormRow).where(MiaoyingFormRow.account_id == account.id)))
+            return [self._form_dict(row) for row in self._sort_forms(form_rows)]
 
     def list_forms(self, account_id: int, user: dict) -> list[dict]:
         with self.database.session() as session:
             account = self._get_account(session, account_id, user)
-            return [self._form_dict(row) for row in session.scalars(select(MiaoyingFormRow).where(MiaoyingFormRow.account_id == account.id).order_by(MiaoyingFormRow.synced_at.desc()))]
+            form_rows = list(session.scalars(select(MiaoyingFormRow).where(MiaoyingFormRow.account_id == account.id)))
+            return [self._form_dict(row) for row in self._sort_forms(form_rows)]
+
+    @classmethod
+    def _sort_forms(cls, rows: list[MiaoyingFormRow]) -> list[MiaoyingFormRow]:
+        return sorted(rows, key=lambda row: (cls._remote_form_time(row), row.id or 0), reverse=True)
+
+    @staticmethod
+    def _remote_form_time(row: MiaoyingFormRow) -> float:
+        snapshot = row.raw_snapshot or {}
+        value = snapshot.get("createdAt") or snapshot.get("updatedAt")
+        if isinstance(value, (int, float)):
+            return float(value) / 1000 if value > 10_000_000_000 else float(value)
+        if isinstance(value, str):
+            try:
+                number = float(value)
+                return number / 1000 if number > 10_000_000_000 else number
+            except ValueError:
+                try:
+                    return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+                except ValueError:
+                    pass
+        return row.synced_at.timestamp() if row.synced_at else 0
 
     def get_settings(self, user: dict) -> dict:
         try:
