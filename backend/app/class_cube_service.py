@@ -68,7 +68,10 @@ _PHOTO_CONTENT_TYPES = {
     ".png": "image/png",
     ".webp": "image/webp",
 }
-TENCENT_LOCATION_USAGE_PROVIDER = "tencent_location_suggestion"
+TENCENT_LOCATION_USAGE_PROVIDERS = {
+    "suggestion": ("tencent_location_suggestion", "关键词输入提示"),
+    "reverse": ("tencent_location_reverse", "逆地址解析"),
+}
 
 
 def _photo_signature(extension: str, header: bytes) -> bool:
@@ -323,28 +326,43 @@ class ClassCubeService:
         self._running_task_ids: set[int] = set()
         self._closed = False
 
-    def _record_tencent_location_request(self) -> None:
+    def _record_tencent_location_request(self, operation: str) -> None:
+        provider = TENCENT_LOCATION_USAGE_PROVIDERS.get(str(operation))
+        if provider is None:
+            self.logger.warning("忽略未知腾讯位置服务统计类型：%s", operation)
+            return
         try:
-            self.repository.record_api_call(
-                TENCENT_LOCATION_USAGE_PROVIDER
-            )
+            self.repository.record_api_call(provider[0])
         except Exception as exc:
             self.logger.warning(
-                "记录腾讯位置服务调用量失败（%s）",
+                "记录腾讯%s调用量失败（%s）",
+                provider[1],
                 type(exc).__name__,
             )
 
     def get_location_api_usage(self) -> dict[str, Any]:
-        usage = self.repository.get_api_usage(
-            TENCENT_LOCATION_USAGE_PROVIDER
-        )
         daily_limit = int(config.CLASS_CUBE_TENCENT_DAILY_LIMIT)
-        used = int(usage["used"])
+        items = []
+        for key, (provider, label) in TENCENT_LOCATION_USAGE_PROVIDERS.items():
+            usage = self.repository.get_api_usage(provider)
+            used = int(usage["used"])
+            items.append({
+                **usage,
+                "key": key,
+                "label": label,
+                "limit": daily_limit,
+                "remaining": max(daily_limit - used, 0),
+                "percent": round(min(used / daily_limit * 100, 100), 2),
+            })
+        used = sum(int(item["used"]) for item in items)
+        total_limit = daily_limit * len(items)
         return {
-            **usage,
-            "limit": daily_limit,
-            "remaining": max(daily_limit - used, 0),
-            "percent": round(min(used / daily_limit * 100, 100), 2),
+            "date": items[0]["date"] if items else date.today().isoformat(),
+            "used": used,
+            "limit": total_limit,
+            "remaining": max(total_limit - used, 0),
+            "percent": round(min(used / total_limit * 100, 100), 2),
+            "items": items,
         }
 
     def _pop_expired_targets(
