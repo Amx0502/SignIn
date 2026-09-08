@@ -4,6 +4,8 @@ from typing import Optional
 from .auth_repository import AuthRepository
 from .models import LoginRequest
 
+SESSION_EXPIRES_SECONDS = 24 * 60 * 60
+
 
 class AuthService:
     def __init__(self, repository: AuthRepository | None = None):
@@ -56,9 +58,8 @@ class AuthService:
             self._record_login_attempt(request.username, ip_address, False)
             return False, {"error": "用户名或密码错误"}
         self._record_login_attempt(request.username, ip_address, True)
-        expires_seconds = 86400 if request.remember_me else 3600
         token, expires_at = self._repo().create_session(
-            user.id, ip_address, expires_seconds
+            user.id, ip_address, SESSION_EXPIRES_SECONDS
         )
         return True, {
             "access_token": token,

@@ -2,63 +2,116 @@
   <el-card class="task-panel" shadow="never">
     <template #header>
       <div class="panel-head">
-        <div><strong>自动签到任务</strong><small>按指定日期和时间自动获取课程签到项</small></div>
-        <el-space wrap>
+        <div class="panel-title">
+          <strong>自动签到任务</strong>
+          <small>到达设定时间后，系统会自动查找课程中的签到并执行</small>
+        </div>
+        <div class="panel-actions">
+          <el-input v-model="keyword" clearable placeholder="搜索任务、账号或课程" :prefix-icon="Search" />
+          <el-select v-model="statusFilter" aria-label="筛选任务状态">
+            <el-option label="全部状态" value="all" />
+            <el-option label="仅看已启用" value="enabled" />
+            <el-option label="仅看已停用" value="disabled" />
+          </el-select>
           <el-button
             type="danger"
             plain
+            :icon="Delete"
             :disabled="!selectedTaskIds.size"
             @click="removeSelected"
           >批量删除({{ selectedTaskIds.size }})</el-button>
           <el-button type="primary" :icon="Plus" @click="openCreate">新增任务</el-button>
-        </el-space>
+        </div>
       </div>
     </template>
 
-    <el-table
-      ref="tableRef"
-      :data="tasks"
-      row-key="id"
-      stripe
-      @selection-change="selectionChanged"
-    >
-      <el-table-column type="selection" width="46" reserve-selection />
-      <el-table-column label="任务" min-width="170">
-        <template #default="{ row }"><div class="task-name"><strong>{{ row.name }}</strong><small>{{ (row.schedule_times || []).join('、') || '未设置时间' }}</small><small class="task-plan-summary">{{ schedulePlanSummary(row) }}</small></div></template>
-      </el-table-column>
-      <el-table-column label="账号 / 课程" min-width="190">
-        <template #default="{ row }"><div class="task-name"><span>{{ accountName(row.account_id) }}</span><small>{{ courseName(row.course_id) }}</small></div></template>
-      </el-table-column>
-      <el-table-column label="预设参数" min-width="170">
-        <template #default="{ row }">
-          <el-space wrap>
-            <el-tag v-if="row.latitude != null && row.longitude != null" size="small" type="primary">位置</el-tag>
-            <el-tag v-if="row.has_password" size="small" type="info">密码</el-tag>
-            <span v-if="row.latitude == null && !row.has_password" class="muted">无</span>
-          </el-space>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="92">
-        <template #default="{ row }"><el-switch :model-value="row.enabled" inline-prompt active-text="启" inactive-text="停" @change="value => toggleTask(row, value)" /></template>
-      </el-table-column>
-      <el-table-column label="最近扫描" min-width="150">
-        <template #default="{ row }"><span class="muted">{{ formatTime(row.last_scan_at) }}</span></template>
-      </el-table-column>
-      <el-table-column label="操作" width="230" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button
-            link
-            type="success"
-            :loading="runningTaskId === row.id"
-            :disabled="runningTaskId !== null && runningTaskId !== row.id"
-            @click="runNow(row)"
-          >立即执行</el-button>
-          <el-button link type="danger" @click="removeOne(row)">删除</el-button>
-        </template>
-      </el-table-column>
-      <template #empty><el-empty description="暂无自动任务" :image-size="90" /></template>
-    </el-table>
+    <div class="task-summary" aria-label="任务概况">
+      <span>共 <strong>{{ tasks.length }}</strong> 个任务</span>
+      <i aria-hidden="true"></i>
+      <span><b class="status-dot status-dot--enabled"></b>已启用 {{ enabledCount }}</span>
+      <span><b class="status-dot status-dot--disabled"></b>已停用 {{ tasks.length - enabledCount }}</span>
+    </div>
+
+    <div v-if="filteredTasks.length" class="task-grid">
+      <article
+        v-for="row in filteredTasks"
+        :key="row.id"
+        class="task-card"
+        :class="{ 'task-card--selected': isSelected(row.id), 'task-card--disabled': !row.enabled }"
+      >
+        <header class="task-card__header">
+          <el-checkbox
+            :model-value="isSelected(row.id)"
+            :aria-label="`选择任务 ${row.name}`"
+            @change="value => toggleSelection(row.id, value)"
+          />
+          <div class="task-card__title">
+            <strong :title="row.name">{{ row.name }}</strong>
+          </div>
+          <div class="task-card__state">
+            <span>{{ row.enabled ? '已启用' : '已停用' }}</span>
+            <el-switch :model-value="row.enabled" :aria-label="`${row.name}启用状态`" @change="value => toggleTask(row, value)" />
+          </div>
+        </header>
+
+        <div class="task-card__body">
+          <section class="task-detail task-detail--identity">
+            <span class="task-detail__label">执行账号与课程</span>
+            <strong>{{ accountName(row.account_id) }}</strong>
+            <small :title="courseName(row.course_id)">{{ courseName(row.course_id) }}</small>
+          </section>
+          <section class="task-detail">
+            <span class="task-detail__label">每日执行时间</span>
+            <div class="time-tags">
+              <el-tag v-for="time in row.schedule_times || []" :key="time" size="small" effect="plain">{{ time }}</el-tag>
+              <span v-if="!(row.schedule_times || []).length" class="muted">未设置时间</span>
+            </div>
+            <small class="task-plan-summary">{{ schedulePlanSummary(row) }}</small>
+          </section>
+          <section class="task-detail">
+            <span class="task-detail__label">签到预设</span>
+            <div class="preset-tags">
+              <el-tag v-if="row.latitude != null && row.longitude != null" size="small" type="primary">位置</el-tag>
+              <el-tag v-if="row.has_password" size="small" type="warning">密码</el-tag>
+              <el-tag v-if="row.photo_path || row.photo_res" size="small" type="success">照片</el-tag>
+              <span v-if="!hasPreset(row)" class="muted">无需预设参数</span>
+            </div>
+          </section>
+          <section class="task-detail">
+            <span class="task-detail__label">最近扫描</span>
+            <strong class="scan-time">{{ formatTime(row.last_scan_at) }}</strong>
+          </section>
+        </div>
+
+        <footer class="task-card__footer">
+          <div class="task-card__actions">
+            <el-button @click="openEdit(row)">编辑</el-button>
+            <el-button
+              type="primary"
+              plain
+              :loading="runningTaskId === row.id"
+              :disabled="runningTaskId !== null && runningTaskId !== row.id"
+              @click="runNow(row)"
+            >立即执行</el-button>
+            <el-dropdown trigger="click" @command="command => handleTaskCommand(command, row)">
+              <el-button :icon="MoreFilled" aria-label="更多任务操作" />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="delete" class="danger-menu-item">删除任务</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </footer>
+      </article>
+    </div>
+
+    <div v-else class="task-empty">
+      <el-empty :description="tasks.length ? '没有符合筛选条件的任务' : '还没有自动任务'" :image-size="88" />
+      <p>{{ tasks.length ? '尝试清除搜索词或切换状态筛选。' : '创建任务后，系统会按设定时间自动查找并完成课程签到。' }}</p>
+      <el-button v-if="!tasks.length" type="primary" :icon="Plus" @click="openCreate">新增第一个任务</el-button>
+      <el-button v-else @click="resetFilters">清除筛选</el-button>
+    </div>
 
     <el-dialog v-model="editorVisible" :title="editingId ? '编辑自动任务' : '新增自动任务'" width="min(1180px, 96vw)" class="task-editor-dialog" align-center append-to-body>
       <el-form label-position="top" class="task-editor-form">
@@ -194,8 +247,8 @@
 </template>
 
 <script setup>
-import { defineAsyncComponent, reactive, ref } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { computed, defineAsyncComponent, reactive, ref } from 'vue'
+import { Delete, MoreFilled, Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { coordinateText, normalizeScheduleTimes, parseCoordinates } from '../../utils/classCubeTaskForm.js'
 import LocationPanelLoading from './LocationPanelLoading.vue'
@@ -222,7 +275,6 @@ const props = defineProps({
   runTaskAction: { type: Function, required: true },
 })
 const emit = defineEmits(['update:selected-task-ids', 'select-account', 'refresh'])
-const tableRef = ref(null)
 const editorVisible = ref(false)
 const editingId = ref(null)
 const saving = ref(false)
@@ -231,10 +283,22 @@ const photoFiles = ref([])
 const runningTaskId = ref(null)
 const locationPanelKey = ref(0)
 const scheduleDrawerVisible = ref(false)
+const keyword = ref('')
+const statusFilter = ref('all')
 const emptyDatePlan = () => ({ start_date: null, end_date: null, date_mode: 'daily', run_dates: [], skip_dates: [], skip_weekends: false, auto_disable_after_finish: false })
 const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', photo_res: '', password: '', has_password: false, schedule_times: ['08:00:00'], ...emptyDatePlan(), notify_wecom: true })
 const draft = reactive(emptyDraft())
 const scheduleDraft = reactive(emptyDatePlan())
+const enabledCount = computed(() => props.tasks.filter(row => row.enabled).length)
+const filteredTasks = computed(() => {
+  const search = keyword.value.trim().toLowerCase()
+  return props.tasks.filter(row => {
+    if (statusFilter.value === 'enabled' && !row.enabled) return false
+    if (statusFilter.value === 'disabled' && row.enabled) return false
+    if (!search) return true
+    return `${row.name} ${accountName(row.account_id)} ${courseName(row.course_id)}`.toLowerCase().includes(search)
+  })
+})
 
 function accountName(id) { const row = props.accounts.find(item => item.id === id); return row?.name || row?.remote_user_name || `账号 ${id}` }
 function courseName(id) { return props.courses.find(item => item.id === id)?.name || `课程 ${id}` }
@@ -262,7 +326,19 @@ function scheduleRangeSummary(plan) {
   if (!plan.start_date && !plan.end_date) return '不限制开始和结束日期'
   return `${plan.start_date || '不限'} 至 ${plan.end_date || '不限'}`
 }
-function selectionChanged(rows) { emit('update:selected-task-ids', new Set(rows.map(row => row.id))) }
+function hasPreset(row) { return row.latitude != null || row.longitude != null || row.has_password || row.photo_path || row.photo_res }
+function isSelected(id) { return props.selectedTaskIds.has(id) }
+function toggleSelection(id, selected) {
+  const next = new Set(props.selectedTaskIds)
+  if (selected) next.add(id)
+  else next.delete(id)
+  emit('update:selected-task-ids', next)
+}
+function clearSelection() { emit('update:selected-task-ids', new Set()) }
+function resetFilters() { keyword.value = ''; statusFilter.value = 'all' }
+function handleTaskCommand(command, row) {
+  if (command === 'delete') removeOne(row)
+}
 function resetDraft(values = {}) {
   Object.assign(draft, emptyDraft(), values, {
     coordinateInput: coordinateText(values),
@@ -383,14 +459,58 @@ async function removeOne(row) {
 }
 async function removeSelected() {
   const ids = [...props.selectedTaskIds]
-  try { await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 个任务？`, '批量删除', { type: 'warning' }); await props.removeTasksAction(ids); tableRef.value?.clearSelection(); ElMessage.success(`已删除 ${ids.length} 个任务`) } catch (error) { if (!['cancel', 'close'].includes(error)) ElMessage.error(error.message || '批量删除失败') }
+  if (!ids.length) return
+  try { await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 个任务？`, '批量删除', { type: 'warning' }); await props.removeTasksAction(ids); clearSelection(); ElMessage.success(`已删除 ${ids.length} 个任务`) } catch (error) { if (!['cancel', 'close'].includes(error)) ElMessage.error(error.message || '批量删除失败') }
 }
 </script>
 
 <style scoped>
-.task-panel { border:1px solid rgb(191 219 254 / 58%);border-radius:22px;background:rgb(255 255 255 / 84%);box-shadow:0 18px 42px rgb(15 23 42 / 7%);backdrop-filter:blur(18px) }
-.panel-head { display:flex;align-items:center;justify-content:space-between;gap:14px }.panel-head strong,.panel-head small,.task-name strong,.task-name small { display:block }.panel-head strong{font-size:16px}.panel-head small,.task-name small,.muted{margin-top:4px;color:#64748b;font-size:11px}.task-name strong{color:#172033}
+.task-panel{overflow:hidden;border:1px solid rgb(191 219 254 / 64%);border-radius:22px;background:rgb(255 255 255 / 90%);box-shadow:0 18px 42px rgb(15 23 42 / 7%);backdrop-filter:blur(18px)}
+.task-panel :deep(.el-card__header){padding:17px 22px;border-bottom:1px solid #e5edf8}
+.task-panel :deep(.el-card__body){padding:0 22px 20px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.panel-title strong,.panel-title small{display:block}
+.panel-title strong{color:#172033;font-size:17px;line-height:1.35}
+.panel-title small{margin-top:5px;color:#64748b;font-size:12px;line-height:1.55}
+.panel-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex:none}
+.panel-actions .el-input{width:250px}
+.panel-actions .el-select{width:142px}
+.panel-actions .el-button{margin:0}
+.task-summary{display:flex;align-items:center;gap:16px;min-height:44px;color:#64748b;font-size:12px}
+.task-summary strong{color:#172033;font-size:14px}
+.task-summary i{width:1px;height:16px;background:#dbe5f2}
+.status-dot{display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;vertical-align:1px}
+.status-dot--enabled{background:#22c55e;box-shadow:0 0 0 3px #dcfce7}
+.status-dot--disabled{background:#94a3b8;box-shadow:0 0 0 3px #f1f5f9}
+.task-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.task-card{overflow:hidden;border:1px solid #dce6f3;border-radius:17px;background:#fff;box-shadow:0 8px 24px rgb(15 23 42 / 4%);transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.task-card:hover{border-color:#bfdbfe;box-shadow:0 12px 28px rgb(37 99 235 / 9%);transform:translateY(-1px)}
+.task-card--selected{border-color:#60a5fa;box-shadow:0 0 0 2px rgb(59 130 246 / 12%),0 12px 28px rgb(37 99 235 / 9%)}
+.task-card--disabled{background:linear-gradient(145deg,#fff,#f8fafc)}
+.task-card__header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:11px;padding:12px 15px;border-bottom:1px solid #edf2f8}
+.task-card__header :deep(.el-checkbox){height:auto}
+.task-card__title{display:grid;min-width:0}
+.task-card__title strong{overflow:hidden;color:#172033;font-size:15px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
+.task-card__state{display:flex;align-items:center;gap:9px;color:#64748b;font-size:12px}
+.task-card__body{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:13px 2px}
+.task-detail{display:grid;align-content:start;min-width:0;gap:5px;padding:0 12px;border-left:1px solid #edf2f8}
+.task-detail:first-child{border-left:0}
+.task-detail__label{color:#94a3b8;font-size:11px;font-weight:600}
+.task-detail strong{overflow:hidden;color:#334155;font-size:13px;line-height:1.5;text-overflow:ellipsis;white-space:nowrap}
+.task-detail small{overflow:hidden;color:#64748b;font-size:11px;line-height:1.5;text-overflow:ellipsis;white-space:nowrap}
+.task-detail--identity>strong{color:#1e3a5f}
+.task-plan-summary{color:#2563eb!important}
+.time-tags,.preset-tags{display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-height:24px}
+.scan-time{font-variant-numeric:tabular-nums}
+.muted{color:#94a3b8;font-size:12px}
+.task-card__footer{display:flex;align-items:center;justify-content:flex-end;padding:8px 12px;background:#f8fafc;border-top:1px solid #edf2f8}
+.task-card__actions{display:flex;align-items:center;gap:8px}
+.task-card__actions .el-button+.el-button{margin-left:0}
+.task-empty{display:grid;place-items:center;padding:34px 20px 42px;text-align:center}
+.task-empty :deep(.el-empty){padding-bottom:0}
+.task-empty p{margin:-6px 0 16px;color:#64748b;font-size:12px}
 .task-editor-form{max-height:min(80vh,860px);overflow-x:hidden;overflow-y:auto;padding:2px 4px 4px}.editor-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"basic strategy" "location location";align-items:stretch;gap:14px}.editor-section:nth-child(1){grid-area:basic}.editor-section:nth-child(2){grid-area:location}.editor-section:nth-child(3){grid-area:strategy}.editor-section{min-width:0;overflow:hidden;padding:16px 16px 6px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);box-shadow:0 10px 28px rgb(37 99 235 / 6%)}.editor-section :deep(.el-form-item__content){min-width:0}.editor-section header{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:12px;border-bottom:1px solid #e8eef8}.editor-section header strong,.editor-section header small{display:block}.editor-section header strong{color:#172033;font-size:15px}.editor-section header small{margin-top:2px;color:#8492a6;font-size:11px}.section-index{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-size:11px;font-weight:800;box-shadow:0 7px 16px rgb(37 99 235 / 22%)}.el-select,.el-input-number{width:100%}.field-tip{display:block;margin-top:7px;color:#64748b;font-size:11px}.schedule-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.date-range{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.schedule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;min-width:0}.schedule-row :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.date-range :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.switch-options{display:grid;gap:8px;padding:12px;border-radius:12px;background:#eff6ff}.switch-options .el-checkbox{margin-right:0}.task-plan-summary{color:#2563eb!important}.date-plan-card{display:flex;width:100%;min-width:0;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #dbeafe;border-radius:13px;background:#f8fbff}.date-plan-card__content{display:grid;min-width:0;gap:5px}.date-plan-card__content strong{overflow:hidden;color:#1e3a5f;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.date-plan-card__content small{color:#64748b;font-size:10px}.date-plan-card__tags{display:flex;flex-wrap:wrap;gap:5px}.date-plan-card>.el-button{flex:none}.schedule-drawer__body{display:grid;gap:16px;padding:0 4px 18px}.schedule-drawer__intro{display:grid;gap:5px;padding:13px 14px;border:1px solid #dbeafe;border-radius:13px;background:#eff6ff}.schedule-drawer__intro strong{color:#1e3a5f;font-size:14px}.schedule-drawer__intro small{color:#64748b;line-height:1.55}.date-range--drawer{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-@media(max-width:900px){.task-editor-form{max-height:76vh}}
-@media(max-width:680px){.panel-head{align-items:stretch;flex-direction:column}.panel-head :deep(.el-space),.panel-head :deep(.el-space__item),.panel-head .el-button{width:100%}.editor-layout{grid-template-columns:1fr;grid-template-areas:"basic" "strategy" "location"}.date-range{grid-template-columns:1fr}.task-editor-form{max-height:72vh}.editor-section{padding:14px 13px 4px}.date-plan-card{align-items:stretch;flex-direction:column}.date-plan-card>.el-button{width:100%}.date-range--drawer{grid-template-columns:1fr}}
+@media(min-width:1500px){.task-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.task-card__body{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:14px}.task-detail:nth-child(3){border-left:0}.task-detail:nth-child(n+3){padding-top:2px}}
+@media(max-width:1200px){.panel-head{align-items:flex-start;flex-direction:column}.panel-actions{width:100%}.panel-actions .el-input{flex:1;width:auto}.task-editor-form{max-height:76vh}}
+@media(max-width:680px){.task-panel :deep(.el-card__header){padding:16px}.task-panel :deep(.el-card__body){padding:0 14px 16px}.panel-actions{align-items:stretch;flex-direction:column}.panel-actions .el-input,.panel-actions .el-select,.panel-actions .el-button{width:100%}.task-summary{gap:12px;flex-wrap:wrap;padding:10px 0}.task-summary i{display:none}.task-card__header{grid-template-columns:auto minmax(0,1fr)}.task-card__state{grid-column:2;justify-content:space-between}.task-card__body{grid-template-columns:1fr;padding:4px 16px}.task-detail,.task-detail:nth-child(3){padding:14px 0;border-top:1px solid #edf2f8;border-left:0}.task-detail:first-child{border-top:0}.task-card__footer{align-items:stretch;flex-direction:column}.task-card__actions{display:grid;grid-template-columns:1fr 1fr auto}.task-card__actions .el-button{width:100%}.editor-layout{grid-template-columns:1fr;grid-template-areas:"basic" "strategy" "location"}.date-range{grid-template-columns:1fr}.task-editor-form{max-height:72vh}.editor-section{padding:14px 13px 4px}.date-plan-card{align-items:stretch;flex-direction:column}.date-plan-card>.el-button{width:100%}.date-range--drawer{grid-template-columns:1fr}}
 </style>

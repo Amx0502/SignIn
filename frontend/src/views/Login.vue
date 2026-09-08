@@ -33,12 +33,6 @@
           />
         </el-form-item>
         
-        <el-form-item class="form-row">
-          <el-checkbox v-model="form.rememberMe" :disabled="loading">
-            记住登录状态
-          </el-checkbox>
-        </el-form-item>
-        
         <el-form-item>
           <el-button 
             type="primary" 
@@ -66,8 +60,7 @@ const loading = ref(false)
 
 const form = reactive({
   username: '',
-  password: '',
-  rememberMe: false
+  password: ''
 })
 
 const rules = {
@@ -86,8 +79,7 @@ async function handleLogin() {
     
     const response = await loginApi({
       username: form.username,
-      password: form.password,
-      remember_me: form.rememberMe
+      password: form.password
     })
     
     if (response.ok) {
@@ -172,13 +164,6 @@ async function handleLogin() {
 
 .login-form {
   margin-bottom: 24px;
-}
-
-.form-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
 }
 
 .login-btn {

@@ -1,12 +1,5 @@
 <template>
   <div class="account-checkin">
-    <section class="stats-grid">
-      <article><span class="stat-icon blue"><el-icon><User /></el-icon></span><div><strong>{{ accounts.length }}</strong><small>登录账号</small></div></article>
-      <article><span class="stat-icon cyan"><el-icon><Reading /></el-icon></span><div><strong>{{ courses.length }}</strong><small>当前课程</small></div></article>
-      <article><span class="stat-icon green"><el-icon><CircleCheck /></el-icon></span><div><strong>{{ activeItems }}</strong><small>活动签到</small></div></article>
-      <article><span class="stat-icon violet"><el-icon><Timer /></el-icon></span><div><strong>{{ enabledTasks }}</strong><small>启用任务</small></div></article>
-    </section>
-
     <div class="workspace-grid">
       <el-card class="glass-card account-card" shadow="never">
         <template #header>
@@ -255,8 +248,8 @@
 <script setup>
 import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import {
-  Aim, Camera, Cellphone, CircleCheck, CircleCheckFilled, CircleCloseFilled,
-  Delete, Key, Lock, MoreFilled, Plus, Position, Reading, Refresh, Search, Timer, Upload, User, WarningFilled,
+  Aim, Camera, Cellphone, CircleCheckFilled, CircleCloseFilled,
+  Delete, Key, Lock, MoreFilled, Plus, Position, Refresh, Search, Upload, User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { buildManualCheckinPayload, shouldShowManualCheckinForm } from '../../utils/classCubeCheckin.js'
@@ -277,7 +270,6 @@ const props = defineProps({
   canAddAccount: { type: Boolean, default: true },
   courses: { type: Array, default: () => [] },
   items: { type: Array, default: () => [] },
-  tasks: { type: Array, default: () => [] },
   batchTargets: { type: Array, default: () => [] },
   selectedAccountId: { type: Number, default: null },
   selectedCourseId: { type: Number, default: null },
@@ -355,8 +347,6 @@ watch(
   { immediate: true },
 )
 
-const activeItems = computed(() => props.items.filter(item => item.status === 'active').length)
-const enabledTasks = computed(() => props.tasks.filter(task => task.enabled).length)
 const filteredAccounts = computed(() => {
   const keyword = accountKeyword.value.trim().toLowerCase()
   if (!keyword) return props.accounts
@@ -614,11 +604,6 @@ function removePhoto() {
 .qr-upload-zone { display: inline-flex; align-items: center; gap: 10px; padding: 10px; border: 1px dashed #93c5fd; border-radius: 12px; background: #f8fbff; }
 .qr-upload-zone span { color: #64748b; font-size: 12px; }
 .account-checkin { display: grid; gap: 18px; }
-.stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.stats-grid article { display: flex; align-items: center; gap: 13px; min-height: 92px; padding: 17px; border: 1px solid rgb(191 219 254 / 58%); border-radius: 19px; background: rgb(255 255 255 / 82%); box-shadow: 0 12px 30px rgb(15 23 42 / 6%); backdrop-filter: blur(16px); }
-.stat-icon { display: grid; width: 46px; height: 46px; flex: none; place-items: center; border-radius: 15px; font-size: 21px; }
-.stat-icon.blue { color: #2563eb; background: #dbeafe; }.stat-icon.cyan { color: #0891b2; background: #cffafe; }.stat-icon.green { color: #059669; background: #d1fae5; }.stat-icon.violet { color: #7c3aed; background: #ede9fe; }
-.stats-grid strong, .stats-grid small { display: block; }.stats-grid strong { color: #0f172a; font-size: 25px; line-height: 1; }.stats-grid small { margin-top: 7px; color: #64748b; font-size: 12px; }
 .workspace-grid { display: grid; grid-template-columns: minmax(330px, .85fr) minmax(0, 1.5fr); gap: 18px; align-items: start; }
 .glass-card { border: 1px solid rgb(191 219 254 / 58%); border-radius: 22px; background: rgb(255 255 255 / 82%); box-shadow: 0 18px 42px rgb(15 23 42 / 7%); backdrop-filter: blur(18px); }
 .checkin-card { container-type:inline-size }
@@ -687,5 +672,5 @@ function removePhoto() {
   .manual-actions .el-button{width:100%;max-width:100%;margin-left:0}
   .manual-actions :deep(.el-checkbox){min-width:0;height:auto;white-space:normal}
 }
-@media(max-width:1024px){.workspace-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.stats-grid{grid-template-columns:1fr 1fr;gap:8px}.stats-grid article{min-height:76px;padding:12px}.section-head,.manual-form__head,.selector-row,.manual-actions{align-items:stretch;flex-direction:column}.account-head-actions{display:grid;grid-template-columns:1fr}.account-search-bar{align-items:stretch;flex-direction:column}.account-search-bar span{align-self:flex-end}.location-grid{grid-template-columns:1fr}.section-head .el-button,.manual-actions .el-button{width:100%}}
+@media(max-width:1024px){.workspace-grid{grid-template-columns:1fr}}@media(max-width:640px){.section-head,.manual-form__head,.selector-row,.manual-actions{align-items:stretch;flex-direction:column}.account-head-actions{display:grid;grid-template-columns:1fr}.account-search-bar{align-items:stretch;flex-direction:column}.account-search-bar span{align-self:flex-end}.location-grid{grid-template-columns:1fr}.section-head .el-button,.manual-actions .el-button{width:100%}}
 </style>

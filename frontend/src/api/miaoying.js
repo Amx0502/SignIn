@@ -38,7 +38,6 @@ export default {
   createTask: payload => data(instance.post(`${root}/tasks`, payload)),
   updateTask: (id, payload) => data(instance.put(`${root}/tasks/${id}`, payload)),
   deleteTask: id => data(instance.delete(`${root}/tasks/${id}`)),
-  batchSetTaskState: (ids, enabled) => data(instance.post(`${root}/tasks/batch-state`, { ids, enabled })),
   batchDeleteTasks: ids => data(instance.post(`${root}/tasks/batch-delete`, { ids })),
   runTask: id => data(instance.post(`${root}/tasks/${id}/run`, null, { timeout: 360_000 })),
   listRuns: (limit = 200) => data(instance.get(`${root}/runs`, { params: { limit } })),
