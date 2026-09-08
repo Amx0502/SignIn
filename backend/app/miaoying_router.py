@@ -47,7 +47,7 @@ def create_miaoying_router(auth_dependency, menu_dependency=None):
     @router.delete("/accounts/{account_id}")
     def delete_account(account_id: int, request: Request, user=Depends(guard("miaoying.accounts"))): return invoke(request, request.app.state.miaoying_service.delete_account, account_id, user)
     @router.post("/accounts/{account_id}/forms/sync")
-    def sync_forms(account_id: int, request: Request, user=Depends(guard("miaoying.accounts"))): return invoke(request, request.app.state.miaoying_service.sync_forms, account_id, user)
+    def sync_forms(account_id: int, request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto")))): return invoke(request, request.app.state.miaoying_service.sync_forms, account_id, user)
     @router.get("/accounts/{account_id}/forms")
     def forms(account_id: int, request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto")))): return invoke(request, request.app.state.miaoying_service.list_forms, account_id, user)
     @router.post("/forms/{form_id}/checkin")

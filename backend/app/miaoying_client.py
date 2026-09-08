@@ -3,6 +3,9 @@ import requests
 from . import config
 
 
+TONGJI_FIELDS = """_id title content createdAt updatedAt isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel} needInfo needLocation needSubmitLocation needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}"""
+
+
 class MiaoyingRemoteError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = True):
         super().__init__(message)
@@ -122,19 +125,100 @@ class MiaoyingClient:
         return data.get("me") or {}
 
     def get_tongjis(self, token: str, uid: str, limit: int = 50) -> list[dict]:
-        query = """query getTongjis($uid:String!,$limit:String,$skip:String){tongjis(sort:\"-createdAt\",createdBy:$uid,limit:$limit,skip:$skip){_id title content createdAt updatedAt isClosed isRepeat repeatStartDate repeatEndDate endTime isRemove noName nameLabel needInfo needLocation needSubmitLocation needWifi needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}}}"""
-        query = query.replace("noName nameLabel", "noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel}")
+        query = f"""query getTongjis($uid:String!,$limit:String,$skip:String){{tongjis(sort:\"-createdAt\",createdBy:$uid,limit:$limit,skip:$skip){{isRemove {TONGJI_FIELDS}}}}}"""
         rows = self.graphql(token, "getTongjis", query, {"uid": uid, "limit": str(limit), "skip": "0"}).get("tongjis") or []
         return [row for row in rows if not row.get("isRemove")]
 
     def get_tongji(self, token: str, remote_id: str) -> dict:
-        query = """query getTongji($_id:String){tongji(_id:$_id){_id title content createdAt updatedAt isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel needInfo needLocation needSubmitLocation needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}}}"""
-        query = query.replace("noName nameLabel", "noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel}")
+        query = f"""query getTongji($_id:String){{tongji(_id:$_id){{{TONGJI_FIELDS}}}}}"""
         return self.graphql(token, "getTongji", query, {"_id": remote_id}).get("tongji") or {}
 
     def get_records(self, token: str, uid: str, limit: int = 100) -> list[dict]:
         query = """query getAllBaomingRecords($uid:String,$limit:String){baomings(userId:$uid,sort:\"-createdAt\",limit:$limit){_id tongjiId createdAt infoKey infoVal}}"""
         return self.graphql(token, "getAllBaomingRecords", query, {"uid": uid, "limit": str(limit)}).get("baomings") or []
+
+    def get_sync_context(
+        self,
+        token: str,
+        uid: str,
+        form_limit: int = 50,
+        record_limit: int = 100,
+        known_remote_ids: list[str] | None = None,
+    ) -> tuple[list[dict], list[dict]]:
+        """一次取得列表、记录及已缓存项目详情，避免同步阶段重复往返。"""
+        cached_ids = list(dict.fromkeys(
+            str(value) for value in (known_remote_ids or []) if value
+        ))[:20]
+        definitions = [
+            "$uid:String!",
+            "$formLimit:String",
+            "$recordLimit:String",
+            "$skip:String",
+        ]
+        definitions.extend(
+            f"$cached{index}:String" for index in range(len(cached_ids))
+        )
+        cached_selections = " ".join(
+            f"cached{index}:tongji(_id:$cached{index}){{{TONGJI_FIELDS}}}"
+            for index in range(len(cached_ids))
+        )
+        query = (
+            f"query getSyncContext({','.join(definitions)}){{"
+            f"tongjis(sort:\"-createdAt\",createdBy:$uid,limit:$formLimit,skip:$skip)"
+            f"{{isRemove {TONGJI_FIELDS}}} "
+            f"baomings(userId:$uid,sort:\"-createdAt\",limit:$recordLimit)"
+            f"{{_id tongjiId createdAt}} {cached_selections}}}"
+        )
+        variables = {
+            "uid": uid,
+            "formLimit": str(form_limit),
+            "recordLimit": str(record_limit),
+            "skip": "0",
+        }
+        variables.update(
+            {f"cached{index}": remote_id for index, remote_id in enumerate(cached_ids)}
+        )
+        data = self.graphql(
+            token,
+            "getSyncContext",
+            query,
+            variables,
+        )
+        forms_by_id = {
+            str(row.get("_id")): row
+            for row in (data.get("tongjis") or [])
+            if row.get("_id") and not row.get("isRemove")
+        }
+        for index in range(len(cached_ids)):
+            item = data.get(f"cached{index}")
+            if isinstance(item, dict) and item.get("_id"):
+                forms_by_id[str(item["_id"])] = item
+        return list(forms_by_id.values()), data.get("baomings") or []
+
+    def get_tongjis_by_ids(
+        self,
+        token: str,
+        remote_ids: list[str],
+        batch_size: int = 25,
+    ) -> list[dict]:
+        """通过 GraphQL aliases 批量补全不在创建列表中的历史项目。"""
+        unique_ids = list(dict.fromkeys(str(value) for value in remote_ids if value))
+        rows: list[dict] = []
+        for offset in range(0, len(unique_ids), batch_size):
+            batch = unique_ids[offset:offset + batch_size]
+            definitions = ",".join(f"$id{index}:String" for index in range(len(batch)))
+            selections = " ".join(
+                f"item{index}:tongji(_id:$id{index}){{{TONGJI_FIELDS}}}"
+                for index in range(len(batch))
+            )
+            query = f"query getTongjisByIds({definitions}){{{selections}}}"
+            variables = {f"id{index}": remote_id for index, remote_id in enumerate(batch)}
+            data = self.graphql(token, "getTongjisByIds", query, variables)
+            rows.extend(
+                item for item in data.values()
+                if isinstance(item, dict) and item.get("_id")
+            )
+        return rows
 
     def get_checkin_context(
         self, token: str, remote_id: str, uid: str, limit: int = 100

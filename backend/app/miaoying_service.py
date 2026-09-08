@@ -174,35 +174,49 @@ class MiaoyingService:
         with self.database.session() as session:
             account = self._get_account(session, account_id, user)
             token = self._token(account)
-            rows = self.client.get_tongjis(token, account.remote_user_id)
+            stored_rows = {
+                row.remote_tongji_id: row
+                for row in session.scalars(
+                    select(MiaoyingFormRow).where(
+                        MiaoyingFormRow.account_id == account.id
+                    )
+                )
+            }
+            rows, records = self.client.get_sync_context(
+                token,
+                account.remote_user_id,
+                known_remote_ids=list(stored_rows),
+            )
             known_ids = {str(item.get("_id") or "") for item in rows}
-            for record in self.client.get_records(token, account.remote_user_id):
-                remote_id = str(record.get("tongjiId") or "")
-                if remote_id and remote_id not in known_ids:
-                    rows.append({"_id": remote_id})
-                    known_ids.add(remote_id)
+            missing_ids = list(dict.fromkeys(
+                str(record.get("tongjiId") or "")
+                for record in records
+                if record.get("tongjiId")
+                and str(record.get("tongjiId")) not in known_ids
+            ))
+            if missing_ids:
+                rows.extend(self.client.get_tongjis_by_ids(token, missing_ids))
             now = datetime.now()
             for item in rows:
                 remote_id = str(item.get("_id") or "")
                 if not remote_id:
                     continue
-                row = session.scalar(select(MiaoyingFormRow).where(MiaoyingFormRow.account_id == account.id, MiaoyingFormRow.remote_tongji_id == remote_id))
+                row = stored_rows.get(remote_id)
                 if not row:
                     row = MiaoyingFormRow(account_id=account.id, remote_tongji_id=remote_id)
                     session.add(row)
-                detail = self.client.get_tongji(token, remote_id)
-                merged = {**item, **detail}
-                row.title = str(merged.get("title") or "未命名签到")
-                row.content = str(merged.get("content") or "")
-                row.is_closed = bool(merged.get("isClosed"))
-                row.is_repeat = bool(merged.get("isRepeat"))
-                row.requirements = self._requirements(merged)
-                row.raw_snapshot = merged
+                    stored_rows[remote_id] = row
+                row.title = str(item.get("title") or "未命名签到")
+                row.content = str(item.get("content") or "")
+                row.is_closed = bool(item.get("isClosed"))
+                row.is_repeat = bool(item.get("isRepeat"))
+                row.requirements = self._requirements(item)
+                row.raw_snapshot = item
                 row.synced_at = now
             account.last_sync_at = now
             account.last_error = ""
             session.flush()
-            form_rows = list(session.scalars(select(MiaoyingFormRow).where(MiaoyingFormRow.account_id == account.id)))
+            form_rows = list(stored_rows.values())
             return [self._form_dict(row) for row in self._sort_forms(form_rows)]
 
     def list_forms(self, account_id: int, user: dict) -> list[dict]:
