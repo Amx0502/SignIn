@@ -72,6 +72,7 @@
           >
             {{ sidebarCollapsed ? '展开菜单' : '收起菜单' }}
           </el-button>
+          <img v-if="isMobile" src="./img/logo.png" class="mobile-header-logo" alt="签到管理系统" />
           <div>
             <p class="breadcrumb">{{ breadcrumb.parentTitle }} / {{ breadcrumb.title }}</p>
             <h2>{{ breadcrumb.title }}</h2>
@@ -88,7 +89,7 @@
           <el-popover
             v-model:visible="notifyVisible"
             placement="bottom-end"
-            :width="400"
+            :width="isMobile ? 300 : 400"
             trigger="click"
             popper-class="notify-popper"
           >
@@ -223,14 +224,143 @@
 
     <div v-if="!sidebarCollapsed && isMobile" class="sidebar-mask" @click="closeSidebar"></div>
     </el-container>
+
+    <van-tabbar
+      v-if="isMobile && !isLoginPage && mobilePlatform"
+      :model-value="mobileActiveTab"
+      fixed
+      safe-area-inset-bottom
+      :border="false"
+      :z-index="50"
+      active-color="#2563eb"
+      inactive-color="#718096"
+      class="mobile-tabbar"
+      :class="{ 'mobile-tabbar--keyboard-open': mobileKeyboardOpen }"
+    >
+      <van-tabbar-item
+        v-for="item in mobilePrimaryItems"
+        :key="item.key"
+        :name="item.path"
+        :aria-label="item.label"
+        @click="openMobilePath(item.path)"
+      >
+        <template #icon><el-icon><component :is="item.component" /></el-icon></template>
+        {{ item.label }}
+      </van-tabbar-item>
+      <van-tabbar-item name="more" aria-label="更多" @click="openMobileMore">
+        <template #icon><el-icon><Grid /></el-icon></template>
+        更多
+      </van-tabbar-item>
+    </van-tabbar>
+
+    <van-popup
+      v-if="isMobile && !isLoginPage"
+      v-model:show="mobileMoreVisible"
+      position="bottom"
+      round
+      safe-area-inset-bottom
+      teleport="body"
+      :style="{ maxHeight: '78vh' }"
+      class="mobile-more-popup"
+    >
+      <header class="mobile-more-header">
+        <img v-if="mobilePlatform" :src="mobilePlatform.image" :alt="mobilePlatform.title" />
+        <div>
+          <strong>更多功能</strong>
+          <span>当前平台 · {{ mobilePlatform?.title }}</span>
+        </div>
+        <button type="button" class="mobile-more-close" aria-label="关闭更多功能" @click="mobileMoreVisible = false">
+          <el-icon><Close /></el-icon>
+        </button>
+      </header>
+
+      <section v-if="mobilePlatforms.length" class="mobile-more-section">
+        <div class="mobile-more-section__heading">
+          <h3>切换平台</h3>
+          <span>选择后同步切换底部主导航</span>
+        </div>
+        <van-grid clickable :border="false" :column-num="3" :gutter="8">
+          <van-grid-item
+            v-for="item in mobilePlatforms"
+            :key="item.key"
+            :class="{ 'is-current-platform': item.key === mobilePlatform?.key }"
+            @click="openMobilePath(item.path, true)"
+          >
+            <template #icon><img :src="item.image" :alt="item.title" class="mobile-platform-icon" /></template>
+            <template #text>
+              <strong>{{ item.title }}</strong>
+              <small>{{ item.key === mobilePlatform?.key ? '当前平台' : '进入平台' }}</small>
+            </template>
+          </van-grid-item>
+        </van-grid>
+      </section>
+
+      <section
+        v-if="mobileExtraItems.length"
+        class="mobile-more-section mobile-more-section--extras"
+        :class="{ 'is-single': mobileExtraItems.length === 1 }"
+      >
+        <div class="mobile-more-section__heading">
+          <h3>{{ mobilePlatform?.title }}其他功能</h3>
+          <span>未固定在底栏的功能</span>
+        </div>
+        <van-grid clickable :border="false" :column-num="Math.min(3, mobileExtraItems.length)" :gutter="8">
+          <van-grid-item
+            v-for="item in mobileExtraItems"
+            :key="item.key"
+            @click="openMobilePath(item.path, true)"
+          >
+            <template #icon><el-icon><component :is="item.component" /></el-icon></template>
+            <template #text><span>{{ item.title }}</span></template>
+          </van-grid-item>
+        </van-grid>
+      </section>
+
+      <section v-if="mobileSystemItems.length" class="mobile-more-section mobile-more-section--system">
+        <div class="mobile-more-section__heading">
+          <h3>管理功能</h3>
+          <span>仅管理员可见</span>
+        </div>
+        <van-grid clickable :border="false" :column-num="2" :gutter="8">
+          <van-grid-item
+            v-for="item in mobileSystemItems"
+            :key="item.key"
+            @click="openMobilePath(item.path, true)"
+          >
+            <template #icon><el-icon><component :is="item.component" /></el-icon></template>
+            <template #text><span>{{ item.title }}</span></template>
+          </van-grid-item>
+        </van-grid>
+      </section>
+
+      <section class="mobile-more-section mobile-more-section--account">
+        <div class="mobile-more-section__heading">
+          <h3>账户</h3>
+          <span>{{ currentUser?.username || '当前用户' }}</span>
+        </div>
+        <div class="mobile-account-actions">
+          <el-button size="large" @click="openMobilePath('/change-password', true)">
+            <el-icon><Key /></el-icon><span>修改密码</span>
+          </el-button>
+          <el-button size="large" class="mobile-logout-button" @click="mobileLogout">
+            <el-icon><SwitchButton /></el-icon><span>退出登录</span>
+          </el-button>
+        </div>
+      </section>
+    </van-popup>
   </el-config-provider>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, defineAsyncComponent, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Odometer, User, Document, Timer, List, Menu, UserFilled, Grid, Setting, Close, Bell, ArrowLeft, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
+import { Odometer, User, Document, Timer, List, Menu, UserFilled, Grid, Setting, Close, Bell, ArrowLeft, ArrowRight, ArrowDown, Key, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import 'vant/lib/grid/style'
+import 'vant/lib/grid-item/style'
+import 'vant/lib/popup/style'
+import 'vant/lib/tabbar/style'
+import 'vant/lib/tabbar-item/style'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useAppState } from './composables/useAppState'
 import { formatCurrentTime } from './utils/currentTime'
@@ -249,6 +379,12 @@ import {
   isCurrentMenuVisible,
 } from './menu/menuStore.js'
 import { buildSidebarSections } from './menu/sidebarSections.js'
+
+const VanGrid = defineAsyncComponent(() => import('vant/es/grid'))
+const VanGridItem = defineAsyncComponent(() => import('vant/es/grid-item'))
+const VanPopup = defineAsyncComponent(() => import('vant/es/popup'))
+const VanTabbar = defineAsyncComponent(() => import('vant/es/tabbar'))
+const VanTabbarItem = defineAsyncComponent(() => import('vant/es/tabbar-item'))
 
 const router = useRouter()
 const route = useRoute()
@@ -281,6 +417,184 @@ const iconMap = {
 const imageMap = { xxqd: xxqdImage, class_cube: classCubeImage, miaoying: miaoyingImage }
 
 const isLoginPage = computed(() => route.path === '/login')
+
+const mobileMoreVisible = ref(false)
+const mobileKeyboardOpen = ref(false)
+let mobileMoreHistoryActive = false
+let pendingMobilePath = ''
+let pendingMobileLogout = false
+const MOBILE_PLATFORM_STORAGE_KEY = 'signin_mobile_platform'
+const MOBILE_PLATFORM_CONFIG = {
+  xxqd: {
+    title: '小小签到',
+    image: xxqdImage,
+    matches: path => ['/overview', '/accounts', '/checkin/auto', '/tasks', '/logs'].includes(path),
+    primary: [
+      ['xxqd.overview', '总览', Odometer],
+      ['xxqd.accounts', '账号', User],
+      ['xxqd.auto', '签到', Timer],
+      ['xxqd.logs', '记录', Document],
+    ],
+  },
+  class_cube: {
+    title: '班级魔方',
+    image: classCubeImage,
+    matches: path => path.startsWith('/class-cube'),
+    primary: [
+      ['class_cube.overview', '总览', Odometer],
+      ['class_cube.accounts', '账号', User],
+      ['class_cube.tasks', '任务', Timer],
+      ['class_cube.runs', '记录', Document],
+    ],
+  },
+  miaoying: {
+    title: '秒应',
+    image: miaoyingImage,
+    matches: path => path.startsWith('/miaoying'),
+    primary: [
+      ['miaoying.overview', '总览', Odometer],
+      ['miaoying.accounts', '账号', User],
+      ['miaoying.auto', '任务', Timer],
+      ['miaoying.runs', '记录', Document],
+    ],
+  },
+}
+
+const mobileBusinessSections = computed(() => sidebarSections.value.filter(section => MOBILE_PLATFORM_CONFIG[section.key]))
+
+function findMobileMenu(key) {
+  for (const section of sidebarSections.value) {
+    if (section.key === key) return section
+    const child = section.children?.find(item => item.key === key)
+    if (child) return child
+  }
+  return null
+}
+
+function firstMobilePath(section) {
+  return section?.path || section?.children?.find(item => item.path)?.path || ''
+}
+
+function detectMobilePlatform(path) {
+  return Object.keys(MOBILE_PLATFORM_CONFIG).find(key => MOBILE_PLATFORM_CONFIG[key].matches(path)) || ''
+}
+
+const mobilePlatformKey = computed(() => {
+  const detected = detectMobilePlatform(route.path)
+  if (detected && mobileBusinessSections.value.some(section => section.key === detected)) return detected
+  const remembered = localStorage.getItem(MOBILE_PLATFORM_STORAGE_KEY) || ''
+  if (mobileBusinessSections.value.some(section => section.key === remembered)) return remembered
+  return mobileBusinessSections.value[0]?.key || ''
+})
+
+const mobilePlatform = computed(() => {
+  const key = mobilePlatformKey.value
+  return key ? { key, ...MOBILE_PLATFORM_CONFIG[key] } : null
+})
+
+const mobilePrimaryItems = computed(() => {
+  if (!mobilePlatform.value) return []
+  return mobilePlatform.value.primary.flatMap(([key, label, component]) => {
+    const item = findMobileMenu(key)
+    return item?.path ? [{ ...item, label, component }] : []
+  })
+})
+
+const mobileExtraItems = computed(() => {
+  if (!mobilePlatform.value) return []
+  const primaryKeys = new Set(mobilePlatform.value.primary.map(item => item[0]))
+  const section = mobileBusinessSections.value.find(item => item.key === mobilePlatform.value.key)
+  return (section?.children || [])
+    .filter(item => item.path && !primaryKeys.has(item.key))
+    .map(item => ({ ...item, component: menuIcon(item.icon) }))
+})
+
+const mobilePlatforms = computed(() => mobileBusinessSections.value
+  .map(section => ({
+    key: section.key,
+    title: section.title,
+    image: MOBILE_PLATFORM_CONFIG[section.key].image,
+    path: firstMobilePath(section),
+  }))
+  .filter(item => item.path))
+
+const mobileSystemItems = computed(() => {
+  if (currentUser.value?.role !== 'admin') return []
+  const systemSection = sidebarSections.value.find(section => section.key === 'system')
+  return [
+    { key: 'dashboard', title: '综合总览', path: '/dashboard', component: Odometer },
+    ...(systemSection?.children || []).map(item => ({ ...item, component: menuIcon(item.icon) })),
+  ]
+})
+
+const mobileActiveTab = computed(() => {
+  if (mobileMoreVisible.value) return 'more'
+  return mobilePrimaryItems.value.some(item => item.path === route.path) ? route.path : 'more'
+})
+
+function scrollMobilePageToTop() {
+  const main = document.querySelector('.main-shell .el-main')
+  if (main?.scrollTop) main.scrollTo({ top: 0, behavior: 'smooth' })
+  else window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function openMobilePath(path, fromPopup = false) {
+  if (!path) return
+  if (fromPopup && mobileMoreVisible.value) {
+    pendingMobilePath = path
+    mobileMoreVisible.value = false
+    return
+  }
+  if (path === route.path) {
+    scrollMobilePageToTop()
+    return
+  }
+  router.push(path)
+}
+
+function openMobileMore() {
+  if (mobileMoreVisible.value) return
+  mobileMoreHistoryActive = true
+  window.history.pushState({ ...window.history.state, signinMobileMore: true }, '')
+  mobileMoreVisible.value = true
+}
+
+function completePendingMobileAction() {
+  const path = pendingMobilePath
+  const shouldLogout = pendingMobileLogout
+  pendingMobilePath = ''
+  pendingMobileLogout = false
+  if (shouldLogout) handleUserCommand('logout')
+  else if (path) nextTick(() => openMobilePath(path))
+}
+
+function handleMobilePopState() {
+  if (!mobileMoreHistoryActive) return
+  mobileMoreHistoryActive = false
+  mobileMoreVisible.value = false
+  completePendingMobileAction()
+}
+
+function mobileLogout() {
+  pendingMobileLogout = true
+  mobileMoreVisible.value = false
+  if (!mobileMoreHistoryActive) completePendingMobileAction()
+}
+
+function updateMobileKeyboardState() {
+  const viewport = window.visualViewport
+  mobileKeyboardOpen.value = Boolean(viewport && viewport.height < window.innerHeight * 0.72)
+}
+
+watch(() => route.path, path => {
+  const detected = detectMobilePlatform(path)
+  if (detected) localStorage.setItem(MOBILE_PLATFORM_STORAGE_KEY, detected)
+}, { immediate: true })
+
+watch(mobileMoreVisible, visible => {
+  if (visible || !mobileMoreHistoryActive) return
+  window.history.back()
+})
 
 const TABS_STORAGE_PREFIX = 'signin_visited_tabs'
 const MAX_TABS = 15
@@ -378,7 +692,7 @@ function evictLeastUsed() {
   if (index === -1) return
   tabs.value.splice(index, 1)
   const now = Date.now()
-  if (now - lastEvictNoticeAt > 5000) {
+  if (!isMobile.value && now - lastEvictNoticeAt > 5000) {
     lastEvictNoticeAt = now
     ElMessage.warning('标签已达上限（' + MAX_TABS + '），已自动关闭最久未使用的标签')
   }
@@ -864,6 +1178,9 @@ onMounted(async () => {
   }, 1000)
   window.addEventListener('resize', checkMobile)
   window.addEventListener('resize', updateTabsOverflow)
+  window.addEventListener('popstate', handleMobilePopState)
+  window.visualViewport?.addEventListener('resize', updateMobileKeyboardState)
+  updateMobileKeyboardState()
   if (!isLoginPage.value) {
     tabsResizeObserver = new ResizeObserver(() => updateTabsOverflow())
     if (tabsScrollRef.value) tabsResizeObserver.observe(tabsScrollRef.value)
@@ -881,6 +1198,8 @@ onUnmounted(() => {
   window.clearInterval(currentTimeTimer)
   window.removeEventListener('resize', checkMobile)
   window.removeEventListener('resize', updateTabsOverflow)
+  window.removeEventListener('popstate', handleMobilePopState)
+  window.visualViewport?.removeEventListener('resize', updateMobileKeyboardState)
   tabsResizeObserver?.disconnect()
   stopCcLogPolling()
   stopMenuSync()
@@ -919,6 +1238,7 @@ onUnmounted(() => {
 .sidebar-menu :deep(.el-sub-menu .el-menu) { background: rgba(255, 255, 255, 0.035); border-radius: 14px; padding: 4px; }
 .menu-custom-icon { width: 22px; height: 22px; object-fit: contain; display: block; }
 .logo-img { width: 48px; height: 48px; object-fit: contain; display: block; }
+.mobile-header-logo { display: none; }
 .main-shell {
   min-width: 0;
   overflow-x: clip;
@@ -1188,8 +1508,69 @@ onUnmounted(() => {
   0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }
 }
+
+.mobile-tabbar {
+  --van-tabbar-height: 64px;
+  --van-tabbar-background: rgba(255, 255, 255, 0.96);
+  --van-tabbar-item-active-background: #eff6ff;
+  --van-tabbar-item-font-size: 11px;
+  border-top: 1px solid rgba(191, 219, 254, 0.85);
+  box-shadow: 0 -12px 30px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(18px);
+}
+.mobile-tabbar :deep(.van-tabbar-item) { min-width: 0; min-height: 54px; border-radius: 13px; }
+.mobile-tabbar :deep(.van-tabbar-item__icon) { margin-bottom: 3px; font-size: 21px; }
+.mobile-tabbar :deep(.van-tabbar-item__text) { overflow: hidden; max-width: 100%; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-tabbar--keyboard-open { pointer-events: none; opacity: 0; transform: translateY(110%); }
+
+.mobile-more-popup {
+  box-sizing: border-box;
+  width: min(520px, 100%);
+  padding: 18px 14px 16px;
+  overflow-y: auto;
+  --van-popup-round-radius: 24px;
+  --van-grid-item-content-background: #f8fafc;
+}
+.mobile-more-header { display: flex; align-items: center; gap: 11px; padding: 1px 2px 15px 3px; border-bottom: 1px solid #e2e8f0; }
+.mobile-more-header img { width: 36px; height: 36px; flex: none; object-fit: contain; }
+.mobile-more-header > div { display: grid; min-width: 0; gap: 3px; }
+.mobile-more-header strong { color: #172033; font-size: 18px; line-height: 1.2; }
+.mobile-more-header span { overflow: hidden; color: #64748b; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-more-close { display: grid; width: 42px; height: 42px; flex: none; margin-left: auto; place-items: center; border: 0; border-radius: 13px; background: #f1f5f9; color: #64748b; font: inherit; cursor: pointer; }
+.mobile-more-close:active { background: #e2e8f0; color: #334155; }
+.mobile-more-section { margin-top: 18px; }
+.mobile-more-section__heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 3px 9px; }
+.mobile-more-section__heading h3 { margin: 0; color: #334155; font-size: 13px; font-weight: 750; }
+.mobile-more-section__heading span { overflow: hidden; color: #94a3b8; font-size: 10px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-more-section :deep(.van-grid-item__content) {
+  min-height: 76px;
+  gap: 7px;
+  padding: 9px 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  color: #334155;
+}
+.mobile-more-section :deep(.van-grid-item__content:active) { background: #eff6ff; }
+.mobile-more-section :deep(.van-grid-item__icon) { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 10px; background: #eaf3ff; color: #2563eb; font-size: 18px; }
+.mobile-more-section :deep(.van-grid-item__text) { display: grid; justify-items: center; gap: 3px; max-width: 100%; color: inherit; font-size: 12px; font-weight: 650; }
+.mobile-more-section :deep(.van-grid-item__text span),
+.mobile-more-section :deep(.van-grid-item__text strong) { overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-more-section :deep(.van-grid-item__text small) { color: #94a3b8; font-size: 10px; font-weight: 500; }
+.mobile-platform-icon { width: 29px; height: 29px; object-fit: contain; }
+.mobile-more-section :deep(.van-grid-item__icon:has(.mobile-platform-icon)) { width: 36px; height: 36px; background: transparent; }
+.is-current-platform :deep(.van-grid-item__content) { border-color: #60a5fa; background: #eff6ff; color: #1d4ed8; }
+.mobile-more-section--extras.is-single :deep(.van-grid-item__content),
+.mobile-more-section--system :deep(.van-grid-item__content) { min-height: 62px; flex-direction: row; justify-content: flex-start; gap: 10px; padding: 10px 13px; }
+.mobile-more-section--extras.is-single :deep(.van-grid-item__text),
+.mobile-more-section--system :deep(.van-grid-item__text) { justify-items: start; text-align: left; }
+.mobile-account-actions { display: grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap: 9px; }
+.mobile-account-actions .el-button { width: 100%; min-height: 46px; margin: 0; border-radius: 13px; font-weight: 650; }
+.mobile-account-actions .el-icon { margin-right: 5px; }
+.mobile-logout-button { border-color: #fecaca; background: #fff7f7; color: #dc2626; }
+.mobile-logout-button:hover, .mobile-logout-button:focus { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
+
 @media (max-width: 768px) {
-  .tabs-bar { top: 64px; padding: 5px 8px 0; gap: 6px; }
+  .tabs-bar { display: none; }
   .tab-item { height: 32px; padding: 0 8px 0 10px; font-size: 12px; }
   .tab-icon { display: none; }
   .tabs-nav-btn { width: 26px; height: 26px; }
@@ -1201,26 +1582,21 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-  .top-header { min-height: 64px; padding: 10px 12px; }
-  .header-left { flex-direction: row; align-items: center; }
+  .top-header { min-height: 64px; padding: 8px 12px; flex-wrap: nowrap; }
+  .header-left { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 9px; }
   .top-header h2 { font-size: 18px; }
   .breadcrumb { font-size: 11px; }
-  .header-right { margin-top: 8px; }
-  .header-current-time { min-height: 38px; padding: 5px 10px 5px 8px; gap: 7px; border-radius: 12px; }
-  .header-current-time__date { font-size: 9px; }
-  .header-current-time__clock { font-size: 13px; }
-  .sidebar { 
-    position: fixed; left: 0; top: 0; z-index: 100; height: 100vh; 
-    transition: transform 0.3s ease, width 0.3s ease;
-  }
-  .sidebar.sidebar-collapsed {
-    transform: translateX(-100%);
-  }
+  .menu-btn, .header-current-time, .sidebar, .sidebar-mask { display: none; }
+  .mobile-header-logo { display: block; width: 36px; height: 36px; flex: none; object-fit: contain; }
+  .header-right { flex: none; margin-top: 0; }
+  .user-info { padding: 6px 8px; }
+  .user-info > span { display: none; }
+  .main-shell :deep(.el-main) { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 480px) {
   .top-header { padding: 8px 10px; }
   .top-header h2 { font-size: 16px; }
-  .header-current-time__indicator { display: none; }
+  .breadcrumb { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 </style>
