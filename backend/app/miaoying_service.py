@@ -836,11 +836,25 @@ class MiaoyingService:
 
     @staticmethod
     def _submission_request_summary(submission: dict) -> dict:
-        """Keep only fields needed to prove what location was sent upstream."""
+        """Keep a sanitized summary that can explain exactly what was submitted."""
         location = submission.get("locationInfo") or {}
+        info_keys = submission.get("infoKey") or []
+        info_values = submission.get("infoVal") or []
+        submitted_fields = [
+            {
+                "label": str(label or "")[:255],
+                "value": str(info_values[index] if index < len(info_values) else "")[:1000],
+            }
+            for index, label in enumerate(info_keys)
+            if str(label or "").strip()
+        ]
         return {
             "operation": "createBaomingByInput",
             "tongji_id": str(submission.get("tongjiId") or ""),
+            "remote_user_id": str(submission.get("userId") or ""),
+            "student_number": str(submission.get("noLabel") or ""),
+            "roster_number": submission.get("no"),
+            "submitted_fields": submitted_fields,
             "location_info": {
                 "name": str(location.get("name") or ""),
                 "province": str(location.get("province") or ""),

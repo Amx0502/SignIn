@@ -217,7 +217,7 @@ const selectedTaskForm=computed(()=>forms.value.find(item=>item.id===form.form_i
 const activeTaskForms=computed(()=>forms.value.filter(item=>!item.is_closed))
 const closedTaskForms=computed(()=>forms.value.filter(item=>item.is_closed))
 const taskFields=computed(()=>selectedTaskForm.value?.requirements?.fields||form.answer_schema||[])
-const miaoyingLogEntries=computed(()=>runs.value.map(run=>{const summary=run.request_summary||{},location=summary.location_info||{};const parts=[taskAccountName(run.account_id),taskFormName(run.form_id),run.trigger==='manual'?'手动执行':'定时自动执行',run.message||run.status,`operation=${summary.operation||run.operation||'createBaomingByInput'}`];if(summary.tongji_id)parts.push(`项目ID=${summary.tongji_id}`);if(run.remote_submission_id)parts.push(`秒应记录ID=${run.remote_submission_id}`);if(location.lattitude!=null&&location.longtitude!=null)parts.push(`坐标=${location.lattitude},${location.longtitude}`);if(location.street||location.name)parts.push(`位置=${[location.street,location.name].filter(Boolean).join('-')}`);return`${logTime(run.started_at)} [${run.status==='success'?'INFO':'ERROR'}] ${parts.join(' | ')}`}))
+const miaoyingLogEntries=computed(()=>runs.value.flatMap(run=>miaoyingAuditLogEvents(run)).sort((a,b)=>a.timestamp-b.timestamp).map(item=>item.line))
 const canManualCheckin=computed(()=>{
   const item=selectedManualForm.value
   if(!item||item.is_closed||item.requirements?.unsupported?.length)return false
@@ -234,13 +234,42 @@ const format=v=>v?new Date(v).toLocaleString('zh-CN',{hour12:false}):'—'
 const logTime=value=>value?new Date(value).toLocaleString('sv-SE',{hour12:false}).replace('T',' '):'0000-00-00 00:00:00'
 const taskAccountName=id=>{const row=accounts.value.find(item=>item.id===id);return row?.remark||row?.nickname||`账号 ${id}`}
 const taskFormName=id=>taskForms.value.find(item=>item.id===id)?.title||`签到项目 ${id}`
+const taskName=id=>tasks.value.find(item=>item.id===id)?.name||`任务 ${id}`
+const cleanLogValue=value=>String(value??'').replace(/[\r\n|]+/g,' ').replace(/\s+/g,' ').trim()
+const durationText=(startedAt,finishedAt)=>{if(!startedAt||!finishedAt)return'—';const duration=new Date(finishedAt)-new Date(startedAt);return Number.isFinite(duration)&&duration>=0?(duration<1000?`${duration}ms`:`${(duration/1000).toFixed(2)}s`):'—'}
+function miaoyingAuditLogEvents(run){
+  const summary=run.request_summary||{},location=summary.location_info||{}
+  const identity=[]
+  if(summary.student_number)identity.push(`学号=${cleanLogValue(summary.student_number)}`)
+  if(summary.roster_number!==undefined&&summary.roster_number!==null&&String(summary.roster_number)!==String(summary.student_number||''))identity.push(`名单序号=${cleanLogValue(summary.roster_number)}`)
+  const submitted=(summary.submitted_fields||[]).map(field=>`${cleanLogValue(field.label)}=${cleanLogValue(field.value)}`).filter(Boolean)
+  const address=[location.province,location.city,location.district,location.street,location.name].map(cleanLogValue).filter((value,index,array)=>value&&array.indexOf(value)===index).join('-')
+  const hasCoordinates=location.lattitude!==undefined&&location.lattitude!==null&&location.longtitude!==undefined&&location.longtitude!==null
+  const common=[`审计ID=${run.id}`,`账号=${taskAccountName(run.account_id)}（ID=${run.account_id}）`,`项目=${taskFormName(run.form_id)}（ID=${run.form_id}）`]
+  if(run.task_id)common.push(`任务=${taskName(run.task_id)}（ID=${run.task_id}）`)
+  common.push(`触发=${run.trigger==='manual'?'手动签到':'定时自动执行'}`,`操作=${summary.operation||run.operation||'createBaomingByInput'}`)
+  if(summary.tongji_id)common.push(`远程项目ID=${cleanLogValue(summary.tongji_id)}`)
+  if(summary.remote_user_id)common.push(`远程用户ID=${cleanLogValue(summary.remote_user_id)}`)
+  if(identity.length)common.push(`身份=${identity.join('，')}`)
+  if(submitted.length)common.push(`提交字段=${submitted.join('；')}`)
+  if(address)common.push(`完整位置=${address}`)
+  if(hasCoordinates)common.push(`坐标=${location.lattitude},${location.longtitude}`)
+  const startedAt=run.started_at||run.finished_at
+  const request={timestamp:new Date(startedAt||0).getTime()||0,line:`${logTime(startedAt)} [INFO] [请求] ${common.join(' | ')}`}
+  const responseParts=[`审计ID=${run.id}`,`状态=${run.status==='success'?'签到成功':run.status==='running'?'等待响应':'签到失败'}`,`耗时=${durationText(run.started_at,run.finished_at)}`]
+  if(run.remote_submission_id)responseParts.push(`秒应记录ID=${cleanLogValue(run.remote_submission_id)}`)
+  if(run.message)responseParts.push(`消息=${cleanLogValue(run.message)}`)
+  const level=run.status==='success'?'INFO':run.status==='running'?'WARNING':'ERROR'
+  const finishedAt=run.finished_at||run.started_at
+  return[request,{timestamp:new Date(finishedAt||0).getTime()||0,line:`${logTime(finishedAt)} [${level}] [响应] ${responseParts.join(' | ')}`}]
+}
 function schedulePlanSummary(plan){const excluded=(plan.skip_dates||[]).length;if((plan.date_mode||'daily')==='daily')return ['每天执行',plan.skip_weekends?'周末跳过':'',excluded?`排除 ${excluded} 天`:''].filter(Boolean).join(' · ');return [`指定 ${(plan.run_dates||[]).length} 天`,plan.auto_disable_after_finish?'结束后关闭':''].filter(Boolean).join(' · ')}
 function openScheduleDrawer(){Object.assign(scheduleDraft,{date_mode:form.date_mode||'daily',run_dates:[...(form.run_dates||[])],skip_dates:[...(form.skip_dates||[])],skip_weekends:form.skip_weekends===true,auto_disable_after_finish:form.auto_disable_after_finish===true});scheduleDrawerVisible.value=true}
 function applyScheduleDraft(){if(scheduleDraft.date_mode==='specific'&&!scheduleDraft.run_dates.length){ElMessage.warning('指定日期模式下请至少选择一个执行日期');return}Object.assign(form,{...scheduleDraft,run_dates:[...scheduleDraft.run_dates],skip_dates:[...scheduleDraft.skip_dates]});scheduleDrawerVisible.value=false}
 async function loadTaskContext(){const groups=await Promise.all(accounts.value.map(account=>api.listForms(account.id).catch(()=>[])));taskForms.value=groups.flat()}
 async function loadOptionalRunContext(){const [accountResult,taskResult]=await Promise.allSettled([api.listAccounts(),api.listTasks()]);if(accountResult.status==='fulfilled')accounts.value=accountResult.value;if(taskResult.status==='fulfilled')tasks.value=taskResult.value;await loadTaskContext()}
 function auditForRun(run,audits){return audits.find(audit=>run.remote_submission_id&&audit.remote_submission_id===run.remote_submission_id)||audits.find(audit=>audit.task_id===run.task_id&&audit.account_id===run.account_id&&audit.form_id===run.form_id&&Math.abs(new Date(audit.started_at)-new Date(run.started_at))<60000)}
-async function load(){loading.value=true;try{if(isAccounts.value){accounts.value=await api.listAccounts();if(!accounts.value.some(item=>item.id===selectedAccountId.value))selectedAccountId.value=accounts.value[0]?.id||null;await loadAccountForms()}else if(isAuto.value||isTasks.value){[accounts.value,tasks.value]=await Promise.all([api.listAccounts(),api.listTasks()]);await loadTaskContext();if(form.account_id)forms.value=await api.listForms(form.account_id)}else if(isOverview.value){[accounts.value,tasks.value,runs.value]=await Promise.all([api.listAccounts(),api.listTasks(),api.listRuns()]);Object.assign(settings,await api.getSettings())}else if(isLogs.value){runs.value=await api.listSubmissionAudits();await loadOptionalRunContext()}else{const [taskRuns,audits]=await Promise.all([api.listRuns(),api.listSubmissionAudits()]);const enriched=taskRuns.map(run=>{const audit=auditForRun(run,audits);return audit?{...run,operation:audit.operation,request_summary:audit.request_summary}:run});runs.value=[...enriched,...audits.filter(item=>!item.task_id)].sort((a,b)=>new Date(b.started_at)-new Date(a.started_at));await loadOptionalRunContext()}}catch(e){ElMessage.error(e.message)}finally{loading.value=false}}
+async function load(){loading.value=true;try{if(isAccounts.value){accounts.value=await api.listAccounts();if(!accounts.value.some(item=>item.id===selectedAccountId.value))selectedAccountId.value=accounts.value[0]?.id||null;await loadAccountForms()}else if(isAuto.value||isTasks.value){[accounts.value,tasks.value]=await Promise.all([api.listAccounts(),api.listTasks()]);await loadTaskContext();if(form.account_id)forms.value=await api.listForms(form.account_id)}else if(isOverview.value){[accounts.value,tasks.value,runs.value]=await Promise.all([api.listAccounts(),api.listTasks(),api.listRuns()]);Object.assign(settings,await api.getSettings())}else if(isLogs.value){runs.value=await api.listSubmissionAudits(500);await loadOptionalRunContext()}else{const [taskRuns,audits]=await Promise.all([api.listRuns(),api.listSubmissionAudits()]);const enriched=taskRuns.map(run=>{const audit=auditForRun(run,audits);return audit?{...run,operation:audit.operation,request_summary:audit.request_summary}:run});runs.value=[...enriched,...audits.filter(item=>!item.task_id)].sort((a,b)=>new Date(b.started_at)-new Date(a.started_at));await loadOptionalRunContext()}}catch(e){ElMessage.error(e.message)}finally{loading.value=false}}
 async function openQr(){stopQr();qrVisible.value=true;qrLoading.value=true;qrState.value='pending';try{const data=await api.createQr();qrId.value=data.id;qrImage.value=await QRCode.toDataURL(data.qr_content,{width:440,margin:2,color:{dark:'#000000',light:'#ffffff'}});qrExpiresAt.value=new Date(data.expires_at).getTime();updateQrCountdown();qrCountdownTimer=window.setInterval(updateQrCountdown,1000);scheduleQrPoll(100)}catch(e){qrState.value='error';ElMessage.error(e.message)}finally{qrLoading.value=false}}
 function scheduleQrPoll(delay=800){if(qrTimer)window.clearTimeout(qrTimer);qrTimer=window.setTimeout(pollQr,delay)}
 function updateQrCountdown(){qrRemainingSeconds.value=Math.max(0,Math.ceil((qrExpiresAt.value-Date.now())/1000));if(qrExpiresAt.value&&qrRemainingSeconds.value===0){qrState.value='expired';clearQrTimers()}}
