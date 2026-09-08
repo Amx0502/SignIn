@@ -1,9 +1,14 @@
+import mimetypes
+import uuid
+from pathlib import Path
+from urllib.parse import urlparse
+
 import requests
 
 from . import config
 
 
-TONGJI_FIELDS = """_id title content createdAt updatedAt isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel} needInfo needLocation needSubmitLocation needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}"""
+TONGJI_FIELDS = """_id title content createdAt updatedAt isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel} needInfo needLocation needSubmitLocation openLocationInfo needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt mediaSourceType showConditions{optionId optionIdxs optionLogic} showConditionsLogic} allowSubmitTimeRules{_id startTime endTime}"""
 
 
 class MiaoyingRemoteError(RuntimeError):
@@ -224,7 +229,7 @@ class MiaoyingClient:
         self, token: str, remote_id: str, uid: str, limit: int = 100
     ) -> tuple[dict, list[dict]]:
         """一次请求取得项目详情与用户记录，减少签到前的网络往返。"""
-        query = """query getCheckinContext($_id:String,$uid:String,$limit:String){tongji(_id:$_id){_id title content createdAt updatedAt isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel} needInfo needLocation needSubmitLocation needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt} allowSubmitTimeRules{_id startTime endTime}} baomings(userId:$uid,sort:\"-createdAt\",limit:$limit){_id tongjiId createdAt}}"""
+        query = f"""query getCheckinContext($_id:String,$uid:String,$limit:String){{tongji(_id:$_id){{{TONGJI_FIELDS}}} baomings(userId:$uid,sort:\"-createdAt\",limit:$limit){{_id tongjiId createdAt}}}}"""
         data = self.graphql(
             token,
             "getCheckinContext",
@@ -232,6 +237,96 @@ class MiaoyingClient:
             {"_id": remote_id, "uid": uid, "limit": str(limit)},
         )
         return data.get("tongji") or {}, data.get("baomings") or []
+
+    def upload_image(
+        self,
+        token: str,
+        remote_user_id: str,
+        content: bytes,
+        original_name: str,
+        content_type: str = "",
+    ) -> dict:
+        """Upload one image with Miaoying's signed OSS workflow."""
+        # The upstream endpoint rejects a zero-length POST. Browser FormData
+        # sends an empty multipart body containing only the closing boundary.
+        boundary = f"----SignInMiaoying{uuid.uuid4().hex}"
+        try:
+            sign_response = requests.post(
+                "https://miaoying.hui51.cn/api/file/getOssSign",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "Origin": "https://miaoying.hui51.cn",
+                    "Referer": "https://miaoying.hui51.cn/",
+                    "User-Agent": "SignIn-Miaoying/1.0",
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                },
+                data=f"--{boundary}--\r\n".encode(),
+                timeout=(5, 15),
+            )
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            raise MiaoyingRemoteError("获取秒应图片上传凭证超时，请稍后重试") from exc
+        sign_payload = self._json(sign_response, "获取秒应图片上传凭证")
+        credential = sign_payload.get("data") or {}
+        if not isinstance(credential, dict):
+            raise MiaoyingRemoteError("秒应图片上传凭证格式异常")
+
+        upload_url = str(credential.get("uploadImageUrl") or "").strip()
+        parsed = urlparse(upload_url)
+        allowed_hosts = {
+            "oss2.hui51.cn",
+            "oss.hui51.cn",
+            "hui51.oss-cn-beijing.aliyuncs.com",
+        }
+        if parsed.scheme != "https" or parsed.hostname not in allowed_hosts:
+            raise MiaoyingRemoteError("秒应返回了不受信任的图片上传地址")
+
+        maximum_mb = credential.get("maxSize")
+        try:
+            if maximum_mb and len(content) > float(maximum_mb) * 1024 * 1024:
+                raise MiaoyingRemoteError(
+                    f"图片大小不能超过 {maximum_mb} MB", retryable=False
+                )
+        except (TypeError, ValueError):
+            pass
+
+        suffix = Path(original_name or "image.jpg").suffix.lower()
+        if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+            suffix = mimetypes.guess_extension(content_type or "") or ".jpg"
+        object_name = f"{remote_user_id}_{uuid.uuid4().hex}{suffix}"
+        object_key = f"uploads/{object_name}"
+        fields = {"key": object_key, "success_action_status": "200"}
+        for name in ("policy", "OSSAccessKeyId", "signature"):
+            value = credential.get(name)
+            if not value:
+                raise MiaoyingRemoteError("秒应图片上传凭证不完整")
+            fields[name] = str(value)
+
+        try:
+            response = requests.post(
+                upload_url,
+                data=fields,
+                files={
+                    "file": (
+                        original_name or object_name,
+                        content,
+                        content_type
+                        or mimetypes.guess_type(original_name)[0]
+                        or "image/jpeg",
+                    )
+                },
+                timeout=(5, 30),
+            )
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            raise MiaoyingRemoteError("上传秒应图片超时，请稍后重试") from exc
+        if response.status_code not in (200, 201, 204):
+            raise MiaoyingRemoteError(
+                f"上传秒应图片失败（OSS HTTP {response.status_code}）"
+            )
+        return {
+            "name": object_name,
+            "url": f"https://oss2.hui51.cn/encode/uploads/{object_name}",
+        }
 
     def submit(self, token: str, payload: dict) -> str:
         query = """mutation createBaomingByInput($input:createBaomingInput!){createBaomingByInput(input:$input){_id}}"""

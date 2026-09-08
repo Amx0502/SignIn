@@ -1,6 +1,6 @@
 <template>
-  <div class="roster">
-    <header><div><strong>签到身份</strong><small>项目固定名单</small></div><el-tag size="small" :type="selected ? 'success' : 'warning'" effect="plain">{{ selected ? '已选择' : '待选择' }}</el-tag></header>
+  <div class="roster" :class="{ compact }">
+    <header><div><strong>身份信息</strong><small>从项目固定名单中选择</small></div><el-tag size="small" :type="selected ? 'success' : 'warning'" effect="plain">{{ selected ? '已选择' : '待选择' }}</el-tag></header>
     <div class="fields">
       <label><span>{{ identity.class_label || '班级' }}</span>
         <el-select v-model="group" filterable clearable placeholder="请选择班级" @change="clearSelection">
@@ -21,7 +21,7 @@
 </template>
 <script setup>
 import { computed, ref, watch } from 'vue'
-const props=defineProps({modelValue:{type:Object,default:()=>({})},identity:{type:Object,required:true}})
+const props=defineProps({modelValue:{type:Object,default:()=>({})},identity:{type:Object,required:true},compact:{type:Boolean,default:false}})
 const emit=defineEmits(['update:modelValue'])
 const group=ref('')
 const roster=computed(()=>props.identity.roster||[])
@@ -36,4 +36,5 @@ watch(selected,()=>{if(selectedIndex.value!==undefined)group.value=selected.valu
 </script>
 <style scoped>
 .roster{display:grid;gap:13px;padding:16px;margin-bottom:14px;border:1px solid #bfdbfe;border-radius:16px;background:#fff}.roster>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid #dbeafe}.roster>header strong,.roster>header small{display:block}.roster>header strong{color:#172033;font-size:16px}.roster>header small{margin-top:2px;color:#64748b;font-size:12px}.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}label{display:grid;gap:7px;min-width:0}label>span{color:#475569;font-size:12px;font-weight:700}.el-select{width:100%}.identity-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 11px;border-radius:10px;background:#eff6ff;color:#1e40af;font-size:12px}.identity-summary strong{text-align:right;overflow-wrap:anywhere}.roster-tip{color:#64748b;font-size:12px;line-height:1.55}@media(max-width:700px){.fields{grid-template-columns:1fr}.identity-summary{align-items:flex-start;flex-direction:column;gap:4px}.identity-summary strong{text-align:left}}
+.roster.compact{padding:0;margin:0;border:0;border-radius:0;background:transparent}.roster.compact>header{padding-bottom:10px;border-bottom:0}.roster.compact>header strong{font-size:14px}
 </style>

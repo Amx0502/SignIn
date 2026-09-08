@@ -27,62 +27,64 @@
         </div><el-empty v-else :description="accounts.length ? '没有找到匹配账号' : '暂无账号，请先扫码登录'" />
       </div>
       <div class="panel checkin-pane">
-        <header><div><h2>签到中心</h2><p>确认项目要求、签到身份和位置后提交</p></div><div class="checkin-header-actions"><el-tag v-if="selectedAccount" effect="plain">当前账号：{{ selectedAccount.remark || selectedAccount.nickname }}</el-tag><el-button :icon="Refresh" :disabled="!selectedAccountId" :loading="formsSyncing" @click="syncAccountForms">同步签到项目</el-button></div></header>
-        <div class="project-picker">
-          <div class="project-picker-label"><small>签到项目</small><strong>可签到 {{ activeAccountForms.length }} 项 · 已关闭 {{ closedAccountForms.length }} 项</strong></div>
-          <el-select v-model="selectedFormId" class="form-select" :disabled="!selectedAccountId" placeholder="请选择签到项目">
-            <el-option-group v-if="activeAccountForms.length" label="可签到项目">
-              <el-option v-for="item in activeAccountForms" :key="item.id" :value="item.id" :label="item.title"><span>{{ item.title }}</span><small class="option-state">{{ item.requirements?.location ? '需要位置' : '普通签到' }}</small></el-option>
-            </el-option-group>
-            <el-option-group v-if="closedAccountForms.length" label="已关闭项目">
-              <el-option v-for="item in closedAccountForms" :key="item.id" :value="item.id" :label="item.title"><span>{{ item.title }}</span><small class="option-state">已关闭</small></el-option>
-            </el-option-group>
-          </el-select>
-        </div>
+        <header class="checkin-page-head"><div><h2>签到中心</h2><p v-if="selectedAccount">使用账号「{{ selectedAccount.remark || selectedAccount.nickname }}」完成签到</p><p v-else>先选择左侧账号，再按顺序填写签到信息</p></div><el-button :icon="Refresh" :disabled="!selectedAccountId" :loading="formsSyncing" @click="syncAccountForms">同步项目</el-button></header>
         <el-empty v-if="!selectedAccountId" description="请先选择秒应账号" />
         <el-empty v-else-if="!accountForms.length" description="暂无签到项目，请点击同步签到项目" />
         <div v-else-if="selectedManualForm" class="manual-checkin">
-          <div class="manual-head">
-            <div class="manual-head-title"><span class="manual-head-icon">签</span><div><strong>{{ selectedManualForm.title }}</strong><small>请按以下项目要求完成本次签到</small></div></div>
-            <div class="manual-head-meta"><el-tag size="small" type="primary">{{ selectedManualForm.requirements?.location ? '位置签到' : '普通签到' }}</el-tag><el-tag size="small" type="info">{{ manualFields.length }} 个填写项</el-tag><el-tag size="small" :type="selectedManualForm.is_closed ? 'warning' : 'success'">{{ selectedManualForm.is_closed ? '已关闭' : '可签到' }}</el-tag></div>
-            <p>{{ selectedManualForm.content || '按项目要求提交签到' }}</p>
-          </div>
+          <section class="checkin-section project-section">
+            <div class="checkin-section-head">
+              <div><span class="step-badge">1</span><div><strong>选择签到项目</strong><small>可签到 {{ activeAccountForms.length }} 项，已关闭 {{ closedAccountForms.length }} 项</small></div></div>
+              <el-tag size="small" :type="selectedManualForm.is_closed ? 'warning' : 'success'">{{ selectedManualForm.is_closed ? '已关闭' : '可签到' }}</el-tag>
+            </div>
+            <el-select v-model="selectedFormId" class="form-select" :disabled="!selectedAccountId" placeholder="请选择签到项目">
+              <el-option-group v-if="activeAccountForms.length" label="可签到项目">
+                <el-option v-for="item in activeAccountForms" :key="item.id" :value="item.id" :label="item.title"><span>{{ item.title }}</span><small class="option-state">{{ item.requirements?.location ? '需要位置' : '普通签到' }}</small></el-option>
+              </el-option-group>
+              <el-option-group v-if="closedAccountForms.length" label="已关闭项目">
+                <el-option v-for="item in closedAccountForms" :key="item.id" :value="item.id" :label="item.title"><span>{{ item.title }}</span><small class="option-state">已关闭</small></el-option>
+              </el-option-group>
+            </el-select>
+            <div class="project-brief"><p>{{ selectedManualForm.content || '该项目没有补充说明' }}</p><span>{{ selectedManualForm.requirements?.location ? '需要提交位置' : '无需提交位置' }} · {{ manualFields.length }} 个项目填写项</span></div>
+          </section>
           <el-alert v-if="selectedManualForm.is_closed" type="warning" :closable="false" title="该签到项目已关闭" />
           <el-alert v-else-if="selectedManualForm.requirements?.unsupported?.length" type="warning" :closable="false" :title="`暂不支持：${selectedManualForm.requirements.unsupported.join('、')}`" />
-          <RosterIdentity v-if="identityLabels.fixed" v-model="manualAnswers" :identity="identityLabels" />
-          <div v-else class="identity-fields">
-            <div class="identity-title"><div><strong>签到身份</strong><small>保存到当前账号，并作为签到默认资料</small></div><el-button :loading="profileSaving" @click="saveManualProfile()">保存资料</el-button></div>
-            <div class="identity-grid">
-              <label><span>班级</span><el-input v-model="manualProfile.class_name" clearable placeholder="请输入班级" /></label>
-              <label><span>{{ identityLabels.name_label }}</span><el-input v-model="manualProfile.real_name" clearable :placeholder="`请输入${identityLabels.name_label}`" /></label>
-              <label><span>{{ identityLabels.number_label }}</span><el-input v-model="manualProfile.school_no" clearable :placeholder="`请输入${identityLabels.number_label}`" /></label>
+          <section class="checkin-section details-section">
+            <div class="checkin-section-head">
+              <div><span class="step-badge">2</span><div><strong>填写签到信息</strong><small>先选择身份，再回答项目问题</small></div></div>
             </div>
-          </div>
-          <DynamicFormFields v-if="manualFields.length" v-model="manualAnswers" :fields="manualFields" />
-          <section v-if="selectedManualForm.requirements?.location" class="location-section">
-            <div class="section-heading"><div><strong>签到位置</strong><small>搜索地点或直接在腾讯地图上选点</small></div><el-tag size="small" type="primary">腾讯地图</el-tag></div>
-            <el-alert
-              v-if="selectedManualForm.requirements?.location_detail_visible === false"
-              type="info"
-              :closable="false"
-              title="该项目的原生位置只公开省、市；系统会把完整地址和经纬度作为“打卡实时位置（详细）”一并提交。"
-            />
-            <div class="location-editor">
-              <div class="location-info-editor">
-                <div class="location-info-title"><div><strong>提交给秒应的位置字段</strong><small>地图选点后会自动填写，也可以手动修改；提交时以这里的内容为准。</small></div><el-tag size="small" type="success">可编辑</el-tag></div>
-                <div class="location-info-grid">
-                  <label><span>省份</span><el-input v-model="manualLocationInfo.province" clearable maxlength="255" placeholder="例如：福建省" /></label>
-                  <label><span>城市</span><el-input v-model="manualLocationInfo.city" clearable maxlength="255" placeholder="例如：福州市" /></label>
-                  <label><span>区县</span><el-input v-model="manualLocationInfo.district" clearable maxlength="255" placeholder="例如：马尾区" /></label>
-                  <label><span>街道名称</span><el-input v-model="manualLocationInfo.street" clearable maxlength="255" placeholder="例如：马尾隧道" /></label>
-                  <label class="location-name-field"><span>地点名称</span><el-input v-model="manualLocationInfo.name" clearable maxlength="255" placeholder="例如：阳光学院（福州校本部）" /></label>
-                </div>
-                <small class="location-submit-preview">实际位置：{{ locationDisplayName(manualLocationInfo, manualLocationName) || '请通过地图选点或手动填写' }}</small>
+            <RosterIdentity v-if="identityLabels.fixed" v-model="manualAnswers" :identity="identityLabels" compact />
+            <div v-else class="identity-fields compact-block">
+              <div class="identity-title"><div><strong>身份信息</strong><small>保存后将作为当前账号的默认资料</small></div><el-button :loading="profileSaving" @click="saveManualProfile()">保存资料</el-button></div>
+              <div class="identity-grid">
+                <label><span>班级</span><el-input v-model="manualProfile.class_name" clearable placeholder="请输入班级" /></label>
+                <label><span>{{ identityLabels.name_label }}</span><el-input v-model="manualProfile.real_name" clearable :placeholder="`请输入${identityLabels.name_label}`" /></label>
+                <label><span>{{ identityLabels.number_label }}</span><el-input v-model="manualProfile.school_no" clearable :placeholder="`请输入${identityLabels.number_label}`" /></label>
               </div>
+            </div>
+            <DynamicFormFields v-if="manualFields.length" v-model="manualAnswers" :fields="manualFields" :image-uploader="uploadManualImage" compact />
+          </section>
+          <section v-if="selectedManualForm.requirements?.location" class="checkin-section location-section">
+            <div class="checkin-section-head">
+              <div><span class="step-badge">3</span><div><strong>设置签到位置</strong><small>搜索地点或直接在腾讯地图上选点</small></div></div>
+              <el-tag size="small" type="primary" effect="plain">腾讯地图</el-tag>
+            </div>
+            <div class="location-editor">
+              <div class="location-current"><span>将提交的位置</span><strong>{{ locationDisplayName(manualLocationInfo, manualLocationName) || '尚未选择位置' }}</strong></div>
               <LocationSearchPanel v-model="manualCoordinate" :location-api="api" @select-location="selectManualLocation" />
+              <details class="location-advanced">
+                <summary>查看或修改详细地址</summary>
+                <p>地图选点后会自动填写。仅当识别结果不准确时需要修改。</p>
+                <div class="location-info-grid">
+                  <label><span>省份</span><el-input v-model="manualLocationInfo.province" clearable maxlength="255" placeholder="例如：北京市" /></label>
+                  <label><span>城市</span><el-input v-model="manualLocationInfo.city" clearable maxlength="255" placeholder="例如：北京市" /></label>
+                  <label><span>区县</span><el-input v-model="manualLocationInfo.district" clearable maxlength="255" placeholder="例如：东城区" /></label>
+                  <label><span>街道名称</span><el-input v-model="manualLocationInfo.street" clearable maxlength="255" placeholder="例如：广场东侧路" /></label>
+                  <label class="location-name-field"><span>地点名称</span><el-input v-model="manualLocationInfo.name" clearable maxlength="255" placeholder="例如：天安门广场" /></label>
+                </div>
+              </details>
             </div>
           </section>
-          <div class="manual-actions"><div class="manual-action-summary"><div class="readiness" :class="{ready:canManualCheckin}"><i /><strong>{{ canManualCheckin ? '签到信息已填写完整' : '签到信息尚未填写完整' }}</strong></div><span>{{ selectedAccount?.remark || selectedAccount?.nickname }} · {{ selectedManualForm.title }}</span><small>{{ manualValidationHint }}</small></div><div class="manual-action-controls"><el-checkbox v-model="manualNotify">发送企业微信通知</el-checkbox><el-button type="primary" size="large" :loading="manualChecking" :disabled="!canManualCheckin" @click="submitManualCheckin">执行签到</el-button></div></div>
+          <div class="manual-actions"><div class="manual-action-summary"><div class="readiness" :class="{ready:canManualCheckin}"><span class="step-badge">4</span><div><strong>{{ canManualCheckin ? '可以执行签到' : '请完成以上必填信息' }}</strong><small>{{ manualValidationHint }}</small></div></div></div><div class="manual-action-controls"><el-checkbox v-model="manualNotify">发送结果通知</el-checkbox><el-button type="primary" size="large" :loading="manualChecking" :disabled="!canManualCheckin" @click="submitManualCheckin">执行签到</el-button></div></div>
         </div>
       </div>
     </section>
@@ -145,17 +147,17 @@
             <el-empty v-if="!selectedTaskForm" description="请先选择签到项目" :image-size="70" />
             <template v-else>
               <RosterIdentity v-if="selectedTaskForm.requirements?.identity?.fixed" v-model="form.answers" :identity="selectedTaskForm.requirements.identity" />
-              <DynamicFormFields v-if="taskFields.length" v-model="form.answers" :fields="taskFields" />
+              <DynamicFormFields v-if="taskFields.length" v-model="form.answers" :fields="taskFields" :image-uploader="uploadTaskImage" />
               <section v-if="selectedTaskForm.requirements?.location" class="task-location-section">
                 <div class="section-heading"><div><strong>签到位置</strong><small>搜索地点或直接在腾讯地图上选点</small></div><el-tag size="small" type="primary">腾讯地图</el-tag></div>
                 <div class="location-info-editor">
                   <div class="location-info-title"><div><strong>提交给秒应的位置字段</strong><small>地图会自动填写，保存任务前也可以手动修改。</small></div><el-tag size="small" type="success">可编辑</el-tag></div>
                   <div class="location-info-grid">
-                    <label><span>省份</span><el-input v-model="form.location_info.province" clearable maxlength="255" placeholder="例如：福建省" /></label>
-                    <label><span>城市</span><el-input v-model="form.location_info.city" clearable maxlength="255" placeholder="例如：福州市" /></label>
-                    <label><span>区县</span><el-input v-model="form.location_info.district" clearable maxlength="255" placeholder="例如：马尾区" /></label>
-                    <label><span>街道名称</span><el-input v-model="form.location_info.street" clearable maxlength="255" placeholder="例如：马尾隧道" /></label>
-                    <label class="location-name-field"><span>地点名称</span><el-input v-model="form.location_info.name" clearable maxlength="255" placeholder="例如：阳光学院（福州校本部）" /></label>
+                    <label><span>省份</span><el-input v-model="form.location_info.province" clearable maxlength="255" placeholder="例如：北京市" /></label>
+                    <label><span>城市</span><el-input v-model="form.location_info.city" clearable maxlength="255" placeholder="例如：北京市" /></label>
+                    <label><span>区县</span><el-input v-model="form.location_info.district" clearable maxlength="255" placeholder="例如：东城区" /></label>
+                    <label><span>街道名称</span><el-input v-model="form.location_info.street" clearable maxlength="255" placeholder="例如：广场东侧路" /></label>
+                    <label class="location-name-field"><span>地点名称</span><el-input v-model="form.location_info.name" clearable maxlength="255" placeholder="例如：天安门广场" /></label>
                   </div>
                   <small class="location-submit-preview">实际位置：{{ locationDisplayName(form.location_info, form.location_name) || '请通过地图选点或手动填写' }}</small>
                 </div>
@@ -192,6 +194,7 @@ import MiaoyingRunHistoryPanel from '../components/miaoying/RunHistoryPanel.vue'
 import RosterIdentity from '../components/miaoying/RosterIdentity.vue'
 import QrLoginDialog from '../components/class-cube/QrLoginDialog.vue'
 import { normalizeScheduleTimes, parseCoordinates } from '../utils/classCubeTaskForm.js'
+import { visibleMiaoyingFields } from '../utils/miaoyingFields.js'
 
 const LocationSearchPanel=defineAsyncComponent(()=>import('../components/class-cube/LocationSearchPanel.vue'))
 
@@ -322,6 +325,8 @@ async function reverseLocation(point){const result=await api.reverseLocation(poi
 async function selectManualLocation(result){manualLocationName.value=locationNameFromResult(result);try{const resolved=await reverseLocation(result);manualLocationName.value=locationNameFromResult(resolved)||manualLocationName.value;manualLocationInfo.value=nativeLocationInfo(resolved,result)}catch{manualLocationInfo.value=emptyLocationInfo()}}
 async function selectTaskLocation(result){form.location_name=locationNameFromResult(result);try{const resolved=await reverseLocation(result);form.location_name=locationNameFromResult(resolved)||form.location_name;form.location_info=nativeLocationInfo(resolved,result)}catch{form.location_info=emptyLocationInfo()}}
 async function submitManualCheckin(){const item=selectedManualForm.value;if(!item)return;if(!answersValid(manualFields.value,manualAnswers.value)){ElMessage.warning('请完整填写项目必填项');return}let point={latitude:null,longitude:null};if(item.requirements?.location){try{point=parseCoordinates(manualCoordinate.value)}catch(e){ElMessage.warning(e.message);return}}manualChecking.value=true;try{if(item.requirements?.location){let automatic={},fallbackName='';try{const resolved=await reverseLocation(point);automatic=nativeLocationInfo(resolved,point);fallbackName=locationNameFromResult(resolved)}catch(e){if(!hasLocationInfo(manualLocationInfo.value))throw e}manualLocationInfo.value=mergeLocationInfo(automatic,manualLocationInfo.value,point);manualLocationName.value=locationDisplayName(manualLocationInfo.value,fallbackName)}if(!await saveManualProfile(false))return;const result=await api.manualCheckin(item.id,{account_id:selectedAccountId.value,location_name:manualLocationName.value.trim(),location_info:manualLocationInfo.value,answers:manualAnswers.value,...point,notify_wecom:manualNotify.value});ElMessage.success(result.message||'签到成功');if(result.notification?.reason==='send_failed')ElMessage.warning('签到成功，但企业微信通知发送失败')}catch(e){ElMessage.error(e.message)}finally{manualChecking.value=false}}
+const uploadManualImage=file=>api.uploadImage(selectedAccountId.value,file)
+const uploadTaskImage=file=>api.uploadImage(form.account_id,file)
 async function saveSettings(){settingsSaving.value=true;try{Object.assign(settings,await api.updateSettings({miaoying_webhook_url:settings.miaoying_webhook_url}));ElMessage.success('秒应通知配置已保存')}catch(e){ElMessage.error(e.message)}finally{settingsSaving.value=false}}
 async function testNotification(){notificationTesting.value=true;try{await api.testNotification({miaoying_webhook_url:settings.miaoying_webhook_url});ElMessage.success('测试通知已发送，请在企业微信中确认')}catch(e){ElMessage.error(e.message)}finally{notificationTesting.value=false}}
 async function accountChanged(){forms.value=form.account_id?await api.listForms(form.account_id):[];form.form_id=null;form.answers={};form.answer_schema=[];form.location_name='';form.location_info={};form.latitude=null;form.longitude=null}
@@ -338,7 +343,7 @@ async function runNow(row){runningTaskId.value=row.id;try{const result=await api
 async function editTask(row){try{forms.value=await api.listForms(row.account_id);editingId.value=row.id;Object.assign(form,emptyForm(),JSON.parse(JSON.stringify(row)),{start_date:null,end_date:null});taskEditorVisible.value=true}catch(e){ElMessage.error(e.message)}}
 async function removeTask(row){try{await ElMessageBox.confirm(`确认删除任务“${row.name}”？`,'删除任务',{type:'warning'});await api.deleteTask(row.id);ElMessage.success('已删除');await load()}catch(e){if(!['cancel','close'].includes(e))ElMessage.error(e.message)}}
 function seedAnswers(fields,account,current={}){const result={...current};for(const field of fields){if(result[field.key]!==undefined&&result[field.key]!==''&&result[field.key]?.length!==0)continue;const title=String(field.title||'').replaceAll(' ','');let value='';if(title.includes('姓名'))value=account?.real_name||'';else if(title.includes('学号'))value=account?.school_no||'';else if(title.includes('班级'))value=account?.class_name||'';if(value&&field.options?.length){const matched=field.options.find(option=>String(option.value)===String(value)||String(option.label)===String(value));value=matched?.value||''}if(field.control==='multiple')value=value?[value]:[];if(value!==''||field.control==='multiple')result[field.key]=value}return result}
-function answersValid(fields,answers){return fields.every(field=>{if(field.control==='unsupported')return !field.required;const value=answers?.[field.key];if(!field.required)return true;if(Array.isArray(value)){const size=value.length;return size>=Number(field.min_select||1)&&(!field.max_select||size<=Number(field.max_select))}return value!==undefined&&value!==null&&String(value).trim()!==''})}
+function answersValid(fields,answers){return visibleMiaoyingFields(fields,answers).every(field=>{if(field.control==='unsupported')return !field.required;const value=answers?.[field.key];if(!field.required)return true;if(Array.isArray(value)){const size=value.length;return size>=Number(field.min_select||1)&&(!field.max_select||size<=Number(field.max_select))}return value!==undefined&&value!==null&&String(value).trim()!==''})}
 watch(selectedFormId,()=>{manualCoordinate.value='';manualLocationName.value='';manualLocationInfo.value=emptyLocationInfo();manualAnswers.value=seedAnswers(manualFields.value,{...selectedAccount.value,...manualProfile},{})})
 watch(()=>route.path,load);onMounted(load);onUnmounted(stopQr)
 </script>
@@ -352,5 +357,6 @@ watch(()=>route.path,load);onMounted(load);onUnmounted(stopQr)
 .account-card{position:relative}.account-card.active{box-shadow:inset 4px 0 #3b82f6,0 8px 20px #2563eb12}.manual-actions{position:sticky;bottom:12px;z-index:8;border-color:#93c5fd;background:#eff6fff2;box-shadow:0 14px 30px #0f172a20;backdrop-filter:blur(12px)}.manual-action-summary{display:grid;min-width:0;gap:3px}.manual-action-summary>strong{overflow:hidden;color:#1e3a8a;text-overflow:ellipsis;white-space:nowrap}
 @media(min-width:1051px) and (max-width:1280px){.accounts-workspace{grid-template-columns:minmax(270px,300px) minmax(0,1fr)}.accounts-pane{position:sticky}.account-list{display:grid;grid-template-columns:1fr;max-height:calc(100vh - 310px)}}@media(max-width:700px){.manual-actions{position:static}.manual-action-summary>strong{white-space:normal}}
 .checkin-pane{background:linear-gradient(180deg,#fff,#f8fbff)}.checkin-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}.project-picker{position:sticky;top:12px;z-index:7;grid-template-columns:minmax(150px,220px) minmax(0,1fr);padding:14px 16px;border-color:#93c5fd;background:#f0f7ffed;box-shadow:0 8px 22px #1d4ed810;backdrop-filter:blur(12px)}.project-picker-label{display:grid;gap:3px;min-width:0}.project-picker-label small{color:#64748b;font-size:11px}.project-picker-label strong{overflow:hidden;color:#1e3a8a;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.manual-checkin{gap:16px}.manual-head{gap:12px;padding:18px;border-color:#93c5fd;background:linear-gradient(135deg,#eff6ff,#fff)}.manual-head-title{justify-content:flex-start!important}.manual-head-icon{display:grid;width:38px;height:38px;flex:none;place-items:center;border-radius:12px;background:linear-gradient(135deg,#2563eb,#38bdf8);color:#fff;font-size:15px;font-weight:800;box-shadow:0 8px 18px #2563eb28}.manual-head-title>div{display:grid;gap:2px;min-width:0}.manual-head-title strong{color:#172033;font-size:17px}.manual-head-title small{font-size:11px}.manual-head-meta{gap:7px!important;flex-wrap:wrap}.manual-head p{margin:0;padding-top:11px;border-top:1px solid #dbeafe;color:#475569;font-size:13px;line-height:1.75;overflow-wrap:anywhere}.identity-fields,.location-section{box-shadow:0 7px 20px #0f172a08}.section-heading strong{font-size:16px}.location-section{padding:18px}.location-info-editor{background:#fbfdff}.location-submit-preview{display:block;border:1px solid #dbeafe;line-height:1.55}.location-section :deep(.location-search-panel){padding:10px;background:#fff}.location-section :deep(.location-map){height:310px;min-height:250px}.manual-action-summary{gap:4px}.manual-action-summary>span{overflow:hidden;color:#475569;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.readiness{display:flex!important;align-items:center;gap:7px}.readiness i{width:8px;height:8px;flex:none;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 4px #fef3c7}.readiness strong{color:#92400e;font-size:14px}.readiness.ready i{background:#22c55e;box-shadow:0 0 0 4px #dcfce7}.readiness.ready strong{color:#15803d}.manual-action-controls{display:flex!important;align-items:center;justify-content:flex-end;gap:16px;flex:none}.manual-action-controls .el-button{min-width:150px}.manual-actions{padding:13px 16px}
-@media(max-width:900px){.checkin-header-actions{justify-content:flex-start}.project-picker{position:static;grid-template-columns:1fr}.project-picker-label strong{white-space:normal}.location-section :deep(.location-map){height:290px}.manual-actions{align-items:stretch;flex-direction:column}.manual-action-controls{justify-content:space-between}.manual-action-summary>span{white-space:normal}}@media(max-width:560px){.checkin-header-actions{align-items:stretch;flex-direction:column}.checkin-header-actions .el-button{width:100%;margin:0}.manual-head{padding:14px}.location-section{padding:14px}.manual-action-controls{align-items:stretch;flex-direction:column}.manual-action-controls .el-button{width:100%;margin:0}}
+.checkin-page-head{padding-bottom:18px;border-bottom:1px solid #e2e8f0}.checkin-page-head .el-button{margin:0}.manual-checkin{gap:22px}.checkin-section{display:grid;gap:20px;padding:22px;border:1px solid #e2e8f0;border-radius:16px;background:#fff}.checkin-section-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.checkin-section-head>div{display:flex;align-items:center;gap:13px;min-width:0}.checkin-section-head strong,.checkin-section-head small{display:block}.checkin-section-head strong{color:#172033;font-size:16px}.checkin-section-head small{margin-top:3px;color:#64748b;font-size:12px;line-height:1.55}.step-badge{display:grid;width:30px;height:30px;flex:none;place-items:center;border-radius:9px;background:#eaf3ff;color:#2563eb;font-size:13px;font-weight:800}.project-section{background:#fbfdff}.project-section .form-select{width:100%}.project-brief{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:13px 15px;border-radius:10px;background:#f1f5f9}.project-brief p{margin:0!important;color:#334155!important;font-size:13px!important;line-height:1.7;overflow-wrap:anywhere}.project-brief span{flex:none;padding-top:2px;color:#64748b;font-size:12px;white-space:nowrap}.details-section{gap:24px}.details-section :deep(.roster.compact){padding:0;margin:0;border:0;background:transparent;box-shadow:none}.compact-block{padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}.location-section{gap:20px;padding:22px;border-color:#e2e8f0;box-shadow:none}.location-current{display:grid;gap:5px;padding:13px 15px;border-left:3px solid #3b82f6;border-radius:4px 10px 10px 4px;background:#f8fafc}.location-current span{color:#64748b;font-size:11px}.location-current strong{color:#1e3a8a;font-size:13px;line-height:1.6;overflow-wrap:anywhere}.location-editor{gap:18px}.location-advanced{border-top:1px solid #e2e8f0}.location-advanced summary{padding:16px 2px 5px;color:#2563eb;font-size:13px;font-weight:700;cursor:pointer;list-style-position:inside}.location-advanced>p{margin:7px 0 16px!important;color:#64748b!important;font-size:12px!important}.location-advanced .location-info-grid{gap:14px;padding-top:4px}.location-section :deep(.location-search-panel){gap:16px;padding:18px;background:linear-gradient(145deg,#f8fbff,#fff)}.location-section :deep(.location-entry-row){gap:16px}.location-section :deep(.coordinate-editor),.location-section :deep(.address-search){gap:10px}.location-section :deep(.search-pane),.location-section :deep(.map-pane){gap:14px}.location-section :deep(.location-map){height:350px;min-height:300px}.manual-actions{padding:16px 18px;border-color:#dbeafe;background:#fffffff2}.readiness{gap:12px}.readiness>div{display:grid;gap:3px}.readiness strong{color:#92400e}.readiness.ready strong{color:#15803d}.readiness small{line-height:1.5}.readiness.ready .step-badge{background:#dcfce7;color:#15803d}
+@media(max-width:900px){.checkin-header-actions{justify-content:flex-start}.project-picker{position:static;grid-template-columns:1fr}.project-picker-label strong{white-space:normal}.location-section :deep(.location-map){height:320px}.manual-actions{align-items:stretch;flex-direction:column}.manual-action-controls{justify-content:space-between}.manual-action-summary>span{white-space:normal}}@media(max-width:560px){.checkin-header-actions{align-items:stretch;flex-direction:column}.checkin-header-actions .el-button{width:100%;margin:0}.manual-head{padding:14px}.checkin-section,.location-section{gap:16px;padding:16px}.location-section :deep(.location-search-panel){padding:14px}.project-brief{align-items:flex-start;flex-direction:column;gap:6px}.project-brief span{white-space:normal}.manual-action-controls{align-items:stretch;flex-direction:column}.manual-action-controls .el-button{width:100%;margin:0}}
 </style>

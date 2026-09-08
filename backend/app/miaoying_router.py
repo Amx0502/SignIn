@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from .class_cube_models import (
@@ -55,6 +55,18 @@ def create_miaoying_router(auth_dependency, menu_dependency=None):
     def sync_forms_detailed(account_id: int, request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto")))): return invoke(request, request.app.state.miaoying_service.sync_forms_detailed, account_id, user)
     @router.get("/accounts/{account_id}/forms")
     def forms(account_id: int, request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto")))): return invoke(request, request.app.state.miaoying_service.list_forms, account_id, user)
+    @router.post("/accounts/{account_id}/images")
+    async def upload_image(account_id: int, request: Request, file: UploadFile = File(...), user=Depends(guard(("miaoying.accounts","miaoying.auto")))):
+        content = await file.read()
+        return invoke(
+            request,
+            request.app.state.miaoying_service.upload_image,
+            account_id,
+            content,
+            file.filename or "image.jpg",
+            file.content_type or "application/octet-stream",
+            user,
+        )
     @router.post("/forms/{form_id}/checkin")
     def manual_checkin(form_id: int, payload: MiaoyingManualCheckin, request: Request, user=Depends(guard("miaoying.accounts"))): return invoke(request, request.app.state.miaoying_service.manual_checkin, form_id, payload.model_dump(), user)
     @router.get("/locations/config")

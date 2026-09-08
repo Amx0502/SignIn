@@ -170,6 +170,33 @@ class MiaoyingService:
         with self.database.session() as session:
             session.delete(self._get_account(session, account_id, user))
 
+    def upload_image(
+        self,
+        account_id: int,
+        content: bytes,
+        filename: str,
+        content_type: str,
+        user: dict,
+    ) -> dict:
+        if not content:
+            raise MiaoyingValidationError("请选择需要上传的图片")
+        if len(content) > 20 * 1024 * 1024:
+            raise MiaoyingValidationError("图片大小不能超过 20 MB")
+        allowed_types = {"image/jpeg", "image/png", "image/webp"}
+        if content_type not in allowed_types:
+            raise MiaoyingValidationError("仅支持 JPG、PNG 或 WebP 图片")
+        with self.database.session() as session:
+            account = self._get_account(session, account_id, user)
+            if account.status != "active":
+                raise MiaoyingValidationError("秒应账号登录已失效，请重新扫码登录")
+            return self.client.upload_image(
+                self._token(account),
+                account.remote_user_id,
+                content,
+                filename,
+                content_type,
+            )
+
     def sync_forms(self, account_id: int, user: dict) -> list[dict]:
         return self._sync_forms_result(account_id, user)["forms"]
 
@@ -668,7 +695,7 @@ class MiaoyingService:
             if data.get(enabled_key) and data.get(required_key) and label not in unsupported:
                 unsupported.append(label)
         fields = cls._normalize_fields(data)
-        supported_controls = {"text", "textarea", "single", "multiple", "select"}
+        supported_controls = {"text", "textarea", "single", "multiple", "select", "image"}
         for field in fields:
             if field["required"] and field["control"] not in supported_controls:
                 label = field["title"] or "复杂必填项"
@@ -763,7 +790,9 @@ class MiaoyingService:
                     # 该选项在 options 数组中的零基序号。
                     "submit_value": str(option_index) if source == "info" else str(value),
                 })
-        if bool(raw.get("isImage")):
+        if raw_type in {"4", "image", "photo", "picture"}:
+            control = "image"
+        elif bool(raw.get("isImage")):
             control = "unsupported"
         elif is_multi:
             control = "multiple"
@@ -789,6 +818,21 @@ class MiaoyingService:
             "min_select": MiaoyingService._safe_int(raw.get("minSelect"), 1 if raw.get("required") or forced_required else 0),
             "max_select": MiaoyingService._safe_int(raw.get("maxSelect"), len(options) if is_multi and options else 1),
             "max_length": MiaoyingService._safe_int(raw.get("limitCharlt"), 0),
+            "media_source_type": str(raw.get("mediaSourceType") or ""),
+            "show_conditions": [
+                {
+                    "option_id": str(condition.get("optionId") or ""),
+                    "option_indexes": [
+                        part.strip()
+                        for part in str(condition.get("optionIdxs") or "").split(",")
+                        if part.strip()
+                    ],
+                    "option_logic": condition.get("optionLogic"),
+                }
+                for condition in (raw.get("showConditions") or [])
+                if isinstance(condition, dict) and condition.get("optionId")
+            ],
+            "show_conditions_logic": raw.get("showConditionsLogic"),
         }
 
     @staticmethod
@@ -838,7 +882,10 @@ class MiaoyingService:
 
         info_keys: list[str] = []
         info_vals: list[str] = []
-        for field in requirements.get("fields") or []:
+        fields = requirements.get("fields") or []
+        for field in fields:
+            if not self._field_visible(field, fields, answers, account):
+                continue
             value = self._resolve_answer(field, answers, account)
             self._validate_answer(field, value)
             if self._is_empty_answer(value):
@@ -1042,6 +1089,41 @@ class MiaoyingService:
             return account.class_name.strip()
         return None
 
+    @classmethod
+    def _field_visible(
+        cls,
+        field: dict,
+        fields: list[dict],
+        answers: dict,
+        account: MiaoyingAccountRow,
+    ) -> bool:
+        conditions = field.get("show_conditions") or []
+        if not conditions:
+            return True
+        fields_by_id = {item.get("id"): item for item in fields if item.get("id")}
+        results = []
+        for condition in conditions:
+            controller = fields_by_id.get(condition.get("option_id"))
+            if not controller:
+                results.append(False)
+                continue
+            value = cls._resolve_answer(controller, answers, account)
+            if cls._is_empty_answer(value):
+                matched = False
+            else:
+                encoded = cls._serialize_field_answer(controller, value).split(",")
+                expected = {str(item) for item in condition.get("option_indexes") or []}
+                matched = bool(expected.intersection(encoded))
+            if str(condition.get("option_logic") or "").lower() in {
+                "1",
+                "not",
+                "not_in",
+            }:
+                matched = not matched
+            results.append(matched)
+        logic = str(field.get("show_conditions_logic") or "0").lower()
+        return any(results) if logic in {"1", "or", "any"} else all(results)
+
     @staticmethod
     def _is_empty_answer(value) -> bool:
         return value is None or value == "" or value == []
@@ -1054,13 +1136,23 @@ class MiaoyingService:
         if cls._is_empty_answer(value):
             return
         values = value if isinstance(value, list) else [value]
-        if field.get("control") == "multiple":
+        if field.get("control") in {"multiple", "image"}:
             minimum = int(field.get("min_select") or 0)
             maximum = int(field.get("max_select") or 0)
             if len(values) < minimum:
                 raise MiaoyingValidationError(f"{title}至少选择 {minimum} 项")
             if maximum and len(values) > maximum:
                 raise MiaoyingValidationError(f"{title}最多选择 {maximum} 项")
+        if field.get("control") == "image":
+            for item in values:
+                filename = str(item)
+                if (
+                    not filename
+                    or "/" in filename
+                    or "\\" in filename
+                    or not filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+                ):
+                    raise MiaoyingValidationError(f"{title}包含无效的图片，请重新上传")
         allowed = {
             str(candidate)
             for option in field.get("options") or []
@@ -1087,6 +1179,9 @@ class MiaoyingService:
         前端和旧任务可能保存显示文字，也可能保存 value；这里统一按当前
         项目定义解析，避免项目选项变更时静默提交错误答案。
         """
+        if field.get("control") == "image":
+            values = value if isinstance(value, list) else [value]
+            return ",".join(str(item) for item in values)
         options = field.get("options") or []
         if not options:
             return cls._serialize_answer(value)

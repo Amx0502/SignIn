@@ -11,6 +11,14 @@ export default {
   syncForms: id => data(instance.post(`${root}/accounts/${id}/forms/sync`, null, { timeout: 60_000 })),
   syncFormsDetailed: id => data(instance.post(`${root}/accounts/${id}/forms/sync-detailed`, null, { timeout: 60_000 })),
   listForms: id => data(instance.get(`${root}/accounts/${id}/forms`)),
+  uploadImage: (accountId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return data(instance.post(`${root}/accounts/${accountId}/images`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 45_000,
+    }))
+  },
   manualCheckin: (formId, payload) => data(instance.post(`${root}/forms/${formId}/checkin`, payload, { timeout: 60_000 })),
   getLocationConfig: () => instance.get(`${root}/locations/config`),
   searchLocations: (query, region, limit = 6, options = {}) =>
