@@ -75,6 +75,7 @@ class MiaoyingTaskRow(MiaoyingBase):
     skip_weekends: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     auto_disable_after_finish: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     location_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    location_info: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     latitude: Mapped[float | None] = mapped_column(Numeric(12, 8), nullable=True)
     longitude: Mapped[float | None] = mapped_column(Numeric(12, 8), nullable=True)
     answers: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

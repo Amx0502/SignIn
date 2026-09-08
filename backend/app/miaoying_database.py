@@ -55,6 +55,14 @@ class MiaoyingDatabase:
                     connection.execute(text("UPDATE miaoying_tasks SET answer_schema = '[]' WHERE answer_schema IS NULL"))
                     if connection.dialect.name in {"mysql", "mariadb"}:
                         connection.execute(text("ALTER TABLE miaoying_tasks MODIFY COLUMN answer_schema JSON NOT NULL"))
+            if "location_info" not in task_columns:
+                if connection.dialect.name == "sqlite":
+                    connection.execute(text("ALTER TABLE miaoying_tasks ADD COLUMN location_info JSON NOT NULL DEFAULT '{}'"))
+                else:
+                    connection.execute(text("ALTER TABLE miaoying_tasks ADD COLUMN location_info JSON NULL"))
+                    connection.execute(text("UPDATE miaoying_tasks SET location_info = '{}' WHERE location_info IS NULL"))
+                    if connection.dialect.name in {"mysql", "mariadb"}:
+                        connection.execute(text("ALTER TABLE miaoying_tasks MODIFY COLUMN location_info JSON NOT NULL"))
 
     @contextmanager
     def session(self) -> Iterator[Session]:

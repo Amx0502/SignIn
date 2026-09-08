@@ -19,6 +19,7 @@ class MiaoyingSettingsUpdate(BaseModel):
 class MiaoyingManualCheckin(BaseModel):
     account_id: int = Field(gt=0)
     location_name: str = Field(default="", max_length=255)
+    location_info: dict[str, Any] = Field(default_factory=dict)
     latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
     longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
     notify_wecom: bool = True
@@ -39,6 +40,7 @@ class MiaoyingTaskPayload(BaseModel):
     skip_weekends: bool = False
     auto_disable_after_finish: bool = True
     location_name: str = Field(default="", max_length=255)
+    location_info: dict[str, Any] = Field(default_factory=dict)
     latitude: float | None = None
     longitude: float | None = None
     answers: dict[str, Any] = Field(default_factory=dict)

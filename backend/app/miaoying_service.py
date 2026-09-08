@@ -288,6 +288,7 @@ class MiaoyingService:
                 payload.get("location_name"),
                 latitude,
                 longitude,
+                payload.get("location_info") or {},
             )
             audit = self._start_submission_audit(
                 session,
@@ -463,6 +464,7 @@ class MiaoyingService:
                 task.location_name,
                 task.latitude,
                 task.longitude,
+                task.location_info or {},
             )
             audit = self._start_submission_audit(
                 session,
@@ -687,6 +689,7 @@ class MiaoyingService:
         location_name,
         latitude,
         longitude,
+        location_info=None,
     ) -> dict:
         identity = requirements.get("identity") or {}
         selected = answers.get("__identity") or {}
@@ -770,33 +773,48 @@ class MiaoyingService:
                 location_name,
                 latitude,
                 longitude,
+                location_info,
             ),
             "no": number,
             "noLabel": school_no,
         }
 
     @staticmethod
-    def _build_location_info(location_name, latitude, longitude) -> dict:
-        """Map Tencent's road-landmark display text to Miaoying's fields."""
-        display_name = str(location_name or "").strip() or "地图选点"
-        street = ""
-        name = display_name
-        if "-" in display_name:
-            street_part, name_part = display_name.split("-", 1)
-            if street_part.strip() and name_part.strip():
-                street = street_part.strip()
-                # 秒应会把 locationInfo.name 放在公开位置的道路段，并根据
-                # 经纬度自行生成最后的地点段；因此这里提交道路名称，地点
-                # 名称由附近 POI 的精确坐标交给秒应解析。
-                name = street
-        location_info = {
+    def _build_location_info(location_name, latitude, longitude, details=None) -> dict:
+        """Build the same complete location object persisted by Miaoying mobile."""
+        source = details if isinstance(details, dict) else {}
+
+        def clean(key: str) -> str:
+            return str(source.get(key) or "").strip()[:255]
+
+        display_name = str(location_name or "").strip()[:255]
+        province = clean("province")
+        city = clean("city")
+        district = clean("district")
+        street = clean("street")
+        name = clean("name")
+        if not name:
+            landmark = clean("landmark")
+            if landmark:
+                name = landmark if landmark.startswith(district) else f"{district}{landmark}"
+        if not name:
+            parts = [part.strip() for part in display_name.split("-") if part.strip()]
+            if len(parts) > 1:
+                street = street or parts[0]
+                name = parts[-1]
+            else:
+                name = display_name or "地图选点"
+
+        return {
             "name": name,
+            "province": province,
+            "city": city,
+            "district": district,
+            "street": street,
+            # 秒应原生字段本身使用这两个拼写，不能改成 longitude/latitude。
             "longtitude": float(longitude or 0),
             "lattitude": float(latitude or 0),
         }
-        if street:
-            location_info["street"] = street
-        return location_info
 
     @staticmethod
     def _submission_request_summary(submission: dict) -> dict:
@@ -807,6 +825,9 @@ class MiaoyingService:
             "tongji_id": str(submission.get("tongjiId") or ""),
             "location_info": {
                 "name": str(location.get("name") or ""),
+                "province": str(location.get("province") or ""),
+                "city": str(location.get("city") or ""),
+                "district": str(location.get("district") or ""),
                 "street": str(location.get("street") or ""),
                 "lattitude": float(location.get("lattitude") or 0),
                 "longtitude": float(location.get("longtitude") or 0),
@@ -981,7 +1002,7 @@ class MiaoyingService:
         requirements["location_detail_visible"] = bool(snapshot.get("openLocationInfo"))
         return {"id":r.id,"account_id":r.account_id,"remote_tongji_id":r.remote_tongji_id,"title":r.title,"content":r.content,"is_closed":r.is_closed,"is_repeat":r.is_repeat,"requirements":requirements,"remote_schedule_times":remote_times,"synced_at":r.synced_at}
     @staticmethod
-    def _task_dict(r): return {"id":r.id,"owner_user_id":r.owner_user_id,"account_id":r.account_id,"form_id":r.form_id,"name":r.name,"enabled":r.enabled,"schedule_times":r.schedule_times,"start_date":r.start_date,"end_date":r.end_date,"date_mode":r.date_mode,"run_dates":r.run_dates,"skip_dates":r.skip_dates,"skip_weekends":r.skip_weekends,"auto_disable_after_finish":r.auto_disable_after_finish,"location_name":r.location_name,"latitude":float(r.latitude) if r.latitude is not None else None,"longitude":float(r.longitude) if r.longitude is not None else None,"answers":r.answers or {},"answer_schema":r.answer_schema or [],"updated_at":r.updated_at}
+    def _task_dict(r): return {"id":r.id,"owner_user_id":r.owner_user_id,"account_id":r.account_id,"form_id":r.form_id,"name":r.name,"enabled":r.enabled,"schedule_times":r.schedule_times,"start_date":r.start_date,"end_date":r.end_date,"date_mode":r.date_mode,"run_dates":r.run_dates,"skip_dates":r.skip_dates,"skip_weekends":r.skip_weekends,"auto_disable_after_finish":r.auto_disable_after_finish,"location_name":r.location_name,"location_info":r.location_info or {},"latitude":float(r.latitude) if r.latitude is not None else None,"longitude":float(r.longitude) if r.longitude is not None else None,"answers":r.answers or {},"answer_schema":r.answer_schema or [],"updated_at":r.updated_at}
     @staticmethod
     def _run_dict(r): return {"id":r.id,"task_id":r.task_id,"account_id":r.account_id,"form_id":r.form_id,"trigger":r.trigger,"status":r.status,"remote_submission_id":r.remote_submission_id,"message":r.message,"started_at":r.started_at,"finished_at":r.finished_at}
     @staticmethod
