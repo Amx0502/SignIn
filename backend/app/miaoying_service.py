@@ -796,7 +796,7 @@ class MiaoyingService:
         if not name:
             landmark = clean("landmark")
             if landmark:
-                name = landmark if landmark.startswith(district) else f"{district}{landmark}"
+                name = landmark
         if not name:
             parts = [part.strip() for part in display_name.split("-") if part.strip()]
             if len(parts) > 1:
@@ -804,6 +804,10 @@ class MiaoyingService:
                 name = parts[-1]
             else:
                 name = display_name or "地图选点"
+        if district and name.startswith(district):
+            name_without_district = name[len(district):].strip()
+            if name_without_district:
+                name = name_without_district
 
         return {
             "name": name,
