@@ -234,17 +234,6 @@ app.include_router(create_class_cube_router(get_current_user, require_menu))
 app.include_router(create_miaoying_router(get_current_user, require_menu))
 
 
-@app.get("/api/admin/tencent-location-usage")
-def get_tencent_location_usage(
-    request: Request,
-    _admin=Depends(require_admin),
-):
-    service = getattr(request.app.state, "class_cube_service", None)
-    if service is None:
-        failure("班级魔方服务尚未初始化", 503)
-    return success(service.get_location_api_usage())
-
-
 def _dashboard_range(range_key: str) -> tuple[str, datetime, datetime]:
     normalized = str(range_key or "today").lower()
     days = {"today": 1, "7d": 7, "30d": 30}.get(normalized)
