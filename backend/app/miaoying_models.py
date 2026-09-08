@@ -16,6 +16,10 @@ class MiaoyingSettingsUpdate(BaseModel):
     miaoying_webhook_url: str = Field(default="", max_length=2048)
 
 
+class MiaoyingWebhookTest(BaseModel):
+    miaoying_webhook_url: str = Field(default="", max_length=2048)
+
+
 class MiaoyingManualCheckin(BaseModel):
     account_id: int = Field(gt=0)
     location_name: str = Field(default="", max_length=255)
@@ -68,3 +72,8 @@ class MiaoyingTaskPayload(BaseModel):
 
 class MiaoyingBatchDelete(BaseModel):
     ids: list[int] = Field(min_length=1)
+
+
+class MiaoyingBatchState(BaseModel):
+    ids: list[int] = Field(min_length=1)
+    enabled: bool

@@ -5,7 +5,7 @@ import logging
 import random
 import uuid
 from datetime import date, datetime, time, timedelta
-from time import sleep
+from time import perf_counter, sleep
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import func, select
@@ -171,6 +171,13 @@ class MiaoyingService:
             session.delete(self._get_account(session, account_id, user))
 
     def sync_forms(self, account_id: int, user: dict) -> list[dict]:
+        return self._sync_forms_result(account_id, user)["forms"]
+
+    def sync_forms_detailed(self, account_id: int, user: dict) -> dict:
+        return self._sync_forms_result(account_id, user)
+
+    def _sync_forms_result(self, account_id: int, user: dict) -> dict:
+        started = perf_counter()
         with self.database.session() as session:
             account = self._get_account(session, account_id, user)
             token = self._token(account)
@@ -197,6 +204,7 @@ class MiaoyingService:
             if missing_ids:
                 rows.extend(self.client.get_tongjis_by_ids(token, missing_ids))
             now = datetime.now()
+            added = updated = unchanged = newly_closed = 0
             for item in rows:
                 remote_id = str(item.get("_id") or "")
                 if not remote_id:
@@ -206,6 +214,15 @@ class MiaoyingService:
                     row = MiaoyingFormRow(account_id=account.id, remote_tongji_id=remote_id)
                     session.add(row)
                     stored_rows[remote_id] = row
+                    added += 1
+                else:
+                    became_closed = not row.is_closed and bool(item.get("isClosed"))
+                    if became_closed:
+                        newly_closed += 1
+                    elif (row.raw_snapshot or {}) == item:
+                        unchanged += 1
+                    else:
+                        updated += 1
                 row.title = str(item.get("title") or "未命名签到")
                 row.content = str(item.get("content") or "")
                 row.is_closed = bool(item.get("isClosed"))
@@ -217,7 +234,18 @@ class MiaoyingService:
             account.last_error = ""
             session.flush()
             form_rows = list(stored_rows.values())
-            return [self._form_dict(row) for row in self._sort_forms(form_rows)]
+            forms = [self._form_dict(row) for row in self._sort_forms(form_rows)]
+            return {
+                "forms": forms,
+                "summary": {
+                    "total": len(forms),
+                    "added": added,
+                    "updated": updated,
+                    "unchanged": unchanged,
+                    "closed": newly_closed,
+                    "elapsed_ms": round((perf_counter() - started) * 1000),
+                },
+            }
 
     def list_forms(self, account_id: int, user: dict) -> list[dict]:
         with self.database.session() as session:
@@ -262,6 +290,50 @@ class MiaoyingService:
             return save_miaoying_settings(payload.get("miaoying_webhook_url", ""))
         except MiaoyingSettingsError as exc:
             raise MiaoyingValidationError(str(exc)) from exc
+
+    def test_notification(self, payload: dict, user: dict) -> dict:
+        if not self._is_admin(user):
+            raise MiaoyingNotFound("秒应设置不存在")
+        webhook = str(payload.get("miaoying_webhook_url") or "").strip()
+        if not webhook:
+            webhook = load_miaoying_settings().get("miaoying_webhook_url", "")
+        try:
+            MiaoyingNotifier().send_test(webhook)
+        except (MiaoyingNotificationError, ValueError) as exc:
+            raise MiaoyingValidationError(str(exc)) from exc
+        return {"sent": True, "message": "测试通知发送成功"}
+
+    def get_overview(self, user: dict) -> dict:
+        with self.database.session() as session:
+            account_count = session.scalar(self._scope(
+                select(func.count()).select_from(MiaoyingAccountRow),
+                MiaoyingAccountRow,
+                user,
+            )) or 0
+            task_count = session.scalar(self._scope(
+                select(func.count()).select_from(MiaoyingTaskRow),
+                MiaoyingTaskRow,
+                user,
+            )) or 0
+            enabled_count = session.scalar(self._scope(
+                select(func.count()).select_from(MiaoyingTaskRow).where(MiaoyingTaskRow.enabled.is_(True)),
+                MiaoyingTaskRow,
+                user,
+            )) or 0
+            success_count = session.scalar(self._scope(
+                select(func.count()).select_from(MiaoyingRunRow).where(MiaoyingRunRow.status == "success"),
+                MiaoyingRunRow,
+                user,
+            )) or 0
+        return {
+            "metrics": {
+                "accounts": int(account_count),
+                "tasks": int(task_count),
+                "enabled_tasks": int(enabled_count),
+                "successful_runs": int(success_count),
+            },
+            "settings": self.get_settings(user),
+        }
 
     def manual_checkin(self, form_id: int, payload: dict, user: dict) -> dict:
         submit_error = None
@@ -375,6 +447,38 @@ class MiaoyingService:
 
     def delete_task(self, task_id: int, user: dict):
         with self.database.session() as session: session.delete(self._get_task(session, task_id, user))
+
+    def batch_set_task_state(self, task_ids: list[int], enabled: bool, user: dict) -> dict:
+        ids = list(dict.fromkeys(int(value) for value in task_ids))
+        with self.database.session() as session:
+            stmt = self._scope(
+                select(MiaoyingTaskRow).where(MiaoyingTaskRow.id.in_(ids)),
+                MiaoyingTaskRow,
+                user,
+            )
+            rows = list(session.scalars(stmt))
+            if len(rows) != len(ids):
+                raise MiaoyingValidationError("批量操作中包含不存在或无权访问的任务")
+            now = datetime.now()
+            for row in rows:
+                row.enabled = enabled
+                row.updated_at = now
+            return {"updated": len(rows), "ids": ids, "enabled": enabled}
+
+    def batch_delete_tasks(self, task_ids: list[int], user: dict) -> dict:
+        ids = list(dict.fromkeys(int(value) for value in task_ids))
+        with self.database.session() as session:
+            stmt = self._scope(
+                select(MiaoyingTaskRow).where(MiaoyingTaskRow.id.in_(ids)),
+                MiaoyingTaskRow,
+                user,
+            )
+            rows = list(session.scalars(stmt))
+            if len(rows) != len(ids):
+                raise MiaoyingValidationError("批量删除中包含不存在或无权访问的任务")
+            for row in rows:
+                session.delete(row)
+            return {"deleted": len(rows), "ids": ids}
 
     def list_runs(self, user: dict, limit: int = 100) -> list[dict]:
         with self.database.session() as session:

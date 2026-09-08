@@ -279,6 +279,11 @@ const isLoginPage = computed(() => route.path === '/login')
 
 const TABS_STORAGE_PREFIX = 'signin_visited_tabs'
 const MAX_TABS = 15
+const LEGACY_TAB_PATHS = {
+  '/miaoying/tasks': '/miaoying/auto',
+  '/miaoying/checkin': '/miaoying/auto',
+  '/miaoying/checkin/auto': '/miaoying/auto',
+}
 
 const tabs = ref([])
 const tabsScrollRef = ref(null)
@@ -300,16 +305,29 @@ loadTabs()
 function loadTabs() {
   try {
     const parsed = JSON.parse(localStorage.getItem(tabsStorageKey()) || '[]')
-    tabs.value = Array.isArray(parsed)
-      ? parsed
-          .filter(item => item && typeof item.path === 'string' && typeof item.title === 'string')
-          .map((item, index) => ({
-            path: item.path,
-            title: item.title,
-            parentTitle: typeof item.parentTitle === 'string' ? item.parentTitle : '',
-            lastUsedAt: typeof item.lastUsedAt === 'number' ? item.lastUsedAt : Date.now() - index * 1000,
-          }))
-      : []
+    if (!Array.isArray(parsed)) {
+      tabs.value = []
+      return
+    }
+    const migrated = new Map()
+    parsed
+      .filter(item => item && typeof item.path === 'string' && typeof item.title === 'string')
+      .forEach((item, index) => {
+        const path = LEGACY_TAB_PATHS[item.path] || item.path
+        const resolved = router.resolve(path)
+        const normalized = {
+          path,
+          title: resolved.meta?.title || item.title,
+          parentTitle: resolved.meta?.parentTitle || (typeof item.parentTitle === 'string' ? item.parentTitle : ''),
+          lastUsedAt: typeof item.lastUsedAt === 'number' ? item.lastUsedAt : Date.now() - index * 1000,
+        }
+        const previous = migrated.get(path)
+        if (!previous || normalized.lastUsedAt > previous.lastUsedAt) migrated.set(path, normalized)
+      })
+    tabs.value = [...migrated.values()]
+      .sort((a, b) => a.lastUsedAt - b.lastUsedAt)
+      .slice(-MAX_TABS)
+    localStorage.setItem(tabsStorageKey(), JSON.stringify(tabs.value))
   } catch {
     tabs.value = []
   }

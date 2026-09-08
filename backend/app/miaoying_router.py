@@ -11,9 +11,12 @@ from .class_cube_service import ClassCubeRemoteError, ClassCubeValidationError
 from .miaoying_client import MiaoyingRemoteError
 from .miaoying_models import (
     MiaoyingAccountUpdate,
+    MiaoyingBatchDelete,
+    MiaoyingBatchState,
     MiaoyingManualCheckin,
     MiaoyingSettingsUpdate,
     MiaoyingTaskPayload,
+    MiaoyingWebhookTest,
 )
 from .miaoying_service import MiaoyingNotFound, MiaoyingValidationError
 
@@ -48,6 +51,8 @@ def create_miaoying_router(auth_dependency, menu_dependency=None):
     def delete_account(account_id: int, request: Request, user=Depends(guard("miaoying.accounts"))): return invoke(request, request.app.state.miaoying_service.delete_account, account_id, user)
     @router.post("/accounts/{account_id}/forms/sync")
     def sync_forms(account_id: int, request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto")))): return invoke(request, request.app.state.miaoying_service.sync_forms, account_id, user)
+    @router.post("/accounts/{account_id}/forms/sync-detailed")
+    def sync_forms_detailed(account_id: int, request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto")))): return invoke(request, request.app.state.miaoying_service.sync_forms_detailed, account_id, user)
     @router.get("/accounts/{account_id}/forms")
     def forms(account_id: int, request: Request, user=Depends(guard(("miaoying.accounts","miaoying.auto")))): return invoke(request, request.app.state.miaoying_service.list_forms, account_id, user)
     @router.post("/forms/{form_id}/checkin")
@@ -62,10 +67,18 @@ def create_miaoying_router(auth_dependency, menu_dependency=None):
     def get_settings(request: Request, user=Depends(guard("miaoying.overview"))): return invoke(request, request.app.state.miaoying_service.get_settings, user)
     @router.put("/settings")
     def update_settings(payload: MiaoyingSettingsUpdate, request: Request, user=Depends(guard("miaoying.overview"))): return invoke(request, request.app.state.miaoying_service.update_settings, payload.model_dump(), user)
+    @router.post("/settings/test")
+    def test_notification(payload: MiaoyingWebhookTest, request: Request, user=Depends(guard("miaoying.overview"))): return invoke(request, request.app.state.miaoying_service.test_notification, payload.model_dump(), user)
+    @router.get("/overview")
+    def overview(request: Request, user=Depends(guard("miaoying.overview"))): return invoke(request, request.app.state.miaoying_service.get_overview, user)
     @router.get("/tasks")
     def tasks(request: Request, user=Depends(guard(("miaoying.overview","miaoying.auto")))): return invoke(request, request.app.state.miaoying_service.list_tasks, user)
     @router.post("/tasks")
     def create_task(payload: MiaoyingTaskPayload, request: Request, user=Depends(guard("miaoying.auto"))): return invoke(request, request.app.state.miaoying_service.create_task, payload.model_dump(), user)
+    @router.post("/tasks/batch-state")
+    def batch_state(payload: MiaoyingBatchState, request: Request, user=Depends(guard("miaoying.auto"))): return invoke(request, request.app.state.miaoying_service.batch_set_task_state, payload.ids, payload.enabled, user)
+    @router.post("/tasks/batch-delete")
+    def batch_delete(payload: MiaoyingBatchDelete, request: Request, user=Depends(guard("miaoying.auto"))): return invoke(request, request.app.state.miaoying_service.batch_delete_tasks, payload.ids, user)
     @router.put("/tasks/{task_id}")
     def update_task(task_id: int, payload: MiaoyingTaskPayload, request: Request, user=Depends(guard("miaoying.auto"))): return invoke(request, request.app.state.miaoying_service.update_task, task_id, payload.model_dump(), user)
     @router.delete("/tasks/{task_id}")

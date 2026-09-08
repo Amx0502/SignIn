@@ -60,3 +60,26 @@ class MiaoyingNotifier:
             raise MiaoyingNotificationError("企业微信通知发送失败") from exc
         if not isinstance(payload, dict) or payload.get("errcode") != 0:
             raise MiaoyingNotificationError("企业微信通知发送失败")
+
+    def send_test(self, webhook_url: str) -> None:
+        url = validate_wecom_webhook(webhook_url)
+        if not url:
+            raise MiaoyingNotificationError("请先填写企业微信机器人 Webhook")
+        content = (
+            "## ✅ 秒应机器人连接测试\n\n"
+            f"时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            "状态：配置有效，签到通知可以正常发送"
+        )
+        try:
+            response = requests.post(
+                url,
+                json={"msgtype": "markdown", "markdown": {"content": content}},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as exc:
+            raise MiaoyingNotificationError("企业微信测试通知发送失败") from exc
+        if not isinstance(payload, dict) or payload.get("errcode") != 0:
+            detail = str(payload.get("errmsg") or "企业微信拒绝了该 Webhook") if isinstance(payload, dict) else "企业微信返回异常"
+            raise MiaoyingNotificationError(f"企业微信测试通知发送失败：{detail}")
