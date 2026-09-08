@@ -8,14 +8,17 @@
       <el-tag size="small" type="info">{{ fields.length }} 项</el-tag>
     </div>
 
-    <el-form-item
+    <section
       v-for="field in fields"
       :key="field.key"
-      :label="field.title"
-      :required="field.required"
       class="dynamic-item"
     >
-      <el-input
+      <header class="field-heading">
+        <div><span v-if="field.required" aria-hidden="true">*</span><strong>{{ field.title }}</strong></div>
+        <el-tag v-if="!field.required" size="small" type="info" effect="plain">选填</el-tag>
+      </header>
+      <div class="field-control">
+        <el-input
         v-if="field.control === 'text'"
         :model-value="valueOf(field)"
         clearable
@@ -23,7 +26,7 @@
         :placeholder="`请输入${field.title}`"
         @update:model-value="value => updateValue(field, value)"
       />
-      <el-input
+        <el-input
         v-else-if="field.control === 'textarea'"
         :model-value="valueOf(field)"
         type="textarea"
@@ -33,7 +36,7 @@
         :placeholder="`请输入${field.title}`"
         @update:model-value="value => updateValue(field, value)"
       />
-      <el-radio-group
+        <el-radio-group
         v-else-if="field.control === 'single'"
         :model-value="valueOf(field)"
         @update:model-value="value => updateValue(field, value)"
@@ -42,7 +45,7 @@
           {{ option.label }}
         </el-radio>
       </el-radio-group>
-      <el-select
+        <el-select
         v-else-if="field.control === 'select'"
         :model-value="valueOf(field)"
         clearable
@@ -51,7 +54,7 @@
       >
         <el-option v-for="option in field.options" :key="option.value" :label="option.label" :value="option.value" />
       </el-select>
-      <div v-else-if="field.control === 'multiple'" class="multiple-field">
+        <div v-else-if="field.control === 'multiple'" class="multiple-field">
         <el-checkbox-group
           :model-value="arrayValueOf(field)"
           :max="field.max_select || undefined"
@@ -64,10 +67,11 @@
         <small v-if="field.min_select || field.max_select">
           {{ selectLimit(field) }}
         </small>
+        </div>
+        <el-alert v-else type="warning" :closable="false" :title="`${field.title}暂不支持自动填写`" />
       </div>
-      <el-alert v-else type="warning" :closable="false" :title="`${field.title}暂不支持自动填写`" />
       <small v-if="field.description" class="field-description">{{ field.description }}</small>
-    </el-form-item>
+    </section>
   </div>
 </template>
 
@@ -95,5 +99,5 @@ const selectLimit = field => {
 </script>
 
 <style scoped>
-.dynamic-fields{display:grid;gap:14px;padding:16px;border:1px solid #bfdbfe;border-radius:16px;background:#f8fbff}.dynamic-title{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid #dbeafe}.dynamic-title strong,.dynamic-title small{display:block}.dynamic-title strong{color:#1e293b}.dynamic-title small,.field-description,.multiple-field>small{margin-top:3px;color:#64748b;font-size:12px}.dynamic-item{margin-bottom:0}.multiple-field{display:grid;gap:5px;width:100%}:deep(.el-form-item__content){display:block}:deep(.el-radio-group),:deep(.el-checkbox-group){display:flex;align-items:flex-start;gap:8px 18px;flex-wrap:wrap}:deep(.el-radio),:deep(.el-checkbox){height:auto;min-height:30px;margin-right:0;white-space:normal}:deep(.el-select){width:100%}.field-description{display:block;line-height:1.55}
+.dynamic-fields{display:grid;gap:0;padding:16px;border:1px solid #bfdbfe;border-radius:16px;background:#fff}.dynamic-title{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:13px;border-bottom:1px solid #dbeafe}.dynamic-title strong,.dynamic-title small{display:block}.dynamic-title strong{color:#172033;font-size:16px}.dynamic-title small,.field-description,.multiple-field>small{margin-top:3px;color:#64748b;font-size:12px}.dynamic-item{display:grid;gap:9px;padding:16px 0;border-bottom:1px dashed #dbeafe}.dynamic-item:last-child{padding-bottom:0;border-bottom:0}.field-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.field-heading>div{display:flex;align-items:flex-start;gap:6px;min-width:0}.field-heading span{color:#ef4444;font-weight:800}.field-heading strong{color:#334155;font-size:14px;line-height:1.5;overflow-wrap:anywhere}.field-control{min-width:0}.multiple-field{display:grid;gap:7px;width:100%}:deep(.el-radio-group),:deep(.el-checkbox-group){display:flex;align-items:flex-start;gap:8px 12px;flex-wrap:wrap}:deep(.el-radio),:deep(.el-checkbox){height:auto;min-height:34px;margin-right:0;padding:4px 10px;border:1px solid #e2e8f0;border-radius:9px;background:#f8fafc;white-space:normal}:deep(.el-radio.is-checked),:deep(.el-checkbox.is-checked){border-color:#93c5fd;background:#eff6ff}:deep(.el-select){width:100%}.field-description{display:block;padding:8px 10px;border-radius:9px;background:#f8fafc;line-height:1.6;overflow-wrap:anywhere}
 </style>
