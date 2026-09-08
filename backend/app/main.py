@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, UnidentifiedImageError
 
 from . import config
 from .auth import AuthService
@@ -180,8 +181,23 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    app_state.logger.error("请求处理失败: %s", exc)
-    return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
+    request_id = uuid.uuid4().hex
+    app_state.logger.error(
+        "请求处理失败 request_id=%s method=%s path=%s",
+        request_id,
+        request.method,
+        request.url.path,
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "ok": False,
+            "error": "服务器内部错误，请稍后重试",
+            "request_id": request_id,
+        },
+        headers={"X-Request-ID": request_id},
+    )
 
 
 @app.exception_handler(DuplicateMobileError)
@@ -467,7 +483,10 @@ def run_all_enabled_tasks(_user=Depends(require_menu("xxqd.auto"))):
 
 @app.post("/api/settings")
 def set_settings(payload: Settings, _user=Depends(require_menu("xxqd.auto"))):
-    return success(app_state.set_settings(payload.model_dump()))
+    try:
+        return success(app_state.set_settings(payload.model_dump()))
+    except ValueError as exc:
+        failure(str(exc))
 
 
 @app.post("/api/auth/login")
@@ -711,6 +730,52 @@ def delete_user(
 
 
 UPLOAD_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+UPLOAD_CHUNK_BYTES = 64 * 1024
+UPLOAD_MAX_PIXELS = 40_000_000
+UPLOAD_FORMATS = {
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".png": "PNG",
+    ".webp": "WEBP",
+}
+
+
+def _valid_image_signature(extension: str, header: bytes) -> bool:
+    if extension in {".jpg", ".jpeg"}:
+        return header.startswith(b"\xff\xd8\xff")
+    if extension == ".png":
+        return header.startswith(b"\x89PNG\r\n\x1a\n")
+    if extension == ".webp":
+        return (
+            len(header) >= 12
+            and header.startswith(b"RIFF")
+            and header[8:12] == b"WEBP"
+        )
+    return False
+
+
+def _verify_uploaded_image(path: Path, extension: str) -> None:
+    try:
+        with Image.open(path) as image:
+            if image.format != UPLOAD_FORMATS[extension]:
+                failure("图片内容与文件扩展名不匹配")
+            width, height = image.size
+            if width <= 0 or height <= 0 or width * height > UPLOAD_MAX_PIXELS:
+                failure("图片尺寸无效或像素总数超过限制")
+            image.verify()
+    except HTTPException:
+        raise
+    except (
+        Image.DecompressionBombError,
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+    ) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"ok": False, "error": "文件不是有效的图片"},
+        ) from exc
 
 
 @app.post("/api/upload")
@@ -724,13 +789,26 @@ async def upload_image(
     config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
     target = config.UPLOAD_DIR / name
-    with target.open("wb") as buffer:
-        while True:
-            chunk = await file.read(64 * 1024)
-            if not chunk:
-                break
-            buffer.write(chunk)
-    return success({"path": str(target), "url": f"/uploads/{name}"})
+    written = 0
+    try:
+        first_chunk = await file.read(UPLOAD_CHUNK_BYTES)
+        if not first_chunk or not _valid_image_signature(ext, first_chunk[:16]):
+            failure("文件内容不是受支持的图片格式")
+        with target.open("xb") as buffer:
+            chunk = first_chunk
+            while chunk:
+                written += len(chunk)
+                if written > UPLOAD_MAX_BYTES:
+                    failure("图片不能超过 10MB")
+                buffer.write(chunk)
+                chunk = await file.read(UPLOAD_CHUNK_BYTES)
+        _verify_uploaded_image(target, ext)
+        return success({"path": str(target), "url": f"/uploads/{name}"})
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+    finally:
+        await file.close()
 
 
 config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

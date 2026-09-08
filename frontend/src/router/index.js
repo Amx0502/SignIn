@@ -1,27 +1,28 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Overview from '../views/Overview.vue'
-import Accounts from '../views/Accounts.vue'
-import Logs from '../views/Logs.vue'
-import AutoCheckIn from '../views/AutoCheckIn.vue'
-import TaskManagement from '../views/TaskManagement.vue'
-import Login from '../views/Login.vue'
-import ClassCubeOverview from '../views/ClassCubeOverview.vue'
-import ClassCubeAccounts from '../views/ClassCubeAccounts.vue'
-import ClassCubeTasks from '../views/ClassCubeTasks.vue'
-import ClassCubeRuns from '../views/ClassCubeRuns.vue'
-import ClassCubeLogs from '../views/ClassCubeLogs.vue'
-import UserManagement from '../views/UserManagement.vue'
-import ChangePassword from '../views/ChangePassword.vue'
-import MenuManagement from '../views/MenuManagement.vue'
-import CheckinDelaySettings from '../views/CheckinDelaySettings.vue'
-import NoAvailableMenus from '../views/NoAvailableMenus.vue'
-import Dashboard from '../views/Dashboard.vue'
-import Miaoying from '../views/Miaoying.vue'
 import {
   ensureMenuCatalog,
   firstAllowedPath,
   isCurrentMenuVisible,
 } from '../menu/menuStore.js'
+
+const Login = () => import('../views/Login.vue')
+const ChangePassword = () => import('../views/ChangePassword.vue')
+const UserManagement = () => import('../views/UserManagement.vue')
+const MenuManagement = () => import('../views/MenuManagement.vue')
+const CheckinDelaySettings = () => import('../views/CheckinDelaySettings.vue')
+const NoAvailableMenus = () => import('../views/NoAvailableMenus.vue')
+const Dashboard = () => import('../views/Dashboard.vue')
+const Overview = () => import('../views/Overview.vue')
+const Accounts = () => import('../views/Accounts.vue')
+const AutoCheckIn = () => import('../views/AutoCheckIn.vue')
+const TaskManagement = () => import('../views/TaskManagement.vue')
+const Logs = () => import('../views/Logs.vue')
+const ClassCubeOverview = () => import('../views/ClassCubeOverview.vue')
+const ClassCubeAccounts = () => import('../views/ClassCubeAccounts.vue')
+const ClassCubeTasks = () => import('../views/ClassCubeTasks.vue')
+const ClassCubeRuns = () => import('../views/ClassCubeRuns.vue')
+const ClassCubeLogs = () => import('../views/ClassCubeLogs.vue')
+const Miaoying = () => import('../views/Miaoying.vue')
 
 const routes = [
   { path: '/login', name: 'Login', component: Login, meta: { title: '登录' } },

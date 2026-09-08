@@ -23,6 +23,7 @@ from .config import (
     SETTINGS_FILE,
 )
 from .checkin_delay_settings import get_checkin_delay_range
+from .class_cube_settings import validate_wecom_webhook
 from .database import Database, DatabaseSettings
 from .repository import AccountRepository
 from .task_date_schedule import is_task_active_on, normalize_task_date_rule
@@ -121,12 +122,15 @@ def load_settings_from_disk() -> dict:
     return {
         "auto_enabled": bool(data.get("auto_enabled", True)),
         "refresh_times": parse_time_list(data.get("refresh_times", DEFAULT_REFRESH_TIMES)),
-        "webhook_url": str(data.get("webhook_url", DEFAULT_WEBHOOK_URL)),
+        "webhook_url": validate_wecom_webhook(
+            data.get("webhook_url", DEFAULT_WEBHOOK_URL)
+        ),
     }
 
 
 def save_settings_to_disk(auto_enabled: bool, refresh_times: list[str], webhook_url: str = "") -> None:
     ensure_dirs()
+    webhook_url = validate_wecom_webhook(webhook_url)
     existing = {}
     if SETTINGS_FILE.exists():
         try:
@@ -448,7 +452,9 @@ class AppState:
                     json={"msgtype": "markdown", "markdown": {"content": content}},
                     headers={"Content-Type": "application/json"},
                     timeout=10,
+                    allow_redirects=False,
                 )
+                response.raise_for_status()
                 self.logger.info(f"企业微信汇总通知：发送成功，包含{len(records)}条记录")
             except Exception as exc:
                 self.logger.error(f"企业微信汇总通知：发送失败，错误={str(exc)}")
@@ -501,13 +507,16 @@ class AppState:
             return list(self.log_buffer)[-limit:]
 
     def set_settings(self, data: dict) -> dict:
+        webhook_url = validate_wecom_webhook(
+            data.get("webhook_url", self.webhook_url)
+        )
         with self.lock:
             if "refresh_times" in data:
                 self.refresh_times = parse_time_list(data.get("refresh_times", []))
             if "auto_enabled" in data:
                 self.auto_enabled = bool(data["auto_enabled"])
             if "webhook_url" in data:
-                self.webhook_url = str(data.get("webhook_url", ""))
+                self.webhook_url = webhook_url
             save_settings_to_disk(self.auto_enabled, self.refresh_times, self.webhook_url)
         self.logger.info(
             "系统设置已更新：自动调度=%s，刷新时间=%s",

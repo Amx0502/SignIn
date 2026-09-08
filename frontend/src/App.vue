@@ -1,6 +1,7 @@
 <template>
-  <router-view v-if="isLoginPage" />
-  <el-container v-else class="app-wrapper">
+  <el-config-provider :locale="zhCn">
+    <router-view v-if="isLoginPage" />
+    <el-container v-else class="app-wrapper">
     <el-aside :width="sidebarCollapsed ? '80px' : '280px'" class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="brand" role="button" tabindex="0" aria-label="打开综合总览" @click="router.push('/dashboard')" @keydown.enter="router.push('/dashboard')">
         <img src="./img/logo.png" class="logo-img" alt="签到" />
@@ -9,19 +10,41 @@
           <p>Professional Admin Console</p>
         </div>
       </div>
-      <el-menu
-        :key="sidebarMenuRenderKey"
-        ref="sidebarMenuRef"
-        :default-active="$route.path"
-        router
-        class="sidebar-menu"
-        :collapse="sidebarCollapsed"
-        :persistent="false"
-        @select="closeSidebar"
-      >
-        <template v-for="parent in sidebarSections" :key="parent.key">
-          <el-sub-menu v-if="!parent.path" :index="`menu:${parent.key}`">
-            <template #title>
+      <div class="sidebar-menu-scroll">
+        <el-menu
+          :key="sidebarMenuRenderKey"
+          ref="sidebarMenuRef"
+          :default-active="$route.path"
+          router
+          class="sidebar-menu"
+          :collapse="sidebarCollapsed"
+          :persistent="false"
+          @select="closeSidebar"
+        >
+          <template v-for="parent in sidebarSections" :key="parent.key">
+            <el-sub-menu v-if="!parent.path" :index="`menu:${parent.key}`">
+              <template #title>
+                <el-icon>
+                  <img
+                    v-if="isImageMenuIcon(parent.icon)"
+                    :src="menuImage(parent.icon)"
+                    class="menu-custom-icon"
+                    :alt="parent.title"
+                  />
+                  <component :is="menuIcon(parent.icon)" v-else />
+                </el-icon>
+                <span>{{ parent.title }}</span>
+              </template>
+              <el-menu-item
+                v-for="child in parent.children || []"
+                :key="child.key"
+                :index="child.path"
+              >
+                <el-icon><component :is="menuIcon(child.icon)" /></el-icon>
+                <span>{{ child.title }}</span>
+              </el-menu-item>
+            </el-sub-menu>
+            <el-menu-item v-else :index="parent.path">
               <el-icon>
                 <img
                   v-if="isImageMenuIcon(parent.icon)"
@@ -32,30 +55,10 @@
                 <component :is="menuIcon(parent.icon)" v-else />
               </el-icon>
               <span>{{ parent.title }}</span>
-            </template>
-            <el-menu-item
-              v-for="child in parent.children || []"
-              :key="child.key"
-              :index="child.path"
-            >
-              <el-icon><component :is="menuIcon(child.icon)" /></el-icon>
-              <span>{{ child.title }}</span>
             </el-menu-item>
-          </el-sub-menu>
-          <el-menu-item v-else :index="parent.path">
-            <el-icon>
-              <img
-                v-if="isImageMenuIcon(parent.icon)"
-                :src="menuImage(parent.icon)"
-                class="menu-custom-icon"
-                :alt="parent.title"
-              />
-              <component :is="menuIcon(parent.icon)" v-else />
-            </el-icon>
-            <span>{{ parent.title }}</span>
-          </el-menu-item>
-        </template>
-      </el-menu>
+          </template>
+        </el-menu>
+      </div>
     </el-aside>
 
     <el-container class="main-shell">
@@ -219,7 +222,8 @@
     </el-container>
 
     <div v-if="!sidebarCollapsed && isMobile" class="sidebar-mask" @click="closeSidebar"></div>
-  </el-container>
+    </el-container>
+  </el-config-provider>
 </template>
 
 <script setup>
@@ -227,6 +231,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Odometer, User, Document, Timer, List, Menu, UserFilled, Grid, Setting, Close, Bell, ArrowLeft, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useAppState } from './composables/useAppState'
 import { formatCurrentTime } from './utils/currentTime'
 import { getBreadcrumb } from './utils/breadcrumb'
@@ -889,7 +894,8 @@ onUnmounted(() => {
   overflow-x: clip;
 }
 .sidebar {
-  position: sticky; top: 0; height: 100vh; overflow: hidden auto;
+  position: sticky; top: 0; height: 100vh; overflow: hidden;
+  display: flex; flex-direction: column;
   background: linear-gradient(180deg, #07111f 0%, #0f172a 46%, #111827 100%);
   color: #e5eefc; padding: 22px 14px; box-shadow: 18px 0 45px rgba(15, 23, 42, 0.18); z-index: 20;
   transition: width 0.3s ease;
@@ -898,9 +904,14 @@ onUnmounted(() => {
   padding: 14px 8px;
 }
 .sidebar::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 0%, rgba(59, 130, 246, 0.28), transparent 34%); pointer-events: none; }
-.brand { position: relative; display: flex; gap: 12px; align-items: center; margin-bottom: 18px; padding: 0 8px; }
+.brand { position: relative; z-index: 1; flex: none; display: flex; gap: 12px; align-items: center; margin-bottom: 18px; padding: 0 8px; }
 .brand h1 { margin: 0; font-size: 21px; color: #fff; letter-spacing: -0.03em; }
 .brand p { margin: 6px 0 0; font-size: 11px; color: #9fb0cf; text-transform: uppercase; letter-spacing: 0.08em; }
+.sidebar-menu-scroll { position: relative; z-index: 1; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.sidebar-menu-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-menu-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-menu-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.28); border-radius: 999px; }
+.sidebar-menu-scroll:hover::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.48); }
 .sidebar-menu { position: relative; border-right: none; background: transparent; }
 .sidebar-menu :deep(.el-sub-menu__title), .sidebar-menu :deep(.el-menu-item) { border-radius: 14px; margin: 5px 0; height: 48px; line-height: 48px; color: #dbeafe; transition: all 0.22s ease; }
 .sidebar-menu :deep(.el-sub-menu__title:hover), .sidebar-menu :deep(.el-menu-item:hover) { background: rgba(96, 165, 250, 0.14); transform: translateX(3px); }

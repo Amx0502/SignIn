@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 function blockSensitiveFileRequests() {
   return {
@@ -37,7 +39,16 @@ function blockSensitiveFileRequests() {
 }
 
 export default defineConfig({
-  plugins: [blockSensitiveFileRequests(), vue()],
+  plugins: [
+    blockSensitiveFileRequests(),
+    vue(),
+    Components({
+      dts: false,
+      dirs: [],
+      directives: true,
+      resolvers: [ElementPlusResolver({ importStyle: 'css' })],
+    }),
+  ],
   server: {
     host: '0.0.0.0',
     port: 5173,

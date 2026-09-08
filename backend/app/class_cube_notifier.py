@@ -170,6 +170,7 @@ class ClassCubeNotifier:
                     "markdown": {"content": content},
                 },
                 timeout=10,
+                allow_redirects=False,
             )
             response.raise_for_status()
             payload = response.json()

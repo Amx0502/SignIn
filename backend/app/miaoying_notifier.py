@@ -53,6 +53,7 @@ class MiaoyingNotifier:
                 url,
                 json={"msgtype": "markdown", "markdown": {"content": content}},
                 timeout=10,
+                allow_redirects=False,
             )
             response.raise_for_status()
             payload = response.json()
@@ -75,6 +76,7 @@ class MiaoyingNotifier:
                 url,
                 json={"msgtype": "markdown", "markdown": {"content": content}},
                 timeout=10,
+                allow_redirects=False,
             )
             response.raise_for_status()
             payload = response.json()
