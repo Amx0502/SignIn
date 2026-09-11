@@ -2893,10 +2893,23 @@ onUnmounted(stopQr);
   .manual-head {
     padding: 14px;
   }
+  .manual-checkin {
+    gap: 0;
+  }
   .checkin-section,
   .location-section {
     gap: 16px;
-    padding: 16px;
+    padding: 18px 0;
+    border-width: 1px 0 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+  .project-brief {
+    padding: 12px 0 0;
+    border-top: 1px solid #e2e8f0;
+    border-radius: 0;
+    background: transparent;
   }
   .location-section :deep(.location-search-panel) {
     padding: 14px;

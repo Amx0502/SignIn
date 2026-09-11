@@ -224,4 +224,22 @@ onMounted(loadDashboard)
 .platform-logo img{display:block;width:100%;height:100%;border-radius:inherit;object-fit:cover}
 .location-quota{padding:13px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff}
 @media(max-width:760px){.hero-actions small{text-align:left}}
+@media(max-width:760px){
+  .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:0;background:#fff}
+  .metric-card{padding:16px;border:0;border-right:1px solid #e8edf5;border-bottom:1px solid #e8edf5;border-radius:0;box-shadow:none}
+  .metric-card:nth-child(even){border-right:0}
+  .metric-card>strong{font-size:25px}
+  .metric-card>small{font-size:11px}
+  .metric-top .el-icon{width:30px;height:30px;border-radius:10px}
+  .platform-card{padding:16px}
+  .platform-kpis{margin:16px 0 14px}
+  .platform-kpis{gap:0;background:#fff;border-top:1px solid #e8edf5;border-bottom:1px solid #e8edf5}
+  .platform-kpis div{padding:10px 6px;border-right:1px solid #e8edf5;border-radius:0;background:#fff}
+  .platform-kpis div:nth-child(even){border-right:0}
+  .platform-kpis div:nth-child(-n+2){border-bottom:1px solid #e8edf5}
+  .main-grid,.platform-grid,.side-stack,.bottom-grid{gap:8px}
+  .panel{border:0;border-radius:0;box-shadow:none}
+  .location-quota{padding:12px 0;border:0;border-bottom:1px solid #e8edf5;border-radius:0;background:#fff}
+  .hero-actions .el-button{min-height:42px}
+}
 </style>

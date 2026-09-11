@@ -69,7 +69,6 @@ export default {
   deleteTask: (accountIndex, taskIndex) => instance.delete(`/accounts/${accountIndex}/tasks/${taskIndex}`),
   runTask: (accountIndex, taskIndex) => instance.post(`/accounts/${accountIndex}/tasks/${taskIndex}/run`, null, { timeout: 60000 }),
 
-  runAccountTasks: index => instance.post(`/accounts/${index}/run-all`),
   refreshAllTokens: () => instance.post('/accounts/refresh-all'),
   runAllEnabledTasks: () => instance.post('/run-all'),
   setSettings: data => instance.post('/settings', data),

@@ -463,14 +463,6 @@ def run_task(
         failure(str(e))
 
 
-@app.post("/api/accounts/{account_index}/run-all")
-def run_account_tasks(account_index: int, _user=Depends(require_menu("xxqd.auto"))):
-    try:
-        return success(app_state.run_account_tasks(account_index))
-    except IndexError:
-        failure("索引越界，请重新选择账号")
-
-
 @app.post("/api/accounts/refresh-all")
 def refresh_all_tokens(_user=Depends(require_menu("xxqd.accounts"))):
     return success(app_state.refresh_all_tokens())

@@ -195,26 +195,28 @@
             <el-alert v-if="selectedItem.mode === 'unknown'" title="暂时无法识别签到类型，请重新同步签到项后再试。" type="warning" :closable="false" show-icon />
             <div class="manual-actions">
               <el-checkbox v-model="form.notify_wecom">发送企业微信通知</el-checkbox>
-              <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown' || batchCheckingIn" @click="submitManual">
-                <el-icon><Position /></el-icon>执行{{ modeMeta(selectedItem.mode).label }}
-              </el-button>
-              <el-popover v-if="canBatchCheckin" placement="top-start" trigger="click" :width="300">
-                <template #reference>
-                  <el-button type="warning" size="large" :loading="batchCheckingIn" :disabled="checkingIn || !selectedBatchAccountIds.length">
-                    <el-icon><User /></el-icon>并发签到（{{ selectedBatchAccountIds.length }}）
-                  </el-button>
-                </template>
-                <div class="batch-target-picker">
-                  <strong>选择同班账号</strong>
-                  <el-checkbox-group v-model="selectedBatchAccountIds">
-                    <el-checkbox v-for="target in batchTargets" :key="target.id" :value="target.id">
-                      {{ target.name || target.remote_user_name || `账号 ${target.id}` }}
-                    </el-checkbox>
-                  </el-checkbox-group>
-                  <small v-if="!batchTargets.length">当前没有符合条件的账号</small>
-                  <el-button type="primary" size="small" :disabled="!selectedBatchAccountIds.length" @click="submitBatchCheckin">确认并发签到</el-button>
-                </div>
-              </el-popover>
+              <div class="manual-action-buttons" :class="{ 'has-batch-action': canBatchCheckin }">
+                <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown' || batchCheckingIn" @click="submitManual">
+                  <el-icon><Position /></el-icon>执行{{ modeMeta(selectedItem.mode).label }}
+                </el-button>
+                <el-popover v-if="canBatchCheckin" placement="top-start" trigger="click" :width="300">
+                  <template #reference>
+                    <el-button type="warning" size="large" :loading="batchCheckingIn" :disabled="checkingIn || !selectedBatchAccountIds.length">
+                      <el-icon><User /></el-icon>并发签到（{{ selectedBatchAccountIds.length }}）
+                    </el-button>
+                  </template>
+                  <div class="batch-target-picker">
+                    <strong>选择同班账号</strong>
+                    <el-checkbox-group v-model="selectedBatchAccountIds">
+                      <el-checkbox v-for="target in batchTargets" :key="target.id" :value="target.id">
+                        {{ target.name || target.remote_user_name || `账号 ${target.id}` }}
+                      </el-checkbox>
+                    </el-checkbox-group>
+                    <small v-if="!batchTargets.length">当前没有符合条件的账号</small>
+                    <el-button type="primary" size="small" :disabled="!selectedBatchAccountIds.length" @click="submitBatchCheckin">确认并发签到</el-button>
+                  </div>
+                </el-popover>
+              </div>
             </div>
           </el-form>
         </div>
@@ -654,6 +656,7 @@ function removePhoto() {
 .manual-form__head { display:flex;justify-content:space-between;gap:12px;margin-bottom:16px }.manual-form__head>div { display:flex;align-items:center;gap:9px }.manual-form__head small { color:#64748b;font-size:11px }.mode-chip { padding:5px 9px;color:#1d4ed8;border-radius:9px;background:#dbeafe;font-size:11px;font-weight:700 }
 .location-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px }.location-grid .el-input-number,.location-grid .el-input { width:100% }.location-search-item{grid-column:1/-1}.field-tip { margin:7px 0 0;color:#64748b;font-size:11px }
 .manual-actions { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:4px }
+.manual-action-buttons{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:0}.manual-action-buttons .el-button{margin-left:0}
 .result-content { display:grid;justify-items:center;padding:16px 10px;text-align:center }.result-icon { display:grid;width:70px;height:70px;place-items:center;color:#fff;border-radius:24px;background:linear-gradient(135deg,#2563eb,#0ea5e9);font-size:38px;box-shadow:0 18px 35px rgb(37 99 235 / 24%) }.result-content.is-success .result-icon,.result-content.is-already_signed .result-icon { background:linear-gradient(135deg,#059669,#10b981) }.result-content.is-failed .result-icon { background:linear-gradient(135deg,#dc2626,#f87171) }.result-content small { margin-top:17px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.14em }.result-content h2 { margin:6px 0;color:#172033 }.result-content p { max-width:390px;margin:0 0 14px;color:#64748b;line-height:1.7 }
 @container(max-width:720px){
   .checkin-card .section-head{align-items:stretch;flex-direction:column}
@@ -663,14 +666,18 @@ function removePhoto() {
 @container(max-width:480px){
   .sync-actions{gap:6px}
   .sync-actions .el-button{padding-inline:6px;font-size:12px}
-  .manual-form{padding:14px}
-  .manual-form__head,.manual-form__head>div,.manual-actions{align-items:stretch;flex-direction:column}
+  .manual-form{margin-top:14px;padding:12px}
+  .manual-form__head,.manual-actions{align-items:stretch;flex-direction:column}
+  .manual-form__head>div{align-items:center;flex-flow:row wrap}
   .manual-form__head>div,.location-grid .el-form-item{min-width:0}
   .manual-form__head strong,.manual-form__head small,.field-tip{overflow-wrap:anywhere}
   .mode-chip{align-self:flex-start}
   .location-grid{grid-template-columns:minmax(0,1fr)}
-  .manual-actions .el-button{width:100%;max-width:100%;margin-left:0}
+  .manual-action-buttons{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+  .manual-action-buttons.has-batch-action{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .manual-action-buttons .el-button{width:100%;max-width:100%;margin-left:0;padding-inline:8px}
   .manual-actions :deep(.el-checkbox){min-width:0;height:auto;white-space:normal}
 }
-@media(max-width:1024px){.workspace-grid{grid-template-columns:1fr}}@media(max-width:640px){.section-head,.manual-form__head,.selector-row,.manual-actions{align-items:stretch;flex-direction:column}.account-head-actions{display:grid;grid-template-columns:1fr}.account-search-bar{align-items:stretch;flex-direction:column}.account-search-bar span{align-self:flex-end}.location-grid{grid-template-columns:1fr}.section-head .el-button,.manual-actions .el-button{width:100%}}
+@media(max-width:1024px){.workspace-grid{grid-template-columns:1fr}}@media(max-width:640px){.section-head,.selector-row,.manual-actions{align-items:stretch;flex-direction:column}.account-head-actions{display:grid;grid-template-columns:1fr}.account-search-bar{align-items:stretch;flex-direction:column}.account-search-bar span{align-self:flex-end}.location-grid{grid-template-columns:1fr}.section-head .el-button{width:100%}.manual-form{border-radius:14px;background:#f8fbff}.manual-form__head{display:grid;gap:6px;margin-bottom:12px}.manual-form__head>div{display:flex;align-items:center;flex-flow:row wrap}.manual-form__head small{line-height:1.45}.location-search-item{margin-bottom:14px}.location-search-item :deep(.el-form-item__label){height:auto;padding-bottom:7px;color:#334155;font-weight:600}.manual-actions{gap:10px}.manual-action-buttons{display:grid;grid-template-columns:minmax(0,1fr);width:100%}.manual-action-buttons.has-batch-action{grid-template-columns:repeat(2,minmax(0,1fr))}.manual-action-buttons .el-button{width:100%;max-width:100%;margin-left:0;padding-inline:8px}}
+@media(max-width:360px){.manual-action-buttons.has-batch-action{grid-template-columns:minmax(0,1fr)}}
 </style>

@@ -107,10 +107,9 @@
     </div>
 
     <div v-else class="task-empty">
-      <el-empty :description="tasks.length ? '没有符合筛选条件的任务' : '还没有自动任务'" :image-size="88" />
-      <p>{{ tasks.length ? '尝试清除搜索词或切换状态筛选。' : '创建任务后，系统会按设定时间自动查找并完成课程签到。' }}</p>
-      <el-button v-if="!tasks.length" type="primary" :icon="Plus" @click="openCreate">新增第一个任务</el-button>
-      <el-button v-else @click="resetFilters">清除筛选</el-button>
+      <el-empty :description="tasks.length ? '没有符合筛选条件的任务' : '暂无自动任务'" :image-size="88">
+        <el-button v-if="tasks.length" @click="resetFilters">清除筛选</el-button>
+      </el-empty>
     </div>
 
     <el-dialog v-model="editorVisible" :title="editingId ? '编辑自动任务' : '新增自动任务'" width="min(1180px, 96vw)" class="task-editor-dialog" align-center append-to-body :close-on-click-modal="false" :before-close="beforeEditorClose">
@@ -514,9 +513,44 @@ async function removeSelected() {
 .task-card__actions .el-button+.el-button{margin-left:0}
 .task-empty{display:grid;place-items:center;padding:34px 20px 42px;text-align:center}
 .task-empty :deep(.el-empty){padding-bottom:0}
-.task-empty p{margin:-6px 0 16px;color:#64748b;font-size:12px}
 .task-editor-form{max-height:min(80vh,860px);overflow-x:hidden;overflow-y:auto;padding:2px 4px 4px}.editor-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"basic strategy" "location location";align-items:stretch;gap:14px}.editor-section:nth-child(1){grid-area:basic}.editor-section:nth-child(2){grid-area:location}.editor-section:nth-child(3){grid-area:strategy}.editor-section{min-width:0;overflow:hidden;padding:16px 16px 6px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);box-shadow:0 10px 28px rgb(37 99 235 / 6%)}.editor-section :deep(.el-form-item__content){min-width:0}.editor-section header{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:12px;border-bottom:1px solid #e8eef8}.editor-section header strong,.editor-section header small{display:block}.editor-section header strong{color:#172033;font-size:15px}.editor-section header small{margin-top:2px;color:#8492a6;font-size:11px}.section-index{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-size:11px;font-weight:800;box-shadow:0 7px 16px rgb(37 99 235 / 22%)}.el-select,.el-input-number{width:100%}.field-tip{display:block;margin-top:7px;color:#64748b;font-size:11px}.schedule-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.date-range{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0}.schedule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;min-width:0}.schedule-row :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.date-range :deep(.el-date-editor.el-input){width:100%!important;min-width:0}.switch-options{display:grid;gap:8px;padding:12px;border-radius:12px;background:#eff6ff}.switch-options .el-checkbox{margin-right:0}.task-plan-summary{color:#2563eb!important}.date-plan-card{display:flex;width:100%;min-width:0;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #dbeafe;border-radius:13px;background:#f8fbff}.date-plan-card__content{display:grid;min-width:0;gap:5px}.date-plan-card__content strong{overflow:hidden;color:#1e3a5f;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.date-plan-card__content small{color:#64748b;font-size:10px}.date-plan-card__tags{display:flex;flex-wrap:wrap;gap:5px}.date-plan-card>.el-button{flex:none}.schedule-drawer__body{display:grid;gap:16px;padding:0 4px 18px}.schedule-drawer__intro{display:grid;gap:5px;padding:13px 14px;border:1px solid #dbeafe;border-radius:13px;background:#eff6ff}.schedule-drawer__intro strong{color:#1e3a5f;font-size:14px}.schedule-drawer__intro small{color:#64748b;line-height:1.55}.date-range--drawer{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 @media(min-width:1500px){.task-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.task-card__body{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:14px}.task-detail:nth-child(3){border-left:0}.task-detail:nth-child(n+3){padding-top:2px}}
 @media(max-width:1200px){.panel-head{align-items:flex-start;flex-direction:column}.panel-actions{width:100%}.panel-actions .el-input{flex:1;width:auto}.task-editor-form{max-height:76vh}}
-@media(max-width:680px){.task-panel :deep(.el-card__header){padding:16px}.task-panel :deep(.el-card__body){padding:0 14px 16px}.panel-actions{align-items:stretch;flex-direction:column}.panel-actions .el-input,.panel-actions .el-select,.panel-actions .el-button{width:100%}.task-summary{gap:12px;flex-wrap:wrap;padding:10px 0}.task-summary i{display:none}.task-card__header{grid-template-columns:auto minmax(0,1fr)}.task-card__state{grid-column:2;justify-content:space-between}.task-card__body{grid-template-columns:1fr;padding:4px 16px}.task-detail,.task-detail:nth-child(3){padding:14px 0;border-top:1px solid #edf2f8;border-left:0}.task-detail:first-child{border-top:0}.task-card__footer{align-items:stretch;flex-direction:column}.task-card__actions{display:grid;grid-template-columns:1fr 1fr auto}.task-card__actions .el-button{width:100%}.editor-layout{grid-template-columns:1fr;grid-template-areas:"basic" "strategy" "location"}.date-range{grid-template-columns:1fr}.task-editor-form{max-height:72vh}.editor-section{padding:14px 13px 4px}.date-plan-card{align-items:stretch;flex-direction:column}.date-plan-card>.el-button{width:100%}.date-range--drawer{grid-template-columns:1fr}}
+@media(max-width:680px){
+  .task-panel :deep(.el-card__header){padding:12px}
+  .task-panel :deep(.el-card__body){padding:0 12px 14px}
+  .panel-actions{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);width:100%;gap:8px}
+  .panel-actions .el-input,.panel-actions .el-select,.panel-actions .el-button{width:100%;min-width:0;margin:0}
+  .task-summary{min-height:38px;gap:12px;padding:6px 0;flex-wrap:wrap}
+  .task-summary i{display:none}
+  .task-grid{gap:9px}
+  .task-card{border-radius:13px;box-shadow:none}
+  .task-card:hover{box-shadow:none;transform:none}
+  .task-card__header{grid-template-columns:auto minmax(0,1fr) auto;gap:8px;padding:9px 11px}
+  .task-card__title strong{font-size:14px}
+  .task-card__state{grid-column:auto;justify-content:flex-end}
+  .task-card__state span{display:none}
+  .task-card__state :deep(.el-switch){--el-switch-on-color:#3b82f6}
+  .task-card__body{grid-template-columns:repeat(2,minmax(0,1fr));padding:0 11px}
+  .task-detail,.task-detail:nth-child(3){gap:2px;padding:9px 8px;border-top:0;border-left:0}
+  .task-detail:nth-child(even){border-left:1px solid #edf2f8}
+  .task-detail:nth-child(n+3){border-top:1px solid #edf2f8}
+  .task-detail:nth-child(odd){padding-left:0}
+  .task-detail:nth-child(even){padding-right:0}
+  .task-detail__label{font-size:10px}
+  .task-detail strong{font-size:12px;line-height:1.4}
+  .task-detail small{font-size:10px;line-height:1.4}
+  .time-tags,.preset-tags{min-height:20px;gap:4px}
+  .time-tags :deep(.el-tag),.preset-tags :deep(.el-tag){height:20px;padding-inline:6px}
+  .task-card__footer{padding:7px 10px}
+  .task-card__actions{display:grid;grid-template-columns:1fr 1fr auto;width:100%;gap:7px}
+  .task-card__actions .el-button{width:100%;margin:0}
+  .editor-layout{grid-template-columns:1fr;grid-template-areas:"basic" "strategy" "location"}
+  .date-range{grid-template-columns:1fr}
+  .task-editor-form{max-height:72vh}
+  .editor-section{padding:14px 13px 4px}
+  .date-plan-card{align-items:stretch;flex-direction:column}
+  .date-plan-card>.el-button{width:100%}
+  .date-range--drawer{grid-template-columns:1fr}
+}
 </style>

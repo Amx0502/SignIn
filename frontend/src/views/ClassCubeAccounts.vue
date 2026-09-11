@@ -68,4 +68,10 @@ watch(() => [selectedItemId.value, selectedItem.value?.mode], ([value, mode]) =>
   else loadBatchTargets(null)
 }, { immediate: true })
 </script>
-<style scoped>.cube-subpage{display:grid;gap:18px}.page-head{display:flex;justify-content:space-between;align-items:center;font-weight:700}</style>
+<style scoped>
+.cube-subpage{display:grid;gap:18px}
+.page-head{display:flex;justify-content:space-between;align-items:center;font-weight:700}
+@media(max-width:768px){
+  .cube-subpage>:deep(.el-card)>.el-card__body{padding:0!important}
+}
+</style>

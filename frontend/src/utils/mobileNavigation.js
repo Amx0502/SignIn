@@ -6,7 +6,7 @@ export const MOBILE_PLATFORM_DEFINITIONS = {
       ['xxqd.overview', '总览', 'Odometer'],
       ['xxqd.accounts', '账号', 'User'],
       ['xxqd.auto', '签到', 'Timer'],
-      ['xxqd.logs', '记录', 'Document'],
+      ['xxqd.tasks', '任务', 'List'],
     ],
   },
   class_cube: {

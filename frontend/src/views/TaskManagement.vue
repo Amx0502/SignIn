@@ -4,8 +4,10 @@
       <template #header>
         <div class="card-header">
           <span>任务管理</span>
-          <el-space>
-            <el-tag type="info" size="small">{{ allTasks.length }} 个任务</el-tag>
+          <div class="task-toolbar">
+            <el-tag type="info" size="small"
+              >{{ allTasks.length }} 个任务</el-tag
+            >
             <el-button
               type="danger"
               size="small"
@@ -13,15 +15,16 @@
               :disabled="selectedTaskKeys.size === 0 || batchDeleting"
               :loading="batchDeleting"
               @click="deleteSelectedTasks"
-            >批量删除({{ selectedTaskKeys.size }})</el-button>
-          </el-space>
+              >批量删除({{ selectedTaskKeys.size }})</el-button
+            >
+          </div>
         </div>
       </template>
-      
+
       <div v-if="allTasks.length === 0" class="empty-state">
         <el-empty description="系统中暂无任务" :image-size="80" />
       </div>
-      
+
       <div v-else class="task-list">
         <div
           v-for="task in allTasks"
@@ -34,46 +37,128 @@
                 <el-checkbox
                   :model-value="selectedTaskKeys.has(getTaskKey(task))"
                   :aria-label="`选择任务 ${task.title}`"
-                  @change="checked => toggleTaskSelection(task, checked)"
+                  @change="(checked) => toggleTaskSelection(task, checked)"
                 />
-                <el-tag :type="taskStatusType(task)" size="small">{{ taskStatusText(task) }}</el-tag>
+                <el-tag :type="taskStatusType(task)" size="small">{{
+                  taskStatusText(task)
+                }}</el-tag>
                 <span class="task-title">{{ task.title }}</span>
-                <el-tag :type="task.mode === 'image' ? 'warning' : 'primary'" size="small">
-                  {{ task.mode === 'image' ? '图片签到' : '普通签到' }}
+                <el-tag
+                  :type="task.mode === 'image' ? 'warning' : 'primary'"
+                  size="small"
+                >
+                  {{ task.mode === "image" ? "图片签到" : "普通签到" }}
                 </el-tag>
               </div>
               <div class="task-info">
-                <span><el-icon><User /></el-icon>{{ task.accountName }}</span>
-                <span><el-icon><List /></el-icon>项目{{ task.index }}</span>
-                <span><el-icon><Clock /></el-icon>{{ (task.times || []).join(', ') }}</span>
+                <span
+                  ><el-icon><User /></el-icon>{{ task.accountName }}</span
+                >
+                <span
+                  ><el-icon><List /></el-icon>项目{{ task.index }}</span
+                >
+                <span
+                  ><el-icon><Clock /></el-icon
+                  >{{ (task.times || []).join(", ") }}</span
+                >
                 <span>
                   <el-icon><Calendar /></el-icon>
-                  {{ task.date_mode === 'specific' ? `指定 ${(task.run_dates || []).length} 天` : '每天执行' }}
+                  {{
+                    task.date_mode === "specific"
+                      ? `指定 ${(task.run_dates || []).length} 天`
+                      : "每天执行"
+                  }}
                 </span>
                 <span v-if="task.text" class="text-content">
                   <el-icon><ChatLineSquare /></el-icon>
-                  <el-tooltip :content="task.text" placement="top" :max-width="300">
-                    <span>{{ task.text.length > 15 ? task.text.substring(0, 15) + '...' : task.text }}</span>
+                  <el-tooltip
+                    :content="task.text"
+                    placement="top"
+                    :max-width="300"
+                  >
+                    <span>{{
+                      task.text.length > 15
+                        ? task.text.substring(0, 15) + "..."
+                        : task.text
+                    }}</span>
                   </el-tooltip>
                 </span>
-                <span v-if="task.use_location"><el-icon><MapLocation /></el-icon>位置</span>
-                <span v-if="task.pic_path && task.pic_path.length"><el-icon><Picture /></el-icon>{{ task.pic_path.length }}张图</span>
-                <span v-if="task.skip_weekends"><el-icon><Calendar /></el-icon>周末跳过</span>
-                <span v-if="task.notify_wechat !== false"><el-icon><VideoPlay /></el-icon>企微通知</span>
-                <span v-if="task.completed_at" :title="formatDateTime(task.completed_scheduled_for)">
-                  <el-icon><Calendar /></el-icon>完成于 {{ formatDateTime(task.completed_at) }}
+                <span v-if="task.use_location"
+                  ><el-icon><MapLocation /></el-icon>位置</span
+                >
+                <span v-if="task.pic_path && task.pic_path.length"
+                  ><el-icon><Picture /></el-icon
+                  >{{ task.pic_path.length }}张图</span
+                >
+                <span v-if="task.skip_weekends"
+                  ><el-icon><Calendar /></el-icon>周末跳过</span
+                >
+                <span v-if="task.notify_wechat !== false"
+                  ><el-icon><VideoPlay /></el-icon>企微通知</span
+                >
+                <span
+                  v-if="task.completed_at"
+                  :title="formatDateTime(task.completed_scheduled_for)"
+                >
+                  <el-icon><Calendar /></el-icon>完成于
+                  {{ formatDateTime(task.completed_at) }}
                 </span>
+              </div>
+              <div class="mobile-task-summary">
+                <span><el-icon><User /></el-icon>{{ task.accountName }}</span>
+                <span><el-icon><List /></el-icon>项目{{ task.index }}</span>
+                <span>
+                  <el-icon><Clock /></el-icon>
+                  {{ (task.times || [])[0] || "未设置" }}
+                  <small v-if="(task.times || []).length > 1"
+                    >+{{ task.times.length - 1 }}</small
+                  >
+                </span>
+                <span>
+                  <el-icon><Calendar /></el-icon>
+                  {{
+                    task.date_mode === "specific"
+                      ? `${(task.run_dates || []).length} 天`
+                      : "每天"
+                  }}
+                </span>
+                <span v-if="task.use_location"
+                  ><el-icon><MapLocation /></el-icon>位置</span
+                >
+                <span v-if="task.pic_path && task.pic_path.length"
+                  ><el-icon><Picture /></el-icon>{{ task.pic_path.length }} 图</span
+                >
+                <span v-if="task.notify_wechat !== false"
+                  ><el-icon><VideoPlay /></el-icon>企微</span
+                >
               </div>
             </div>
             <div class="task-actions">
-              <el-button 
-                :type="isEditing(task) ? 'info' : 'primary'" 
-                size="small" 
-                :icon="Edit" 
+              <el-button
+                :type="isEditing(task) ? 'info' : 'primary'"
+                size="small"
+                :icon="Edit"
                 @click="toggleInlineEdit(task)"
-              >{{ isEditing(task) ? '关闭' : '编辑' }}</el-button>
-              <el-button type="success" size="small" :icon="VideoPlay" :loading="runningTaskKey === getTaskKey(task)" :disabled="runningTaskKey !== null && runningTaskKey !== getTaskKey(task)" @click="runTask(task)">执行</el-button>
-              <el-button type="danger" size="small" :icon="Delete" @click="deleteTask(task)">删除</el-button>
+                >{{ isEditing(task) ? "关闭" : "编辑" }}</el-button
+              >
+              <el-button
+                type="success"
+                size="small"
+                :icon="VideoPlay"
+                :loading="runningTaskKey === getTaskKey(task)"
+                :disabled="
+                  runningTaskKey !== null && runningTaskKey !== getTaskKey(task)
+                "
+                @click="runTask(task)"
+                >执行</el-button
+              >
+              <el-button
+                type="danger"
+                size="small"
+                :icon="Delete"
+                @click="deleteTask(task)"
+                >删除</el-button
+              >
             </div>
           </div>
 
@@ -84,15 +169,30 @@
                   <span>编辑任务 - {{ task.title }}</span>
                 </div>
               </template>
-              <el-form :model="getEditForm(task)" label-width="100px" :rules="rules" :ref="`formRef-${task.accountIndex}-${task.taskIndex}`">
+              <el-form
+                :model="getEditForm(task)"
+                label-width="100px"
+                :rules="rules"
+                :ref="`formRef-${task.accountIndex}-${task.taskIndex}`"
+              >
                 <el-form-item label="任务标题" prop="title">
-                  <el-input v-model="getEditForm(task).title" placeholder="请输入任务标题" />
+                  <el-input
+                    v-model="getEditForm(task).title"
+                    placeholder="请输入任务标题"
+                  />
                 </el-form-item>
                 <el-form-item label="项目序号" prop="index">
-                  <el-input-number v-model="getEditForm(task).index" :min="1" style="width: 100%" />
+                  <el-input-number
+                    v-model="getEditForm(task).index"
+                    :min="1"
+                    style="width: 100%"
+                  />
                 </el-form-item>
                 <el-form-item label="执行时间" prop="times">
-                  <el-input v-model="editTimesInputs[getTaskKey(task)]" placeholder="08:00:00 18:00:00（支持空格、逗号、竖线等分隔符）" />
+                  <el-input
+                    v-model="editTimesInputs[getTaskKey(task)]"
+                    placeholder="08:00:00 18:00:00（支持空格、逗号、竖线等分隔符）"
+                  />
                 </el-form-item>
                 <el-form-item label="执行日期" prop="run_dates">
                   <TaskDateSchedule
@@ -101,16 +201,27 @@
                     :skip-dates="getEditForm(task).skip_dates"
                     :skip-weekends="getEditForm(task).skip_weekends"
                     :times="getEditForm(task).times"
-                    :auto-disable-after-finish="getEditForm(task).auto_disable_after_finish"
+                    :auto-disable-after-finish="
+                      getEditForm(task).auto_disable_after_finish
+                    "
                     @update:date-mode="getEditForm(task).date_mode = $event"
                     @update:run-dates="getEditForm(task).run_dates = $event"
                     @update:skip-dates="getEditForm(task).skip_dates = $event"
-                    @update:skip-weekends="getEditForm(task).skip_weekends = $event"
-                    @update:auto-disable-after-finish="getEditForm(task).auto_disable_after_finish = $event"
+                    @update:skip-weekends="
+                      getEditForm(task).skip_weekends = $event
+                    "
+                    @update:auto-disable-after-finish="
+                      getEditForm(task).auto_disable_after_finish = $event
+                    "
                   />
                 </el-form-item>
                 <el-form-item label="签到文本" prop="text">
-                  <el-input v-model="getEditForm(task).text" type="textarea" :rows="3" placeholder="请输入签到时需要提交的文本内容" />
+                  <el-input
+                    v-model="getEditForm(task).text"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="请输入签到时需要提交的文本内容"
+                  />
                 </el-form-item>
                 <el-form-item label="签到位置">
                   <el-radio-group v-model="editLocationModes[getTaskKey(task)]">
@@ -125,14 +236,22 @@
                     :on-remove="(file) => onImageRemove(task, file)"
                     :limit="3"
                   />
-                  <div class="upload-tip">最多可上传 3 张图片，留空表示不使用图片签到</div>
+                  <div class="upload-tip">
+                    最多可上传 3 张图片，留空表示不使用图片签到
+                  </div>
                 </el-form-item>
                 <el-form-item>
-                  <el-checkbox v-model="getEditForm(task).enable">启用任务</el-checkbox>
-                  <el-checkbox v-model="getEditForm(task).notify_wechat">发送企业微信通知</el-checkbox>
+                  <el-checkbox v-model="getEditForm(task).enable"
+                    >启用任务</el-checkbox
+                  >
+                  <el-checkbox v-model="getEditForm(task).notify_wechat"
+                    >发送企业微信通知</el-checkbox
+                  >
                 </el-form-item>
                 <el-form-item>
-                  <el-button type="primary" @click="saveInlineEdit(task)">保存任务</el-button>
+                  <el-button type="primary" @click="saveInlineEdit(task)"
+                    >保存任务</el-button
+                  >
                   <el-button @click="toggleInlineEdit(task)">取消</el-button>
                 </el-form-item>
               </el-form>
@@ -142,95 +261,113 @@
       </div>
     </el-card>
 
-    <CheckinResultDialog v-model="checkinResultVisible" :result="checkinResult" />
+    <CheckinResultDialog
+      v-model="checkinResultVisible"
+      :result="checkinResult"
+    />
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, computed, watch } from 'vue'
-import { Edit, VideoPlay, Delete, User, List, Clock, MapLocation, Picture, Calendar, ChatLineSquare } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import CheckinResultDialog from '../components/CheckinResultDialog.vue'
-import TaskDateSchedule from '../components/TaskDateSchedule.vue'
-import TaskImageUpload from '../components/TaskImageUpload.vue'
-import { useAppState } from '../composables/useAppState'
-import { createCheckinResult } from '../utils/checkinResult'
-import { getTaskDeleteTargets } from '../utils/batchDelete'
-import api from '../api'
+import { reactive, ref, computed, watch } from "vue";
+import {
+  Edit,
+  VideoPlay,
+  Delete,
+  User,
+  List,
+  Clock,
+  MapLocation,
+  Picture,
+  Calendar,
+  ChatLineSquare,
+} from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import CheckinResultDialog from "../components/CheckinResultDialog.vue";
+import TaskDateSchedule from "../components/TaskDateSchedule.vue";
+import TaskImageUpload from "../components/TaskImageUpload.vue";
+import { useAppState } from "../composables/useAppState";
+import { createCheckinResult } from "../utils/checkinResult";
+import { getTaskDeleteTargets } from "../utils/batchDelete";
+import api from "../api";
 
-const { state: appState, refreshState, refreshLogs } = useAppState()
-const checkinResultVisible = ref(false)
-const checkinResult = ref(null)
-const editingKey = ref(null)
-const editForms = reactive({})
-const editFileLists = reactive({})
-const editTimesInputs = reactive({})
-const editLocationModes = reactive({})
-const selectedTaskKeys = ref(new Set())
-const batchDeleting = ref(false)
-const runningTaskKey = ref(null)
+const { state: appState, refreshState, refreshLogs } = useAppState();
+const checkinResultVisible = ref(false);
+const checkinResult = ref(null);
+const editingKey = ref(null);
+const editForms = reactive({});
+const editFileLists = reactive({});
+const editTimesInputs = reactive({});
+const editLocationModes = reactive({});
+const selectedTaskKeys = ref(new Set());
+const batchDeleting = ref(false);
+const runningTaskKey = ref(null);
 
 const allTasks = computed(() => {
-  const tasks = []
+  const tasks = [];
   appState.value.accounts.forEach((account, accountIdx) => {
     (account.tasks || []).forEach((task, taskIdx) => {
       tasks.push({
         ...task,
         accountName: account.name,
         accountIndex: accountIdx,
-        taskIndex: taskIdx
-      })
-    })
-  })
-  return tasks
-})
+        taskIndex: taskIdx,
+      });
+    });
+  });
+  return tasks;
+});
 
 const rules = {
-  title: [{ required: true, message: '请输入任务标题', trigger: 'blur' }],
-  index: [{ required: true, message: '请输入项目序号', trigger: 'blur' }],
-  times: [{
-    validator: (rule, value, callback) => {
-      if (!value || value.length === 0) {
-        callback(new Error('请至少设置一个执行时间'))
-      } else {
-        callback()
-      }
+  title: [{ required: true, message: "请输入任务标题", trigger: "blur" }],
+  index: [{ required: true, message: "请输入项目序号", trigger: "blur" }],
+  times: [
+    {
+      validator: (rule, value, callback) => {
+        if (!value || value.length === 0) {
+          callback(new Error("请至少设置一个执行时间"));
+        } else {
+          callback();
+        }
+      },
+      trigger: "blur",
     },
-    trigger: 'blur'
-  }]
-}
+  ],
+};
 
 function getTaskKey(task) {
-  return `${task.accountIndex}-${task.taskIndex}`
+  return `${task.accountIndex}-${task.taskIndex}`;
 }
 
 function taskStatusText(task) {
-  if (task.completed_at) return task.completion_result === 'failed' ? '已结束·失败' : '已完成'
-  return task.enable ? '启用' : '禁用'
+  if (task.completed_at)
+    return task.completion_result === "failed" ? "已结束·失败" : "已完成";
+  return task.enable ? "启用" : "禁用";
 }
 
 function taskStatusType(task) {
-  if (task.completed_at) return task.completion_result === 'failed' ? 'warning' : 'primary'
-  return task.enable ? 'success' : 'info'
+  if (task.completed_at)
+    return task.completion_result === "failed" ? "warning" : "primary";
+  return task.enable ? "success" : "info";
 }
 
 function formatDateTime(value) {
-  return String(value || '').replace('T', ' ')
+  return String(value || "").replace("T", " ");
 }
 
 function toggleTaskSelection(task, checked) {
-  const nextKeys = new Set(selectedTaskKeys.value)
-  const key = getTaskKey(task)
+  const nextKeys = new Set(selectedTaskKeys.value);
+  const key = getTaskKey(task);
   if (checked) {
-    nextKeys.add(key)
+    nextKeys.add(key);
   } else {
-    nextKeys.delete(key)
+    nextKeys.delete(key);
   }
-  selectedTaskKeys.value = nextKeys
+  selectedTaskKeys.value = nextKeys;
 }
 
 function resetTaskEditingState() {
-  editingKey.value = null
+  editingKey.value = null;
   for (const cache of [
     editForms,
     editFileLists,
@@ -238,237 +375,286 @@ function resetTaskEditingState() {
     editLocationModes,
   ]) {
     for (const key of Object.keys(cache)) {
-      delete cache[key]
+      delete cache[key];
     }
   }
 }
 
 function isEditing(task) {
-  return editingKey.value === getTaskKey(task)
+  return editingKey.value === getTaskKey(task);
 }
 
 function getEditForm(task) {
-  const key = getTaskKey(task)
+  const key = getTaskKey(task);
   if (!editForms[key]) {
     editForms[key] = reactive({
-      title: task.title || '',
+      title: task.title || "",
       index: task.index || 1,
       times: [...(task.times || [])],
-      text: task.text || '',
+      text: task.text || "",
       pic_path: [...(task.pic_path || [])],
       enable: task.enable !== false,
       use_location: task.use_location || false,
       skip_weekends: task.skip_weekends || false,
-      date_mode: task.date_mode || 'daily',
+      date_mode: task.date_mode || "daily",
       run_dates: [...(task.run_dates || [])],
       skip_dates: [...(task.skip_dates || [])],
       auto_disable_after_finish: task.auto_disable_after_finish === true,
-      mode: task.mode || 'normal',
-      notify_wechat: task.notify_wechat !== false
-    })
+      mode: task.mode || "normal",
+      notify_wechat: task.notify_wechat !== false,
+    });
   }
-  return editForms[key]
+  return editForms[key];
 }
 
 function getEditFileList(task) {
-  const key = getTaskKey(task)
+  const key = getTaskKey(task);
   if (!editFileLists[key]) {
-    const paths = Array.isArray(task.pic_path) ? task.pic_path : (task.pic_path ? [task.pic_path] : [])
+    const paths = Array.isArray(task.pic_path)
+      ? task.pic_path
+      : task.pic_path
+        ? [task.pic_path]
+        : [];
     editFileLists[key] = paths.map((path, idx) => ({
       uid: `${idx}`,
-      name: String(path).replace(/\\/g, '/').split('/').pop() || 'image.jpg',
-      url: path.startsWith('http') ? path : `/uploads/${String(path).replace(/\\/g, '/').split('/').pop()}`,
+      name: String(path).replace(/\\/g, "/").split("/").pop() || "image.jpg",
+      url: path.startsWith("http")
+        ? path
+        : `/uploads/${String(path).replace(/\\/g, "/").split("/").pop()}`,
       path,
-      status: 'success'
-    }))
+      status: "success",
+    }));
   }
-  return editFileLists[key]
+  return editFileLists[key];
 }
 
 function toggleInlineEdit(task) {
-  const key = getTaskKey(task)
+  const key = getTaskKey(task);
   if (editingKey.value === key) {
-    editingKey.value = null
-    delete editForms[key]
-    delete editFileLists[key]
-    delete editTimesInputs[key]
-    delete editLocationModes[key]
+    editingKey.value = null;
+    delete editForms[key];
+    delete editFileLists[key];
+    delete editTimesInputs[key];
+    delete editLocationModes[key];
   } else {
-    editingKey.value = key
-    
+    editingKey.value = key;
+
     editForms[key] = reactive({
-      title: task.title || '',
+      title: task.title || "",
       index: task.index || 1,
       times: [...(task.times || [])],
-      text: task.text || '',
+      text: task.text || "",
       pic_path: [...(task.pic_path || [])],
       enable: task.enable !== false,
       use_location: task.use_location || false,
       skip_weekends: task.skip_weekends || false,
-      date_mode: task.date_mode || 'daily',
+      date_mode: task.date_mode || "daily",
       run_dates: [...(task.run_dates || [])],
       skip_dates: [...(task.skip_dates || [])],
       auto_disable_after_finish: task.auto_disable_after_finish === true,
-      mode: task.mode || 'normal',
-      notify_wechat: task.notify_wechat !== false
-    })
-    
-    const paths = Array.isArray(task.pic_path) ? task.pic_path : (task.pic_path ? [task.pic_path] : [])
+      mode: task.mode || "normal",
+      notify_wechat: task.notify_wechat !== false,
+    });
+
+    const paths = Array.isArray(task.pic_path)
+      ? task.pic_path
+      : task.pic_path
+        ? [task.pic_path]
+        : [];
     editFileLists[key] = paths.map((path, idx) => ({
       uid: `${idx}`,
-      name: String(path).replace(/\\/g, '/').split('/').pop() || 'image.jpg',
-      url: path.startsWith('http') ? path : `/uploads/${String(path).replace(/\\/g, '/').split('/').pop()}`,
+      name: String(path).replace(/\\/g, "/").split("/").pop() || "image.jpg",
+      url: path.startsWith("http")
+        ? path
+        : `/uploads/${String(path).replace(/\\/g, "/").split("/").pop()}`,
       path,
-      status: 'success'
-    }))
-    
-    editTimesInputs[key] = (task.times || []).join(', ')
-    editLocationModes[key] = task.use_location ? 'auto' : 'none'
-    
-    watch(() => editTimesInputs[key], (val) => {
-      if (val != null && editForms[key]) {
-        editForms[key].times = val.split(/[\s,|;，；、]+/).map(t => t.trim()).filter(Boolean)
-      }
-    })
-    
-    watch(() => editLocationModes[key], (val) => {
-      if (val != null && editForms[key]) {
-        editForms[key].use_location = val === 'auto'
-      }
-    })
+      status: "success",
+    }));
+
+    editTimesInputs[key] = (task.times || []).join(", ");
+    editLocationModes[key] = task.use_location ? "auto" : "none";
+
+    watch(
+      () => editTimesInputs[key],
+      (val) => {
+        if (val != null && editForms[key]) {
+          editForms[key].times = val
+            .split(/[\s,|;，；、]+/)
+            .map((t) => t.trim())
+            .filter(Boolean);
+        }
+      },
+    );
+
+    watch(
+      () => editLocationModes[key],
+      (val) => {
+        if (val != null && editForms[key]) {
+          editForms[key].use_location = val === "auto";
+        }
+      },
+    );
   }
 }
 
 async function saveInlineEdit(task) {
-  const key = getTaskKey(task)
-  editForms[key].times = editTimesInputs[key].split(/[\s,|;，；、]+/).map(t => t.trim()).filter(Boolean)
-  if (editForms[key].date_mode === 'specific' && !editForms[key].run_dates.length) {
-    ElMessage.warning('指定日期模式下请至少选择一个执行日期')
-    return
+  const key = getTaskKey(task);
+  editForms[key].times = editTimesInputs[key]
+    .split(/[\s,|;，；、]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (
+    editForms[key].date_mode === "specific" &&
+    !editForms[key].run_dates.length
+  ) {
+    ElMessage.warning("指定日期模式下请至少选择一个执行日期");
+    return;
   }
-  editForms[key].mode = (editForms[key].pic_path && editForms[key].pic_path.length) ? 'image' : 'normal'
-  
+  editForms[key].mode =
+    editForms[key].pic_path && editForms[key].pic_path.length
+      ? "image"
+      : "normal";
+
   try {
-    await api.updateTask(task.accountIndex, task.taskIndex, { ...editForms[key] })
-    ElMessage.success('任务已更新')
-    await refreshState()
-    await refreshLogs()
-    toggleInlineEdit(task)
+    await api.updateTask(task.accountIndex, task.taskIndex, {
+      ...editForms[key],
+    });
+    ElMessage.success("任务已更新");
+    await refreshState();
+    await refreshLogs();
+    toggleInlineEdit(task);
   } catch (err) {
-    ElMessage.error(err.message)
+    ElMessage.error(err.message);
   }
 }
 
 async function customUpload(task, options) {
-  const key = getTaskKey(task)
+  const key = getTaskKey(task);
   try {
-    const res = await api.uploadImage(options.file)
+    const res = await api.uploadImage(options.file);
     if (res.data && res.data.path) {
-      if (!Array.isArray(editForms[key].pic_path)) editForms[key].pic_path = []
-      editForms[key].pic_path.push(res.data.path)
-      const paths = editForms[key].pic_path
+      if (!Array.isArray(editForms[key].pic_path)) editForms[key].pic_path = [];
+      editForms[key].pic_path.push(res.data.path);
+      const paths = editForms[key].pic_path;
       editFileLists[key] = paths.map((path, idx) => ({
         uid: `${idx}`,
-        name: String(path).replace(/\\/g, '/').split('/').pop() || 'image.jpg',
-        url: path.startsWith('http') ? path : `/uploads/${String(path).replace(/\\/g, '/').split('/').pop()}`,
+        name: String(path).replace(/\\/g, "/").split("/").pop() || "image.jpg",
+        url: path.startsWith("http")
+          ? path
+          : `/uploads/${String(path).replace(/\\/g, "/").split("/").pop()}`,
         path,
-        status: 'success'
-      }))
+        status: "success",
+      }));
     }
-    options.onSuccess(res)
-    ElMessage.success('图片上传成功')
+    options.onSuccess(res);
+    ElMessage.success("图片上传成功");
   } catch (err) {
-    options.onError(err)
-    ElMessage.error(err.message || '图片上传失败')
+    options.onError(err);
+    ElMessage.error(err.message || "图片上传失败");
   }
 }
 
 function onImageRemove(task, file) {
-  const key = getTaskKey(task)
-  const removedPath = file.path || file.url
-  editForms[key].pic_path = editForms[key].pic_path.filter(p => {
-    const pName = String(p).replace(/\\/g, '/').split('/').pop()
-    const rName = String(removedPath).replace(/\\/g, '/').split('/').pop()
-    return pName !== rName
-  })
-  const paths = editForms[key].pic_path
+  const key = getTaskKey(task);
+  const removedPath = file.path || file.url;
+  editForms[key].pic_path = editForms[key].pic_path.filter((p) => {
+    const pName = String(p).replace(/\\/g, "/").split("/").pop();
+    const rName = String(removedPath).replace(/\\/g, "/").split("/").pop();
+    return pName !== rName;
+  });
+  const paths = editForms[key].pic_path;
   editFileLists[key] = paths.map((path, idx) => ({
     uid: `${idx}`,
-    name: String(path).replace(/\\/g, '/').split('/').pop() || 'image.jpg',
-    url: path.startsWith('http') ? path : `/uploads/${String(path).replace(/\\/g, '/').split('/').pop()}`,
+    name: String(path).replace(/\\/g, "/").split("/").pop() || "image.jpg",
+    url: path.startsWith("http")
+      ? path
+      : `/uploads/${String(path).replace(/\\/g, "/").split("/").pop()}`,
     path,
-    status: 'success'
-  }))
+    status: "success",
+  }));
 }
 
 async function runTask(row) {
-  if (runningTaskKey.value !== null) return
-  runningTaskKey.value = getTaskKey(row)
+  if (runningTaskKey.value !== null) return;
+  runningTaskKey.value = getTaskKey(row);
   try {
-    const res = await api.runTask(row.accountIndex, row.taskIndex)
-    checkinResult.value = createCheckinResult(res.data || {})
-    checkinResultVisible.value = true
-    await refreshLogs()
+    const res = await api.runTask(row.accountIndex, row.taskIndex);
+    checkinResult.value = createCheckinResult(res.data || {});
+    checkinResultVisible.value = true;
+    await refreshLogs();
   } catch (err) {
-    ElMessage.error(err.message)
+    ElMessage.error(err.message);
   } finally {
-    runningTaskKey.value = null
+    runningTaskKey.value = null;
   }
 }
 
 async function deleteTask(row) {
   try {
-    await ElMessageBox.confirm(`确认删除任务「${row.title}」吗？`, '提示', { type: 'warning' })
-    await api.deleteTask(row.accountIndex, row.taskIndex)
-    await refreshState()
-    await refreshLogs()
-    ElMessage.success('任务已删除')
+    await ElMessageBox.confirm(`确认删除任务「${row.title}」吗？`, "提示", {
+      type: "warning",
+    });
+    await api.deleteTask(row.accountIndex, row.taskIndex);
+    await refreshState();
+    await refreshLogs();
+    ElMessage.success("任务已删除");
   } catch (err) {
-    if (err !== 'cancel') ElMessage.error(err.message)
+    if (err !== "cancel") ElMessage.error(err.message);
   }
 }
 
 async function deleteSelectedTasks() {
-  const count = selectedTaskKeys.value.size
-  if (!count || batchDeleting.value) return
+  const count = selectedTaskKeys.value.size;
+  if (!count || batchDeleting.value) return;
 
   try {
     await ElMessageBox.confirm(
       `确认删除选中的 ${count} 个任务吗？`,
-      '批量删除任务',
-      { type: 'warning' },
-    )
+      "批量删除任务",
+      { type: "warning" },
+    );
   } catch (err) {
-    if (err === 'cancel' || err === 'close') return
-    ElMessage.error(err.message || '操作失败')
-    return
+    if (err === "cancel" || err === "close") return;
+    ElMessage.error(err.message || "操作失败");
+    return;
   }
 
-  const targets = getTaskDeleteTargets(selectedTaskKeys.value)
-  batchDeleting.value = true
+  const targets = getTaskDeleteTargets(selectedTaskKeys.value);
+  batchDeleting.value = true;
   try {
     for (const target of targets) {
-      await api.deleteTask(target.accountIndex, target.taskIndex)
+      await api.deleteTask(target.accountIndex, target.taskIndex);
     }
-    resetTaskEditingState()
-    selectedTaskKeys.value = new Set()
-    await refreshState()
-    await refreshLogs()
-    ElMessage.success(`已删除 ${targets.length} 个任务`)
+    resetTaskEditingState();
+    selectedTaskKeys.value = new Set();
+    await refreshState();
+    await refreshLogs();
+    ElMessage.success(`已删除 ${targets.length} 个任务`);
   } catch (err) {
-    resetTaskEditingState()
-    selectedTaskKeys.value = new Set()
-    await Promise.allSettled([refreshState(), refreshLogs()])
-    ElMessage.error(err.message || '批量删除任务失败')
+    resetTaskEditingState();
+    selectedTaskKeys.value = new Set();
+    await Promise.allSettled([refreshState(), refreshLogs()]);
+    ElMessage.error(err.message || "批量删除任务失败");
   } finally {
-    batchDeleting.value = false
+    batchDeleting.value = false;
   }
 }
 </script>
 
 <style scoped>
-.page-container { padding: 0; }
-.card-header { display: flex; justify-content: space-between; align-items: center; }
+.page-container {
+  padding: 0;
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.task-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 .task-list {
   display: flex;
@@ -530,6 +716,10 @@ async function deleteSelectedTasks() {
   gap: 4px;
 }
 
+.mobile-task-summary {
+  display: none;
+}
+
 .task-actions {
   display: flex;
   gap: 8px;
@@ -573,70 +763,109 @@ async function deleteSelectedTasks() {
 }
 
 @media (max-width: 768px) {
+  .card-header {
+    align-items: center;
+    flex-direction: row;
+    width: 100%;
+  }
+  .task-toolbar {
+    margin-left: auto;
+  }
   .task-card {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
+    padding: 13px 16px;
   }
-  
+
   .task-main {
     width: 100%;
   }
-  
-  .task-info {
-    gap: 12px;
-    font-size: 12px;
+
+  .task-title-row {
+    margin-bottom: 8px;
   }
-  
+  .task-info {
+    display: none;
+  }
+  .mobile-task-summary {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding-left: 26px;
+    overflow-x: auto;
+    color: #64748b;
+    font-size: 11px;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+  .mobile-task-summary::-webkit-scrollbar {
+    display: none;
+  }
+  .mobile-task-summary span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex: none;
+  }
+  .mobile-task-summary small {
+    color: #2563eb;
+    font-size: 10px;
+  }
+
   .task-actions {
     width: 100%;
     margin-left: 0;
-    justify-content: flex-start;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  
+
   .task-actions .el-button {
     flex: 1;
-    min-width: 70px;
+    min-width: 0;
+    min-height: 38px;
+    margin: 0;
   }
-  
-  .edit-card .el-form-item__label {
-    width: 80px !important;
-    font-size: 12px;
+  .edit-card {
+    border-width: 1px 0 0 !important;
+    border-radius: 0;
+    box-shadow: none !important;
   }
-  
-  .edit-card .el-form-item__content {
-    margin-left: 80px !important;
+  .edit-card :deep(.el-form-item) {
+    display: block;
+    margin-bottom: 20px;
   }
-  
+  .edit-card :deep(.el-form-item__label) {
+    display: block;
+    width: 100% !important;
+    height: auto;
+    margin-bottom: 8px;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: left;
+  }
+  .edit-card :deep(.el-form-item__content) {
+    width: 100%;
+    margin-left: 0 !important;
+  }
 }
 
 @media (max-width: 480px) {
   .task-title {
     font-size: 14px;
   }
-  
-  .task-info {
-    flex-direction: column;
-    gap: 6px;
+
+  .task-title-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
-  
-  .task-actions {
-    flex-direction: column;
+  .task-title {
+    flex: 1;
+    min-width: 120px;
   }
-  
-  .task-actions .el-button {
-    width: 100%;
-    margin-bottom: 4px;
-  }
-  
-  .edit-card .el-form-item__label {
-    width: 70px !important;
-    font-size: 11px;
-  }
-  
-  .edit-card .el-form-item__content {
-    margin-left: 70px !important;
+  .edit-card :deep(.el-form-item__label) {
+    font-size: 12px;
   }
 }
 </style>

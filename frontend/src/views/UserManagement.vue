@@ -500,21 +500,23 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 640px) {
   .desktop-user-table { display: none; }
-  .mobile-user-list { display: grid; gap: 12px; }
+  .mobile-user-list { display: grid; gap: 0; }
   .mobile-user-card { overflow: hidden; border: 1px solid #e1e9f4; border-radius: 14px; background: #fff; }
-  .mobile-user-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px; background: #f8fbff; }
+  .mobile-user-card header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 9px 14px 7px; background: #f8fbff; }
   .mobile-user-card header strong, .mobile-user-card header span { display: block; }
-  .mobile-user-card header strong { color: #172033; font-size: 15px; }
-  .mobile-user-card header span { margin-top: 3px; color: #718096; font-size: 12px; }
-  .mobile-user-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 14px; }
+  .mobile-user-card header strong { color: #172033; font-size: 14px; }
+  .mobile-user-card header span { margin-top: 1px; color: #718096; font-size: 11px; }
+  .mobile-user-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; padding: 8px 14px 10px; }
   .mobile-user-card dl div { min-width: 0; }
   .mobile-user-card dt { color: #8a98aa; font-size: 11px; }
-  .mobile-user-card dd { margin: 3px 0 0; overflow-wrap: anywhere; color: #334155; font-size: 13px; }
-  .mobile-user-card__wide { grid-column: 1 / -1; }
-  .mobile-user-card footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 14px 14px; }
-  .mobile-user-card footer .el-button { width: 100%; margin: 0; padding-inline: 6px; }
-  .page-heading { align-items: flex-start; flex-direction: column; }
-  .page-heading .el-button { width: 100%; }
+  .mobile-user-card dd { margin: 1px 0 0; overflow-wrap: anywhere; color: #334155; font-size: 12px; line-height: 1.35; }
+  .mobile-user-card__wide { grid-column: auto; }
+  .mobile-user-card footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px 14px 11px; border-top: 1px solid #edf2f7; }
+  .mobile-user-card footer .el-button { width: 100%; min-height: 36px; margin: 0; padding-inline: 6px; }
+  .page-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; }
+  .page-heading h2 { margin-bottom: 3px; font-size: 20px; }
+  .page-heading p { font-size: 12px; line-height: 1.45; }
+  .page-heading .el-button { width: auto; min-width: 104px; margin: 0; }
   .user-editor-form { max-height: 76vh; }
   .user-form-section { padding: 14px 12px 3px; }
   .user-form-grid,

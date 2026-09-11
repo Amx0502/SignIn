@@ -174,3 +174,475 @@ body::before {
   .el-form-item__label { font-size: 12px; }
   .el-input__inner, .el-textarea__inner { font-size: 13px; }
 }
+
+/* Mobile application layout: full-width sections replace desktop cards. */
+@media (max-width: 768px) {
+  html,
+  body,
+  #app {
+    min-height: 100%;
+    min-height: 100dvh;
+  }
+
+  .el-overlay .el-dialog {
+    max-height: calc(100dvh - 24px);
+    margin: 12px auto;
+  }
+
+  .el-overlay .el-dialog__body {
+    min-height: 0;
+    max-height: calc(100dvh - 156px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .el-overlay .el-drawer {
+    max-height: 100dvh;
+  }
+
+  .el-overlay .el-drawer__body {
+    min-height: 0;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+  }
+
+  body {
+    background: #f1f5f9;
+  }
+
+  :where(
+    .page-container,
+    .dashboard-page,
+    .cube-subpage,
+    .my-page,
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page,
+    .password-page
+  ) {
+    width: 100%;
+    min-width: 0;
+    padding: 0 !important;
+    gap: 8px !important;
+    animation: none;
+  }
+
+  :where(.page-container, .cube-subpage) > .el-row {
+    margin: 0 0 8px !important;
+    row-gap: 8px;
+  }
+
+  :where(.page-container, .cube-subpage) > .el-row > .el-col {
+    padding-right: 0 !important;
+    padding-left: 0 !important;
+  }
+
+  :where(
+    .page-container,
+    .dashboard-page,
+    .cube-subpage,
+    .my-page,
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page,
+    .password-page
+  ) .el-card {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    transform: none !important;
+  }
+
+  :where(
+    .page-container,
+    .dashboard-page,
+    .cube-subpage,
+    .my-page,
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page,
+    .password-page
+  ) .el-card:hover {
+    border-color: transparent !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  :where(
+    .page-container,
+    .dashboard-page,
+    .cube-subpage,
+    .my-page,
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page,
+    .password-page
+  ) .el-card__header {
+    padding: 14px 16px !important;
+    border-bottom: 1px solid #e8edf5 !important;
+  }
+
+  :where(
+    .page-container,
+    .dashboard-page,
+    .cube-subpage,
+    .my-page,
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page,
+    .password-page
+  ) .el-card__body {
+    padding: 16px !important;
+  }
+
+  :where(.page-hero, .dashboard-hero, .cube-hero) {
+    width: 100%;
+    margin: 0 !important;
+    padding: 20px 16px !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  :where(.page-hero, .dashboard-hero, .cube-hero) h1 {
+    font-size: 20px !important;
+    line-height: 1.35;
+  }
+
+  :where(.page-hero, .dashboard-hero, .cube-hero) p:last-child {
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  .overview-metrics {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    background: #fff;
+  }
+
+  .overview-metrics > .el-col {
+    width: auto !important;
+    max-width: none !important;
+    flex: none !important;
+  }
+
+  .overview-metrics .el-card {
+    height: 100%;
+    border-right: 1px solid #e8edf5 !important;
+  }
+
+  .overview-metrics .el-col:last-child .el-card {
+    border-right: 0 !important;
+  }
+
+  .overview-metrics .el-card__body {
+    height: 100%;
+    padding: 16px 10px !important;
+  }
+
+  .overview-metrics .metric-card {
+    min-height: 76px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    text-align: center;
+  }
+
+  .overview-metrics .metric-top {
+    justify-content: center;
+  }
+
+  .overview-metrics .metric-icon,
+  .overview-metrics .metric-trend {
+    display: none;
+  }
+
+  .overview-metrics .metric-value {
+    font-size: 28px;
+  }
+
+  .overview-metrics .metric-label {
+    margin-top: 5px;
+    font-size: 12px;
+  }
+
+  .settings-form .el-form-item {
+    display: block;
+  }
+
+  .settings-form .el-form-item__label {
+    width: auto !important;
+    height: auto;
+    margin-bottom: 7px;
+    justify-content: flex-start;
+    line-height: 1.4;
+  }
+
+  .settings-form .el-form-item__content {
+    margin-left: 0 !important;
+  }
+
+  :where(
+    .page-container,
+    .cube-subpage,
+    .my-page,
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page,
+    .password-page
+  ) .el-form-item {
+    display: block;
+  }
+
+  :where(
+    .page-container,
+    .cube-subpage,
+    .my-page,
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page,
+    .password-page
+  ) .el-form-item__label {
+    width: auto !important;
+    height: auto;
+    margin-bottom: 7px;
+    justify-content: flex-start;
+    line-height: 1.4;
+  }
+
+  :where(
+    .page-container,
+    .cube-subpage,
+    .my-page,
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page,
+    .password-page
+  ) .el-form-item__content {
+    margin-left: 0 !important;
+  }
+
+  :where(
+    .dashboard-page,
+    .cube-subpage,
+    .my-page,
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page
+  ) :where(.panel, .task-panel, .run-panel, .platform-card) {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+  }
+
+  :where(
+    .mobile-account-card,
+    .mobile-task-card,
+    .mobile-user-card,
+    .mobile-audit-card,
+    .account-card,
+    .task-card,
+    .run-row
+  ) {
+    margin: 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid #e8edf5 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  :where(
+    .mobile-account-list,
+    .mobile-task-list,
+    .mobile-user-list,
+    .mobile-audit-list,
+    .account-list,
+    .task-list,
+    .run-list
+  ) {
+    gap: 0 !important;
+  }
+
+  :where(.card-header, .page-head, .page-heading) {
+    gap: 10px;
+  }
+
+  :where(.card-header, .page-head) > .el-button,
+  :where(.card-header, .page-head) > .el-space,
+  :where(.card-header, .page-head) > .el-space > .el-space__item {
+    max-width: 100%;
+  }
+
+  :where(.card-header, .page-head) > .el-space {
+    width: 100%;
+  }
+
+  :where(.card-header, .page-head) > .el-space .el-button {
+    min-height: 42px;
+  }
+
+  .password-page {
+    min-height: auto !important;
+    place-items: stretch !important;
+  }
+
+  .password-card {
+    width: 100% !important;
+  }
+
+  :where(
+    .users-page,
+    .menu-management-page,
+    .delay-settings-page
+  ) > .page-heading {
+    margin: 0;
+    padding: 16px;
+    background: #fff;
+  }
+
+  .menu-tree-list,
+  .menu-management-page .mobile-audit-list {
+    gap: 0 !important;
+  }
+
+  .menu-management-page .menu-config-row {
+    padding: 14px 16px !important;
+    border: 0 !important;
+    border-bottom: 1px solid #e8edf5 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+  }
+
+  .menu-management-page .menu-config-row:not(.override-row) {
+    align-items: center !important;
+    flex-direction: row !important;
+  }
+
+  .menu-management-page .save-bar,
+  .delay-settings-page .save-bar {
+    bottom: calc(62px + env(safe-area-inset-bottom));
+    margin: 0;
+    padding: 14px 16px;
+    border: 0;
+    border-top: 1px solid #dce4ef;
+    border-radius: 0;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: none;
+    backdrop-filter: blur(12px);
+  }
+
+  .delay-settings-page .platform-grid,
+  .dashboard-page :where(.platform-grid, .main-grid, .side-stack, .bottom-grid),
+  .cube-subpage :where(.task-grid, .run-list),
+  .my-page :where(.account-list, .task-list, .run-list) {
+    gap: 8px !important;
+  }
+
+  .delay-settings-page .platform-header {
+    padding-bottom: 14px;
+  }
+
+  .delay-settings-page .explanation-grid {
+    gap: 14px;
+  }
+
+  .mobile-task-card.is-active,
+  .mobile-account-card.is-active,
+  .account-card.active,
+  .task-card--selected {
+    background: #f4f8ff !important;
+    box-shadow: inset 3px 0 #3b82f6 !important;
+  }
+
+  .project-section,
+  .resource-users,
+  .range-summary,
+  .identity-summary {
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .page-container .project-section {
+    margin: 16px -16px -16px !important;
+    padding: 16px !important;
+    border-top: 8px solid #f1f5f9;
+    border-radius: 0 !important;
+    background: #fff !important;
+  }
+
+  .overview-metrics + .form-section {
+    margin-top: 0;
+  }
+
+  .settings-form .el-form-item:last-child .el-form-item__content,
+  .global-actions .el-space {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 10px;
+  }
+
+  .settings-form .el-form-item:last-child .el-button,
+  .global-actions .el-button {
+    width: 100%;
+    min-height: 42px;
+    margin: 0;
+  }
+
+  .account-checkin .workspace-grid,
+  .my-page .accounts-workspace {
+    gap: 8px !important;
+  }
+
+  .account-checkin :where(.account-list, .item-list),
+  :where(.cube-subpage, .my-page) :where(.task-grid, .task-list, .run-list) {
+    gap: 0 !important;
+    padding-right: 0 !important;
+    padding-left: 0 !important;
+  }
+
+  .account-checkin :where(.account-row, .item-row) {
+    margin: 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid #e8edf5 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .account-checkin :where(.account-row, .item-row).active {
+    background: #f4f8ff !important;
+    box-shadow: inset 3px 0 #3b82f6 !important;
+  }
+
+  .mobile-user-card header,
+  .mobile-task-card__facts {
+    background: #fff !important;
+  }
+
+  .mobile-user-card + .mobile-user-card,
+  .mobile-account-card + .mobile-account-card,
+  .mobile-task-card + .mobile-task-card,
+  .mobile-audit-card + .mobile-audit-card {
+    margin-top: 0 !important;
+  }
+
+  .el-button:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .overview-metrics .metric-value {
+    font-size: 24px;
+  }
+
+  .overview-metrics .metric-label {
+    font-size: 11px;
+  }
+}

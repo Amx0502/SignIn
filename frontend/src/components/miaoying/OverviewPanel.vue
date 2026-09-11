@@ -66,4 +66,13 @@ async function copyWebhook() {
 
 <style scoped>
 .overview-page{display:grid;gap:18px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metrics article{display:grid;gap:5px;padding:22px;border:1px solid #dbeafe;border-radius:18px;background:#fff}.metrics b{font-size:28px;color:#1677ff}.metrics span{color:#64748b}.panel{min-width:0;padding:20px;border:1px solid #dbeafe;border-radius:20px;background:#ffffffde;box-shadow:0 14px 34px #0f172a0a}.panel>header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px}.panel h2{margin:0;color:#172033;font-size:18px}.panel p{margin:4px 0 0;color:#64748b;font-size:13px}.settings-actions{display:flex;justify-content:flex-end;gap:10px}.settings-actions .el-button+.el-button{margin-left:0}.security-tip{display:block;margin-top:10px;color:#64748b;font-size:12px}@media(max-width:900px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.metrics{grid-template-columns:1fr}.panel{padding:14px}.panel>header{align-items:flex-start;flex-direction:column}.settings-actions{align-items:stretch;flex-direction:column}.settings-actions .el-button{width:100%}}
+@media(max-width:700px){
+  .overview-page{gap:8px}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:0;background:#fff}
+  .metrics article{padding:16px;border:0;border-right:1px solid #e8edf5;border-bottom:1px solid #e8edf5;border-radius:0;text-align:center}
+  .metrics article:nth-child(even){border-right:0}
+  .metrics b{font-size:25px}
+  .metrics span{font-size:12px}
+  .panel{padding:16px;border:0;border-radius:0;box-shadow:none}
+}
 </style>

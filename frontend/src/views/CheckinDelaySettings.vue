@@ -34,7 +34,6 @@
               :min="0"
               :max="300"
               :precision="0"
-              controls-position="right"
             />
             <em>秒</em>
           </label>
@@ -46,7 +45,6 @@
               :min="0"
               :max="300"
               :precision="0"
-              controls-position="right"
             />
             <em>秒</em>
           </label>
@@ -74,7 +72,6 @@
               :min="0"
               :max="300"
               :precision="0"
-              controls-position="right"
             />
             <em>秒</em>
           </label>
@@ -86,7 +83,6 @@
               :min="0"
               :max="300"
               :precision="0"
-              controls-position="right"
             />
             <em>秒</em>
           </label>
@@ -114,7 +110,6 @@
               :min="0"
               :max="300"
               :precision="0"
-              controls-position="right"
             />
             <em>秒</em>
           </label>
@@ -126,7 +121,6 @@
               :min="0"
               :max="300"
               :precision="0"
-              controls-position="right"
             />
             <em>秒</em>
           </label>
@@ -430,6 +424,33 @@ onMounted(loadSettings)
 
   .range-editor {
     grid-template-columns: 1fr;
+  }
+
+  .range-editor :deep(.el-input-number) {
+    height: 46px;
+  }
+
+  .range-editor :deep(.el-input-number__decrease),
+  .range-editor :deep(.el-input-number__increase) {
+    width: 48px;
+    color: #2563eb;
+    background: #f5f9ff;
+    font-size: 18px;
+  }
+
+  .range-editor :deep(.el-input-number__decrease:active),
+  .range-editor :deep(.el-input-number__increase:active) {
+    background: #e8f1ff;
+  }
+
+  .range-editor :deep(.el-input__wrapper) {
+    padding-right: 78px;
+    padding-left: 54px;
+  }
+
+  .range-editor em {
+    right: 58px;
+    bottom: 13px;
   }
 
   .range-separator {

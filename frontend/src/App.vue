@@ -1,7 +1,11 @@
 <template>
   <el-config-provider :locale="zhCn">
     <router-view v-if="isLoginPage" />
-    <el-container v-else class="app-wrapper">
+    <el-container
+      v-else
+      class="app-wrapper"
+      :class="{ 'app-wrapper--keyboard-open': mobileKeyboardOpen }"
+    >
       <el-aside
         :width="sidebarCollapsed ? '80px' : '280px'"
         class="sidebar"
@@ -89,9 +93,10 @@
               class="mobile-header-logo"
               alt="签到管理系统"
             />
-            <div>
+            <div class="header-copy">
               <p class="breadcrumb">
-                {{ breadcrumb.parentTitle }} / {{ breadcrumb.title }}
+                <span>{{ breadcrumb.parentTitle }}</span>
+                <span class="breadcrumb-current"> / {{ breadcrumb.title }}</span>
               </p>
               <h2>{{ breadcrumb.title }}</h2>
             </div>
@@ -217,7 +222,7 @@
               </div>
             </el-popover>
             <el-dropdown @command="handleUserCommand">
-              <span class="user-info">
+              <span class="user-info" role="button" tabindex="0" aria-label="用户菜单">
                 <el-icon><User /></el-icon>
                 <span>{{ currentUser?.username || "用户" }}</span>
               </span>
@@ -410,31 +415,28 @@
       <section
         v-if="mobileExtraItems.length"
         class="mobile-more-section mobile-more-section--extras"
-        :class="{ 'is-single': mobileExtraItems.length === 1 }"
       >
         <div class="mobile-more-section__heading">
           <h3>{{ mobilePlatform?.title }}其他功能</h3>
           <span>未固定在底栏的功能</span>
         </div>
-        <van-grid
-          clickable
-          :border="false"
-          :column-num="Math.min(3, mobileExtraItems.length)"
-          :gutter="8"
-        >
-          <van-grid-item
+        <van-cell-group inset>
+          <van-cell
             v-for="item in mobileExtraItems"
             :key="item.key"
+            clickable
+            :title="item.title"
+            :label="item.description"
             @click="openMobilePath(item.path, true)"
           >
-            <template #icon
-              ><el-icon><component :is="item.component" /></el-icon
-            ></template>
-            <template #text
-              ><span>{{ item.title }}</span></template
-            >
-          </van-grid-item>
-        </van-grid>
+            <template #icon>
+              <span class="mobile-cell-icon"
+                ><el-icon><component :is="item.component" /></el-icon
+              ></span>
+            </template>
+            <template #right-icon><el-icon><ArrowRight /></el-icon></template>
+          </van-cell>
+        </van-cell-group>
       </section>
 
       <section
@@ -445,20 +447,23 @@
           <h3>管理功能</h3>
           <span>仅管理员可见</span>
         </div>
-        <van-grid clickable :border="false" :column-num="2" :gutter="8">
-          <van-grid-item
+        <van-cell-group inset>
+          <van-cell
             v-for="item in mobileSystemItems"
             :key="item.key"
+            clickable
+            :title="item.title"
+            :label="item.description"
             @click="openMobilePath(item.path, true)"
           >
-            <template #icon
-              ><el-icon><component :is="item.component" /></el-icon
-            ></template>
-            <template #text
-              ><span>{{ item.title }}</span></template
-            >
-          </van-grid-item>
-        </van-grid>
+            <template #icon>
+              <span class="mobile-cell-icon"
+                ><el-icon><component :is="item.component" /></el-icon
+              ></span>
+            </template>
+            <template #right-icon><el-icon><ArrowRight /></el-icon></template>
+          </van-cell>
+        </van-cell-group>
       </section>
 
       <section class="mobile-more-section mobile-more-section--account">
@@ -466,21 +471,33 @@
           <h3>账户</h3>
           <span>{{ currentUser?.username || "当前用户" }}</span>
         </div>
-        <div class="mobile-account-actions">
-          <el-button
-            size="large"
+        <van-cell-group inset>
+          <van-cell
+            clickable
+            title="修改密码"
+            label="更新当前账户登录密码"
             @click="openMobilePath('/change-password', true)"
           >
-            <el-icon><Key /></el-icon><span>修改密码</span>
-          </el-button>
-          <el-button
-            size="large"
-            class="mobile-logout-button"
+            <template #icon>
+              <span class="mobile-cell-icon"><el-icon><Key /></el-icon></span>
+            </template>
+            <template #right-icon><el-icon><ArrowRight /></el-icon></template>
+          </van-cell>
+          <van-cell
+            clickable
+            title="退出登录"
+            label="安全退出当前账户"
+            class="mobile-logout-cell"
             @click="mobileLogout"
           >
-            <el-icon><SwitchButton /></el-icon><span>退出登录</span>
-          </el-button>
-        </div>
+            <template #icon>
+              <span class="mobile-cell-icon mobile-cell-icon--danger"
+                ><el-icon><SwitchButton /></el-icon
+              ></span>
+            </template>
+            <template #right-icon><el-icon><ArrowRight /></el-icon></template>
+          </van-cell>
+        </van-cell-group>
       </section>
     </van-popup>
   </el-config-provider>
@@ -516,6 +533,8 @@ import {
 import { ElMessage } from "element-plus";
 import "vant/lib/grid/style";
 import "vant/lib/grid-item/style";
+import "vant/lib/cell/style";
+import "vant/lib/cell-group/style";
 import "vant/lib/popup/style";
 import "vant/lib/tabbar/style";
 import "vant/lib/tabbar-item/style";
@@ -540,6 +559,8 @@ import { useVisitedTabs } from "./composables/useVisitedTabs.js";
 
 const VanGrid = defineAsyncComponent(() => import("vant/es/grid"));
 const VanGridItem = defineAsyncComponent(() => import("vant/es/grid-item"));
+const VanCell = defineAsyncComponent(() => import("vant/es/cell"));
+const VanCellGroup = defineAsyncComponent(() => import("vant/es/cell-group"));
 const VanPopup = defineAsyncComponent(() => import("vant/es/popup"));
 const VanTabbar = defineAsyncComponent(() => import("vant/es/tabbar"));
 const VanTabbarItem = defineAsyncComponent(() => import("vant/es/tabbar-item"));
@@ -751,12 +772,14 @@ onUnmounted(() => {
 .app-wrapper {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: clip;
 }
 .sidebar {
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -905,6 +928,9 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   flex: 1;
+  min-width: 0;
+}
+.header-copy {
   min-width: 0;
 }
 .menu-btn {
@@ -1350,12 +1376,12 @@ onUnmounted(() => {
 }
 
 .mobile-tabbar {
-  --van-tabbar-height: 64px;
+  --van-tabbar-height: 62px;
   --van-tabbar-background: rgba(255, 255, 255, 0.96);
-  --van-tabbar-item-active-background: #eff6ff;
+  --van-tabbar-item-active-background: #f4f8ff;
   --van-tabbar-item-font-size: 11px;
   border-top: 1px solid rgba(191, 219, 254, 0.85);
-  box-shadow: 0 -12px 30px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.07);
   backdrop-filter: blur(18px);
 }
 .mobile-tabbar :deep(.van-tabbar-item) {
@@ -1383,7 +1409,7 @@ onUnmounted(() => {
 .mobile-more-popup {
   box-sizing: border-box;
   width: min(520px, 100%);
-  padding: 18px 14px 16px;
+  padding: 18px 0 16px;
   overflow-y: auto;
   --van-popup-round-radius: 24px;
   --van-grid-item-content-background: #f8fafc;
@@ -1392,7 +1418,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 1px 2px 15px 3px;
+  padding: 1px 16px 15px;
   border-bottom: 1px solid #e2e8f0;
 }
 .mobile-more-header img {
@@ -1444,7 +1470,7 @@ onUnmounted(() => {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 3px 9px;
+  margin: 0 16px 9px;
 }
 .mobile-more-section__heading h3 {
   margin: 0;
@@ -1461,11 +1487,11 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 .mobile-more-section :deep(.van-grid-item__content) {
-  min-height: 76px;
+  min-height: 70px;
   gap: 7px;
   padding: 9px 4px;
   border: 1px solid #e2e8f0;
-  border-radius: 15px;
+  border-radius: 12px;
   color: #334155;
 }
 .mobile-more-section :deep(.van-grid-item__content:active) {
@@ -1517,44 +1543,50 @@ onUnmounted(() => {
   background: #eff6ff;
   color: #1d4ed8;
 }
-.mobile-more-section--extras.is-single :deep(.van-grid-item__content),
-.mobile-more-section--system :deep(.van-grid-item__content) {
-  min-height: 62px;
-  flex-direction: row;
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 10px 13px;
-}
-.mobile-more-section--extras.is-single :deep(.van-grid-item__text),
-.mobile-more-section--system :deep(.van-grid-item__text) {
-  justify-items: start;
-  text-align: left;
-}
-.mobile-account-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-}
-.mobile-account-actions .el-button {
-  width: 100%;
-  min-height: 46px;
+.mobile-more-section :deep(.van-cell-group--inset) {
   margin: 0;
-  border-radius: 13px;
+  border-radius: 0;
+}
+.mobile-more-section :deep(.van-cell) {
+  min-height: 62px;
+  align-items: center;
+  padding: 10px 16px;
+}
+.mobile-more-section :deep(.van-cell::after) {
+  left: 64px;
+  right: 16px;
+}
+.mobile-more-section :deep(.van-cell__title) {
+  color: #263247;
+  font-size: 14px;
   font-weight: 650;
 }
-.mobile-account-actions .el-icon {
-  margin-right: 5px;
+.mobile-more-section :deep(.van-cell__label) {
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 11px;
 }
-.mobile-logout-button {
-  border-color: #fecaca;
-  background: #fff7f7;
+.mobile-more-section :deep(.van-cell__right-icon) {
+  align-self: center;
+  color: #a0aec0;
+}
+.mobile-cell-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  margin-right: 12px;
+  place-items: center;
+  border-radius: 11px;
+  background: #eaf3ff;
+  color: #2563eb;
+  font-size: 18px;
+}
+.mobile-cell-icon--danger {
+  background: #fff1f2;
   color: #dc2626;
 }
-.mobile-logout-button:hover,
-.mobile-logout-button:focus {
-  border-color: #fca5a5;
-  background: #fef2f2;
-  color: #b91c1c;
+.mobile-logout-cell :deep(.van-cell__title) {
+  color: #dc2626;
 }
 
 @media (max-width: 768px) {
@@ -1588,21 +1620,27 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .top-header {
-    min-height: 64px;
-    padding: 8px 12px;
+    min-height: 62px;
+    padding: 8px 16px;
     flex-wrap: nowrap;
   }
   .header-left {
     flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
   }
   .top-header h2 {
     font-size: 18px;
+    line-height: 1.15;
   }
   .breadcrumb {
+    margin-bottom: 2px;
     font-size: 11px;
+    line-height: 1.15;
+  }
+  .breadcrumb-current {
+    display: none;
   }
   .menu-btn,
   .header-current-time,
@@ -1612,8 +1650,8 @@ onUnmounted(() => {
   }
   .mobile-header-logo {
     display: block;
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     flex: none;
     object-fit: contain;
   }
@@ -1621,23 +1659,50 @@ onUnmounted(() => {
     flex: none;
     margin-top: 0;
   }
+  .header-right :deep(.el-space__item) {
+    display: inline-flex;
+  }
+  .notify-btn,
   .user-info {
-    padding: 6px 8px;
+    box-sizing: border-box;
+    width: 34px;
+    height: 34px;
+  }
+  .notify-btn {
+    min-height: 34px;
+    padding: 0;
+    box-shadow: none;
+  }
+  .user-info {
+    justify-content: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    color: #475569;
+    background: transparent;
+  }
+  .user-info:hover,
+  .user-info:focus-visible {
+    border-color: #dbeafe;
+    outline: none;
+    background: #f8fafc;
   }
   .user-info > span {
     display: none;
   }
   .main-shell :deep(.el-main) {
+    padding: 0;
     padding-bottom: calc(84px + env(safe-area-inset-bottom));
+    background: #f1f5f9;
+  }
+  .app-wrapper--keyboard-open .main-shell :deep(.el-main) {
+    padding-bottom: 16px;
   }
 }
 
 @media (max-width: 480px) {
   .top-header {
-    padding: 8px 10px;
-  }
-  .top-header h2 {
-    font-size: 16px;
+    padding: 8px 14px;
   }
   .breadcrumb {
     max-width: 170px;

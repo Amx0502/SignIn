@@ -695,13 +695,6 @@ class AppState:
             self._record_run(account, task, "manual_task", "failed", error_msg, result, started_at)
             raise RuntimeError(error_msg)
 
-    def run_account_tasks(self, account_index: int) -> dict:
-        account = self.repository.list_accounts()[account_index]
-        tasks = [task for task in account.get("tasks", []) if task.get("enable", True)]
-        for task in tasks:
-            self.enqueue_task(account, task, source="manual_account")
-        return {"queued_count": len(tasks)}
-
     def run_all_enabled_tasks(self) -> dict:
         queued_count = 0
         accounts = self.repository.list_accounts()

@@ -6,8 +6,8 @@
       <p class="hero-desc">集中监控账号、任务、调度与 Token 刷新状态，提供清晰的数据视图与一键运维操作。</p>
     </section>
 
-    <el-row :gutter="18">
-      <el-col v-for="item in metrics" :key="item.label" :xs="24" :sm="12" :md="8">
+    <el-row :gutter="18" class="overview-metrics">
+      <el-col v-for="item in metrics" :key="item.label" :xs="8" :sm="12" :md="8">
         <el-card>
           <div class="metric-card">
             <div class="metric-top">
@@ -43,7 +43,7 @@
       </el-form>
     </el-card>
 
-    <el-card shadow="hover">
+    <el-card class="global-actions" shadow="hover">
       <template #header>
         <div class="card-header"><span class="card-title">全局操作</span><el-tag type="info">高频运维</el-tag></div>
       </template>

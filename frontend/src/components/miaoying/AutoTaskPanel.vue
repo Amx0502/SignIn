@@ -121,10 +121,9 @@
     </div>
 
     <div v-else class="task-empty">
-      <el-empty :description="tasks.length ? '没有符合筛选条件的任务' : '还没有自动任务'" :image-size="82" />
-      <p>{{ tasks.length ? '尝试清除搜索词或切换状态筛选。' : '新增任务后，系统会按照设定的时间自动执行签到。' }}</p>
-      <el-button v-if="!tasks.length" type="primary" :icon="Plus" @click="emit('create')">新增第一个任务</el-button>
-      <el-button v-else @click="resetFilters">清除筛选</el-button>
+      <el-empty :description="tasks.length ? '没有符合筛选条件的任务' : '暂无自动任务'" :image-size="82">
+        <el-button v-if="tasks.length" @click="resetFilters">清除筛选</el-button>
+      </el-empty>
     </div>
   </section>
 </template>
@@ -245,7 +244,6 @@ watch(() => props.tasks, rows => {
 .task-actions .el-button+.el-button{margin-left:0}
 .task-empty{display:grid;place-items:center;padding:30px 20px 38px;text-align:center}
 .task-empty :deep(.el-empty){padding-bottom:0}
-.task-empty p{margin:-6px 0 15px;color:#64748b;font-size:12px}
 @media(min-width:1500px){.task-list{grid-template-columns:repeat(2,minmax(0,1fr))}.task-details{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:13px}.task-detail--updated{grid-column:1/-1;padding-top:11px;border-top:1px solid #edf2f7;border-left:0}}
 @media(max-width:720px){.title-row{display:grid}.primary-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}.primary-actions .el-button{width:100%}.filter-row{display:grid;grid-template-columns:minmax(0,1fr) 132px}.task-details{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:13px}.task-detail--updated{grid-column:1/-1;padding-top:11px;border-top:1px solid #edf2f7;border-left:0}}
 @media(max-width:520px){.task-panel-head{padding:15px 14px}.filter-row{grid-template-columns:1fr}.filter-row .el-select{width:100%}.task-list{padding:14px}.task-card-head{grid-template-columns:auto minmax(0,1fr)}.task-state{grid-column:2;justify-content:space-between}.task-details{grid-template-columns:1fr;padding:2px 14px}.task-detail,.task-detail--updated{grid-column:auto;padding:12px 0;border-top:1px solid #edf2f7;border-left:0}.task-detail:first-child{border-top:0}.task-actions{display:grid;grid-template-columns:1fr 1fr auto}.task-actions .el-button{width:100%}}

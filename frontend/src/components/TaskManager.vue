@@ -6,7 +6,7 @@
           <template #header>
             <div class="card-header">
               <span>任务列表</span>
-              <el-space>
+              <div class="task-account-toolbar">
                 <el-select
                   v-model="selectedAccountIndex"
                   placeholder="请选择用户"
@@ -25,14 +25,29 @@
                   type="warning"
                   plain
                   :icon="Refresh"
-                  :disabled="selectedAccountIndex == null || selectedAccountIndex < 0 || tokenRefreshing"
+                  :disabled="
+                    selectedAccountIndex == null ||
+                    selectedAccountIndex < 0 ||
+                    tokenRefreshing
+                  "
                   :loading="tokenRefreshing"
                   @click="refreshSelectedAccountToken"
-                >刷新 Token</el-button>
-                <el-tag v-if="currentAccount && currentAccount.projects && currentAccount.projects.length > 0" type="info" size="small">
-                  任务上限 {{ (currentAccount.tasks || []).length }}/{{ currentAccount.projects.length }}
+                  >刷新 Token</el-button
+                >
+                <el-tag
+                  v-if="
+                    currentAccount &&
+                    currentAccount.projects &&
+                    currentAccount.projects.length > 0
+                  "
+                  type="info"
+                  size="small"
+                >
+                  任务上限 {{ (currentAccount.tasks || []).length }}/{{
+                    currentAccount.projects.length
+                  }}
                 </el-tag>
-              </el-space>
+              </div>
             </div>
           </template>
 
@@ -48,7 +63,9 @@
             <el-table-column prop="task.title" label="标题" min-width="80" />
             <el-table-column prop="task.index" label="序号" width="80" />
             <el-table-column label="文本" min-width="80" show-overflow-tooltip>
-              <template #default="scope">{{ scope.row.task.text || '-' }}</template>
+              <template #default="scope">{{
+                scope.row.task.text || "-"
+              }}</template>
             </el-table-column>
             <el-table-column label="位置" width="80">
               <template #default="scope">
@@ -59,19 +76,28 @@
             </el-table-column>
             <el-table-column label="图片" width="80">
               <template #default="scope">
-                <el-tag :type="(scope.row.task.pic_path || []).length ? 'warning' : 'info'" size="small">
+                <el-tag
+                  :type="
+                    (scope.row.task.pic_path || []).length ? 'warning' : 'info'
+                  "
+                  size="small"
+                >
                   {{ (scope.row.task.pic_path || []).length }}张
                 </el-tag>
               </template>
             </el-table-column>
             <el-table-column label="时间" min-width="80">
-              <template #default="scope">{{ (scope.row.task.times || []).join(', ') }}</template>
+              <template #default="scope">{{
+                (scope.row.task.times || []).join(", ")
+              }}</template>
             </el-table-column>
             <el-table-column label="日期" min-width="92">
               <template #default="scope">
-                {{ scope.row.task.date_mode === 'specific'
-                  ? `指定 ${(scope.row.task.run_dates || []).length} 天`
-                  : '每天' }}
+                {{
+                  scope.row.task.date_mode === "specific"
+                    ? `指定 ${(scope.row.task.run_dates || []).length} 天`
+                    : "每天"
+                }}
               </template>
             </el-table-column>
             <el-table-column label="状态" width="88">
@@ -79,7 +105,11 @@
                 <el-tag
                   :type="taskStatusType(scope.row.task)"
                   size="small"
-                  :title="scope.row.task.completed_at ? `完成于 ${formatDateTime(scope.row.task.completed_at)}` : ''"
+                  :title="
+                    scope.row.task.completed_at
+                      ? `完成于 ${formatDateTime(scope.row.task.completed_at)}`
+                      : ''
+                  "
                 >
                   {{ taskStatusText(scope.row.task) }}
                 </el-tag>
@@ -87,21 +117,33 @@
             </el-table-column>
             <el-table-column label="周末跳过" width="80">
               <template #default="scope">
-                <el-tag :type="scope.row.task.skip_weekends ? 'warning' : 'info'" size="small">
-                  {{ scope.row.task.skip_weekends ? '是' : '否' }}
+                <el-tag
+                  :type="scope.row.task.skip_weekends ? 'warning' : 'info'"
+                  size="small"
+                >
+                  {{ scope.row.task.skip_weekends ? "是" : "否" }}
                 </el-tag>
               </template>
             </el-table-column>
             <el-table-column label="企微通知" width="80">
               <template #default="scope">
-                <el-tag :type="scope.row.task.notify_wechat !== false ? 'success' : 'info'" size="small">
-                  {{ scope.row.task.notify_wechat !== false ? '是' : '否' }}
+                <el-tag
+                  :type="
+                    scope.row.task.notify_wechat !== false ? 'success' : 'info'
+                  "
+                  size="small"
+                >
+                  {{ scope.row.task.notify_wechat !== false ? "是" : "否" }}
                 </el-tag>
               </template>
             </el-table-column>
           </el-table>
           <div class="mobile-task-list">
-            <el-empty v-if="!accountTasks.length" description="当前账号下暂无任务" :image-size="72" />
+            <el-empty
+              v-if="!accountTasks.length"
+              description="当前账号下暂无任务"
+              :image-size="72"
+            />
             <article
               v-for="row in accountTasks"
               :key="row.actualIndex"
@@ -110,19 +152,51 @@
               @click="onSelectTask(row)"
             >
               <header>
-                <div><strong>{{ row.task.title || '未命名任务' }}</strong><span>序号 {{ row.task.index }}</span></div>
-                <el-tag :type="taskStatusType(row.task)" size="small">{{ taskStatusText(row.task) }}</el-tag>
+                <div class="mobile-task-card__heading">
+                  <strong>{{ row.task.title || "未命名任务" }}</strong>
+                  <span>项目序号 {{ row.task.index }}</span>
+                </div>
+                <el-tag :type="taskStatusType(row.task)" size="small">{{
+                  taskStatusText(row.task)
+                }}</el-tag>
               </header>
-              <p>{{ row.task.text || '无签到文本' }}</p>
+              <p :class="{ 'is-empty': !row.task.text }">
+                {{ row.task.text || "未设置签到文本" }}
+              </p>
               <div class="mobile-task-card__facts">
-                <span>时间 <strong>{{ (row.task.times || []).join('、') || '未设置' }}</strong></span>
-                <span>日期 <strong>{{ row.task.date_mode === 'specific' ? `指定 ${(row.task.run_dates || []).length} 天` : '每天' }}</strong></span>
-                <span>位置 <strong>{{ locationTagText(row.task) }}</strong></span>
-                <span>图片 <strong>{{ (row.task.pic_path || []).length }} 张</strong></span>
+                <span
+                  >执行时间
+                  <strong>{{
+                    (row.task.times || []).join("、") || "未设置"
+                  }}</strong></span
+                >
+                <span
+                  >日期
+                  <strong>{{
+                    row.task.date_mode === "specific"
+                      ? `指定 ${(row.task.run_dates || []).length} 天`
+                      : "每天"
+                  }}</strong></span
+                >
+                <span
+                  >位置 <strong>{{ locationTagText(row.task) }}</strong></span
+                >
+                <span
+                  >图片
+                  <strong
+                    >{{ (row.task.pic_path || []).length }} 张</strong
+                  ></span
+                >
               </div>
               <footer>
-                <span>{{ row.task.skip_weekends ? '跳过周末' : '周末执行' }} · {{ row.task.notify_wechat !== false ? '企微通知' : '不通知' }}</span>
-                <el-button link type="primary" @click.stop="onSelectTask(row)">编辑任务</el-button>
+                <div class="mobile-task-card__policies">
+                  <span>{{
+                    row.task.skip_weekends ? "跳过周末" : "周末执行"
+                  }}</span>
+                  <span>{{
+                    row.task.notify_wechat !== false ? "企微通知" : "不通知"
+                  }}</span>
+                </div>
               </footer>
             </article>
           </div>
@@ -130,11 +204,23 @@
           <div class="form-section project-section">
             <div class="section-header">
               <span>签到项目列表</span>
-              <el-button type="primary" plain :icon="Search" size="small" @click="fetchProjects" :disabled="selectedAccountIndex < 0 || projectsLoading" :loading="projectsLoading">
-                {{ projectsLoading ? '获取中…' : '获取项目列表' }}
+              <el-button
+                type="primary"
+                plain
+                :icon="Search"
+                size="small"
+                @click="fetchProjects"
+                :disabled="selectedAccountIndex < 0 || projectsLoading"
+                :loading="projectsLoading"
+              >
+                {{ projectsLoading ? "获取中…" : "获取项目列表" }}
               </el-button>
             </div>
-            <el-empty v-if="!projects.length" description="先选择账号，再点击“获取签到项目列表”" :image-size="80" />
+            <el-empty
+              v-if="!projects.length"
+              description="先选择账号，再点击“获取签到项目列表”"
+              :image-size="80"
+            />
             <el-scrollbar v-else max-height="220">
               <div
                 v-for="(item, idx) in projects"
@@ -143,7 +229,9 @@
                 @click="applyProject(idx, item)"
               >
                 <span class="project-index">{{ idx + 1 }}</span>
-                <span class="project-title">{{ item.title || '未命名项目' }}</span>
+                <span class="project-title">{{
+                  item.title || "未命名项目"
+                }}</span>
               </div>
             </el-scrollbar>
           </div>
@@ -155,20 +243,41 @@
           <template #header>
             <div class="card-header">
               <span>任务设置</span>
-              <el-tag :type="(form.pic_path && form.pic_path.length) ? 'warning' : 'primary'">
-                {{ (form.pic_path && form.pic_path.length) ? '图片签到' : '普通签到' }}
+              <el-tag
+                :type="
+                  form.pic_path && form.pic_path.length ? 'warning' : 'primary'
+                "
+              >
+                {{
+                  form.pic_path && form.pic_path.length
+                    ? "图片签到"
+                    : "普通签到"
+                }}
               </el-tag>
             </div>
           </template>
-          <el-form :model="form" label-width="100px" :rules="rules" ref="formRef">
+          <el-form
+            class="task-settings-form"
+            :model="form"
+            label-width="100px"
+            :rules="rules"
+            ref="formRef"
+          >
             <el-form-item label="任务标题" prop="title">
               <el-input v-model="form.title" placeholder="请输入任务标题" />
             </el-form-item>
             <el-form-item label="项目序号" prop="index">
-              <el-input-number v-model="form.index" :min="1" style="width: 100%" />
+              <el-input-number
+                v-model="form.index"
+                :min="1"
+                style="width: 100%"
+              />
             </el-form-item>
             <el-form-item label="执行时间" prop="times">
-              <el-input v-model="timesText" placeholder="08:00:00 18:00:00（支持空格、逗号、竖线等分隔符）" />
+              <el-input
+                v-model="timesText"
+                placeholder="08:00:00 18:00:00（支持空格、逗号、竖线等分隔符）"
+              />
             </el-form-item>
             <el-form-item label="执行日期" prop="run_dates">
               <TaskDateSchedule
@@ -182,11 +291,18 @@
                 @update:run-dates="form.run_dates = $event"
                 @update:skip-dates="form.skip_dates = $event"
                 @update:skip-weekends="form.skip_weekends = $event"
-                @update:auto-disable-after-finish="form.auto_disable_after_finish = $event"
+                @update:auto-disable-after-finish="
+                  form.auto_disable_after_finish = $event
+                "
               />
             </el-form-item>
             <el-form-item label="签到文本" prop="text">
-              <el-input v-model="form.text" type="textarea" :rows="3" placeholder="请输入签到时需要提交的文本内容" />
+              <el-input
+                v-model="form.text"
+                type="textarea"
+                :rows="3"
+                placeholder="请输入签到时需要提交的文本内容"
+              />
             </el-form-item>
             <el-form-item label="签到位置">
               <el-radio-group v-model="locationMode">
@@ -201,344 +317,399 @@
                 :on-remove="onImageRemove"
                 :limit="3"
               />
-              <div class="upload-tip">最多可上传 3 张图片，留空表示不使用图片签到</div>
+              <div class="upload-tip">
+                最多可上传 3 张图片，留空表示不使用图片签到
+              </div>
             </el-form-item>
-            <el-form-item>
+            <el-form-item class="task-primary-actions">
               <el-checkbox v-model="form.enable">启用任务</el-checkbox>
-              <el-checkbox v-model="form.notify_wechat">发送企业微信通知</el-checkbox>
+              <el-checkbox v-model="form.notify_wechat"
+                >发送企业微信通知</el-checkbox
+              >
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="saveTask">保存任务</el-button>
               <el-button @click="createNew">重置</el-button>
             </el-form-item>
-            <el-form-item v-if="selectedActualIndex >= 0">
-              <el-space wrap>
-                <el-button type="success" :icon="VideoPlay" :loading="runningTask" :disabled="runningTask" @click="runTask">执行选中任务</el-button>
-                <el-button type="danger" :icon="Delete" @click="deleteTask">删除任务</el-button>
-              </el-space>
+            <el-form-item
+              v-if="selectedActualIndex >= 0"
+              class="task-secondary-actions"
+            >
+              <div class="task-secondary-grid">
+                <el-button
+                  type="success"
+                  :icon="VideoPlay"
+                  :loading="runningTask"
+                  :disabled="runningTask"
+                  @click="runTask"
+                  >执行选中任务</el-button
+                >
+                <el-button type="danger" :icon="Delete" @click="deleteTask"
+                  >删除任务</el-button
+                >
+              </div>
             </el-form-item>
           </el-form>
         </el-card>
       </el-col>
     </el-row>
 
-    <CheckinResultDialog v-model="checkinResultVisible" :result="checkinResult" />
+    <CheckinResultDialog
+      v-model="checkinResultVisible"
+      :result="checkinResult"
+    />
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted, watch } from 'vue'
-import { Search, VideoPlay, Delete, Refresh } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import CheckinResultDialog from './CheckinResultDialog.vue'
-import TaskDateSchedule from './TaskDateSchedule.vue'
-import TaskImageUpload from './TaskImageUpload.vue'
-import { useAppState } from '../composables/useAppState'
-import { createCheckinResult } from '../utils/checkinResult'
-import api from '../api'
+import { reactive, ref, computed, onMounted, watch } from "vue";
+import { Search, VideoPlay, Delete, Refresh } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import CheckinResultDialog from "./CheckinResultDialog.vue";
+import TaskDateSchedule from "./TaskDateSchedule.vue";
+import TaskImageUpload from "./TaskImageUpload.vue";
+import { useAppState } from "../composables/useAppState";
+import { createCheckinResult } from "../utils/checkinResult";
+import api from "../api";
 
-const { state, refreshState, refreshLogs, selectedAccountIndex } = useAppState()
+const { state, refreshState, refreshLogs, selectedAccountIndex } =
+  useAppState();
 
-const selectedActualIndex = ref(-1)
-const projects = ref([])
-const projectsLoading = ref(false)
-const tokenRefreshing = ref(false)
-const formRef = ref(null)
-const fileList = ref([])
-const checkinResultVisible = ref(false)
-const checkinResult = ref(null)
-const runningTask = ref(false)
-const locationMode = ref('none')
+const selectedActualIndex = ref(-1);
+const projects = ref([]);
+const projectsLoading = ref(false);
+const tokenRefreshing = ref(false);
+const formRef = ref(null);
+const fileList = ref([]);
+const checkinResultVisible = ref(false);
+const checkinResult = ref(null);
+const runningTask = ref(false);
+const locationMode = ref("none");
 
 const form = reactive({
-  title: '',
+  title: "",
   index: 1,
   times: [],
-  text: '',
+  text: "",
   pic_path: [],
   enable: true,
   use_location: false,
   skip_weekends: false,
-  date_mode: 'daily',
+  date_mode: "daily",
   run_dates: [],
   skip_dates: [],
   auto_disable_after_finish: true,
-  mode: 'normal',
-  notify_wechat: true
-})
+  mode: "normal",
+  notify_wechat: true,
+});
 
 // Keep the input text independent from the normalized array.  Rebuilding the
 // input value from `form.times` on every keystroke causes the browser caret to
 // jump/reset after the first complete time (for example, after `08:00:00`).
 // The raw text stays untouched while typing and is parsed only for form data.
-const timesText = ref('')
+const timesText = ref("");
 
 function parseTimesText(value) {
-  return String(value || '')
+  return String(value || "")
     .split(/[\s,|;，；、]+/)
-    .map(s => s.trim())
-    .filter(Boolean)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 watch(timesText, (value) => {
-  form.times = parseTimesText(value)
-})
+  form.times = parseTimesText(value);
+});
 
 const rules = {
-  title: [{ required: true, message: '请输入任务标题', trigger: 'blur' }],
-  index: [{ required: true, message: '请输入项目序号', trigger: 'blur' }],
-  times: [{
-    validator: (rule, value, callback) => {
-      if (!value || value.length === 0) {
-        callback(new Error('请至少设置一个执行时间'))
-      } else {
-        callback()
-      }
+  title: [{ required: true, message: "请输入任务标题", trigger: "blur" }],
+  index: [{ required: true, message: "请输入项目序号", trigger: "blur" }],
+  times: [
+    {
+      validator: (rule, value, callback) => {
+        if (!value || value.length === 0) {
+          callback(new Error("请至少设置一个执行时间"));
+        } else {
+          callback();
+        }
+      },
+      trigger: "blur",
     },
-    trigger: 'blur'
-  }]
-}
+  ],
+};
 
-const currentAccount = computed(() => state.value.accounts[selectedAccountIndex.value] || null)
+const currentAccount = computed(
+  () => state.value.accounts[selectedAccountIndex.value] || null,
+);
 
 watch(locationMode, (val) => {
-  if (val === 'none') {
-    form.use_location = false
-  } else if (val === 'auto') {
-    form.use_location = true
+  if (val === "none") {
+    form.use_location = false;
+  } else if (val === "auto") {
+    form.use_location = true;
   }
-})
+});
 
 function syncLocationMode() {
-  locationMode.value = form.use_location ? 'auto' : 'none'
+  locationMode.value = form.use_location ? "auto" : "none";
 }
 
 function locationTagType(task) {
-  return task.use_location ? 'success' : 'info'
+  return task.use_location ? "success" : "info";
 }
 
 function locationTagText(task) {
-  return task.use_location ? '自动' : '无'
+  return task.use_location ? "自动" : "无";
 }
 
 function taskStatusText(task) {
-  if (task.completed_at) return task.completion_result === 'failed' ? '已结束' : '已完成'
-  return task.enable ? '启用' : '禁用'
+  if (task.completed_at)
+    return task.completion_result === "failed" ? "已结束" : "已完成";
+  return task.enable ? "启用" : "禁用";
 }
 
 function taskStatusType(task) {
-  if (task.completed_at) return task.completion_result === 'failed' ? 'warning' : 'primary'
-  return task.enable ? 'success' : 'info'
+  if (task.completed_at)
+    return task.completion_result === "failed" ? "warning" : "primary";
+  return task.enable ? "success" : "info";
 }
 
 function formatDateTime(value) {
-  return String(value || '').replace('T', ' ')
+  return String(value || "").replace("T", " ");
 }
 
 const accountTasks = computed(() => {
-  if (!currentAccount.value) return []
-  return (currentAccount.value.tasks || []).map((task, actualIndex) => ({ task, actualIndex }))
-})
-
-
+  if (!currentAccount.value) return [];
+  return (currentAccount.value.tasks || []).map((task, actualIndex) => ({
+    task,
+    actualIndex,
+  }));
+});
 
 onMounted(async () => {
   if (selectedAccountIndex.value != null) {
-    await fetchProjects()
+    await fetchProjects();
   }
-})
+});
 
 async function onAccountChange() {
-  selectedActualIndex.value = -1
-  projects.value = currentAccount.value?.projects || []
-  createNew()
+  selectedActualIndex.value = -1;
+  projects.value = currentAccount.value?.projects || [];
+  createNew();
   if (selectedAccountIndex.value != null) {
-    await fetchProjects()
+    await fetchProjects();
   }
 }
 
 function syncFileList() {
-  const paths = Array.isArray(form.pic_path) ? form.pic_path : (form.pic_path ? [form.pic_path] : [])
+  const paths = Array.isArray(form.pic_path)
+    ? form.pic_path
+    : form.pic_path
+      ? [form.pic_path]
+      : [];
   fileList.value = paths.map((path, idx) => {
-    const name = String(path).replace(/\\/g, '/').split('/').pop() || 'image.jpg'
-    const url = path.startsWith('http') ? path : `/uploads/${name}`
-    return { uid: `${idx}`, name, url, path, status: 'success' }
-  })
+    const name =
+      String(path).replace(/\\/g, "/").split("/").pop() || "image.jpg";
+    const url = path.startsWith("http") ? path : `/uploads/${name}`;
+    return { uid: `${idx}`, name, url, path, status: "success" };
+  });
 }
 
 function createNew() {
-  selectedActualIndex.value = -1
-  form.title = ''
-  form.index = 1
-  form.times = []
-  timesText.value = ''
-  form.text = ''
-  form.pic_path = []
-  form.enable = true
-  form.use_location = false
-  form.skip_weekends = false
-  form.date_mode = 'daily'
-  form.run_dates = []
-  form.skip_dates = []
-  form.auto_disable_after_finish = true
-  form.mode = 'normal'
-  form.notify_wechat = true
-  locationMode.value = 'none'
-  fileList.value = []
+  selectedActualIndex.value = -1;
+  form.title = "";
+  form.index = 1;
+  form.times = [];
+  timesText.value = "";
+  form.text = "";
+  form.pic_path = [];
+  form.enable = true;
+  form.use_location = false;
+  form.skip_weekends = false;
+  form.date_mode = "daily";
+  form.run_dates = [];
+  form.skip_dates = [];
+  form.auto_disable_after_finish = true;
+  form.mode = "normal";
+  form.notify_wechat = true;
+  locationMode.value = "none";
+  fileList.value = [];
 }
 
 function onSelectTask(row) {
-  if (!row) return
-  selectedActualIndex.value = row.actualIndex
-  const task = row.task
-  form.title = task.title
-  form.index = task.index
-  form.times = [...(task.times || [])]
-  timesText.value = form.times.join(', ')
-  form.text = task.text
-  const taskPicPaths = Array.isArray(task.pic_path) ? task.pic_path : (task.pic_path ? [task.pic_path] : [])
-  form.pic_path = taskPicPaths
-  form.enable = task.enable
-  form.use_location = task.use_location
-  form.skip_weekends = task.skip_weekends
-  form.date_mode = task.date_mode || 'daily'
-  form.run_dates = [...(task.run_dates || [])]
-  form.skip_dates = [...(task.skip_dates || [])]
-  form.auto_disable_after_finish = task.auto_disable_after_finish === true
-  form.mode = task.mode || (taskPicPaths.length ? 'image' : 'normal')
-  form.notify_wechat = task.notify_wechat !== false
-  syncLocationMode()
-  syncFileList()
+  if (!row) return;
+  selectedActualIndex.value = row.actualIndex;
+  const task = row.task;
+  form.title = task.title;
+  form.index = task.index;
+  form.times = [...(task.times || [])];
+  timesText.value = form.times.join(", ");
+  form.text = task.text;
+  const taskPicPaths = Array.isArray(task.pic_path)
+    ? task.pic_path
+    : task.pic_path
+      ? [task.pic_path]
+      : [];
+  form.pic_path = taskPicPaths;
+  form.enable = task.enable;
+  form.use_location = task.use_location;
+  form.skip_weekends = task.skip_weekends;
+  form.date_mode = task.date_mode || "daily";
+  form.run_dates = [...(task.run_dates || [])];
+  form.skip_dates = [...(task.skip_dates || [])];
+  form.auto_disable_after_finish = task.auto_disable_after_finish === true;
+  form.mode = task.mode || (taskPicPaths.length ? "image" : "normal");
+  form.notify_wechat = task.notify_wechat !== false;
+  syncLocationMode();
+  syncFileList();
 }
 
 async function customUpload(options) {
   try {
-    const res = await api.uploadImage(options.file)
+    const res = await api.uploadImage(options.file);
     if (res.data && res.data.path) {
-      if (!Array.isArray(form.pic_path)) form.pic_path = []
-      form.pic_path.push(res.data.path)
-      syncFileList()
+      if (!Array.isArray(form.pic_path)) form.pic_path = [];
+      form.pic_path.push(res.data.path);
+      syncFileList();
     }
-    options.onSuccess(res)
-    ElMessage.success('图片上传成功')
+    options.onSuccess(res);
+    ElMessage.success("图片上传成功");
   } catch (err) {
-    options.onError(err)
-    ElMessage.error(err.message || '图片上传失败')
+    options.onError(err);
+    ElMessage.error(err.message || "图片上传失败");
   }
 }
 
 function onImageRemove(file, fileList) {
-  const removedPath = file.path || file.url
-  form.pic_path = form.pic_path.filter(p => {
-    const pName = String(p).replace(/\\/g, '/').split('/').pop()
-    const rName = String(removedPath).replace(/\\/g, '/').split('/').pop()
-    return pName !== rName
-  })
-  syncFileList()
+  const removedPath = file.path || file.url;
+  form.pic_path = form.pic_path.filter((p) => {
+    const pName = String(p).replace(/\\/g, "/").split("/").pop();
+    const rName = String(removedPath).replace(/\\/g, "/").split("/").pop();
+    return pName !== rName;
+  });
+  syncFileList();
 }
 
 async function fetchProjects() {
-  if (selectedAccountIndex.value == null || projectsLoading.value) return
-  projectsLoading.value = true
+  if (selectedAccountIndex.value == null || projectsLoading.value) return;
+  projectsLoading.value = true;
   try {
-    const res = await api.fetchProjects(selectedAccountIndex.value)
-    projects.value = res.data || []
-    ElMessage.success(`项目列表获取成功，共 ${projects.value.length} 项`)
+    const res = await api.fetchProjects(selectedAccountIndex.value);
+    projects.value = res.data || [];
+    ElMessage.success(`项目列表获取成功，共 ${projects.value.length} 项`);
   } catch (err) {
-    ElMessage.error(err.message || '项目列表获取失败')
+    ElMessage.error(err.message || "项目列表获取失败");
   } finally {
-    projectsLoading.value = false
+    projectsLoading.value = false;
   }
 }
 
 async function refreshSelectedAccountToken() {
-  if (selectedAccountIndex.value == null || selectedAccountIndex.value < 0 || tokenRefreshing.value) return
-  tokenRefreshing.value = true
+  if (
+    selectedAccountIndex.value == null ||
+    selectedAccountIndex.value < 0 ||
+    tokenRefreshing.value
+  )
+    return;
+  tokenRefreshing.value = true;
   try {
-    await api.refreshAccountToken(selectedAccountIndex.value)
-    await Promise.all([refreshState(), refreshLogs()])
-    ElMessage.success(`账号「${currentAccount.value?.name || '当前账号'}」Token 已刷新`)
+    await api.refreshAccountToken(selectedAccountIndex.value);
+    await Promise.all([refreshState(), refreshLogs()]);
+    ElMessage.success(
+      `账号「${currentAccount.value?.name || "当前账号"}」Token 已刷新`,
+    );
   } catch (err) {
-    ElMessage.error(err.message || 'Token 刷新失败')
+    ElMessage.error(err.message || "Token 刷新失败");
   } finally {
-    tokenRefreshing.value = false
+    tokenRefreshing.value = false;
   }
 }
 
 function applyProject(idx, item) {
-  form.index = idx + 1
-  if (!form.title) form.title = item.title || `任务${idx + 1}`
+  form.index = idx + 1;
+  if (!form.title) form.title = item.title || `任务${idx + 1}`;
 }
 
 async function saveTask() {
   // Parse the latest raw value before validation/submission without rewriting
   // what the user typed into the input.
-  form.times = parseTimesText(timesText.value)
-  if (form.date_mode === 'specific' && !form.run_dates.length) {
-    ElMessage.warning('指定日期模式下请至少选择一个执行日期')
-    return
+  form.times = parseTimesText(timesText.value);
+  if (form.date_mode === "specific" && !form.run_dates.length) {
+    ElMessage.warning("指定日期模式下请至少选择一个执行日期");
+    return;
   }
-  const valid = await formRef.value.validate().catch(() => false)
-  if (!valid) return
+  const valid = await formRef.value.validate().catch(() => false);
+  if (!valid) return;
   if (selectedAccountIndex.value == null) {
-    ElMessage.warning('请先选择账号')
-    return
+    ElMessage.warning("请先选择账号");
+    return;
   }
-  form.mode = (form.pic_path && form.pic_path.length) ? 'image' : 'normal'
+  form.mode = form.pic_path && form.pic_path.length ? "image" : "normal";
   try {
-    const account = state.value.accounts[selectedAccountIndex.value]
-    const tasks = account?.tasks || []
-    const existingTaskIndex = tasks.findIndex(t => t.index === form.index)
-    
+    const account = state.value.accounts[selectedAccountIndex.value];
+    const tasks = account?.tasks || [];
+    const existingTaskIndex = tasks.findIndex((t) => t.index === form.index);
+
     if (existingTaskIndex >= 0) {
-      await api.updateTask(selectedAccountIndex.value, existingTaskIndex, { ...form })
-      ElMessage.success('任务已更新')
+      await api.updateTask(selectedAccountIndex.value, existingTaskIndex, {
+        ...form,
+      });
+      ElMessage.success("任务已更新");
     } else {
-      const projectCount = account?.projects?.length || 0
+      const projectCount = account?.projects?.length || 0;
       if (projectCount > 0 && tasks.length >= projectCount) {
-        ElMessage.warning(`任务数量已达上限，最多可添加 ${projectCount} 个任务`)
-        return
+        ElMessage.warning(
+          `任务数量已达上限，最多可添加 ${projectCount} 个任务`,
+        );
+        return;
       }
-      await api.addTask(selectedAccountIndex.value, { ...form })
-      ElMessage.success('任务已新增')
-      createNew()
+      await api.addTask(selectedAccountIndex.value, { ...form });
+      ElMessage.success("任务已新增");
+      createNew();
     }
-    await refreshState()
-    await refreshLogs()
+    await refreshState();
+    await refreshLogs();
   } catch (err) {
-    ElMessage.error(err.message)
+    ElMessage.error(err.message);
   }
 }
 
 async function runTask() {
-  if (runningTask.value || selectedAccountIndex.value == null || selectedActualIndex.value < 0) return
-  runningTask.value = true
+  if (
+    runningTask.value ||
+    selectedAccountIndex.value == null ||
+    selectedActualIndex.value < 0
+  )
+    return;
+  runningTask.value = true;
   try {
-    const res = await api.runTask(selectedAccountIndex.value, selectedActualIndex.value)
-    checkinResult.value = createCheckinResult(res.data || {})
-    checkinResultVisible.value = true
-    await refreshLogs()
+    const res = await api.runTask(
+      selectedAccountIndex.value,
+      selectedActualIndex.value,
+    );
+    checkinResult.value = createCheckinResult(res.data || {});
+    checkinResultVisible.value = true;
+    await refreshLogs();
   } catch (err) {
-    ElMessage.error(err.message)
+    ElMessage.error(err.message);
   } finally {
-    runningTask.value = false
+    runningTask.value = false;
   }
 }
 
 async function deleteTask() {
   try {
-    await ElMessageBox.confirm('确认删除当前任务吗？', '提示', { type: 'warning' })
-    await api.deleteTask(selectedAccountIndex.value, selectedActualIndex.value)
-    createNew()
-    await refreshState()
-    await refreshLogs()
-    ElMessage.success('任务已删除')
+    await ElMessageBox.confirm("确认删除当前任务吗？", "提示", {
+      type: "warning",
+    });
+    await api.deleteTask(selectedAccountIndex.value, selectedActualIndex.value);
+    createNew();
+    await refreshState();
+    await refreshLogs();
+    ElMessage.success("任务已删除");
   } catch (err) {
-    if (err !== 'cancel') ElMessage.error(err.message)
+    if (err !== "cancel") ElMessage.error(err.message);
   }
 }
-
-
 </script>
 
 <style scoped>
@@ -616,7 +787,20 @@ async function deleteTask() {
   color: #94a3b8;
   margin-top: 8px;
 }
-.mobile-task-list { display: none; }
+.mobile-task-list {
+  display: none;
+}
+.task-account-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.task-secondary-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
 /* The sidebar reduces the real content width considerably.  Keep the two
    cards stacked until there is enough room for the form labels and calendar. */
@@ -638,75 +822,241 @@ async function deleteTask() {
 }
 
 @media (max-width: 768px) {
-  .desktop-task-table { display: none; }
-  .mobile-task-list { display: grid; gap: 10px; }
-  .mobile-task-card { overflow: hidden; border: 1px solid #e1e9f4; border-radius: 13px; background: #fff; transition: border-color .2s, background .2s; }
-  .mobile-task-card.is-active { border-color: #60a5fa; background: #f4f8ff; }
-  .mobile-task-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 13px 13px 8px; }
-  .mobile-task-card header strong, .mobile-task-card header span { display: block; }
-  .mobile-task-card header strong { color: #172033; font-size: 14px; }
-  .mobile-task-card header span { margin-top: 3px; color: #94a3b8; font-size: 11px; }
-  .mobile-task-card > p { margin: 0; padding: 0 13px 10px; color: #64748b; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
-  .mobile-task-card__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; padding: 10px 13px; background: rgb(248 250 252 / 80%); }
-  .mobile-task-card__facts span { min-width: 0; color: #94a3b8; font-size: 11px; }
-  .mobile-task-card__facts strong { display: block; margin-top: 2px; overflow: hidden; color: #475569; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-  .mobile-task-card footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 13px; color: #64748b; font-size: 11px; }
+  .task-layout {
+    row-gap: 8px;
+  }
+  .desktop-task-table {
+    display: none;
+  }
+  .mobile-task-list {
+    display: grid;
+    gap: 8px !important;
+    background: #f1f5f9;
+  }
+  .mobile-task-card {
+    overflow: hidden;
+    border: 0 !important;
+    border-left: 3px solid #cbd5e1 !important;
+    border-radius: 0;
+    background: #fff;
+    transition:
+      border-color 0.2s,
+      background 0.2s;
+  }
+  .mobile-task-card.is-active {
+    border-left: 3px solid #3b82f6 !important;
+    background: #f4f8ff !important;
+    box-shadow: none !important;
+  }
+  .mobile-task-card.is-active > header,
+  .mobile-task-card.is-active > p,
+  .mobile-task-card.is-active > .mobile-task-card__facts,
+  .mobile-task-card.is-active > footer {
+    background: transparent !important;
+  }
+  .mobile-task-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px 8px;
+  }
+  .mobile-task-card__heading {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+  .mobile-task-card header strong,
+  .mobile-task-card__heading span {
+    display: block;
+  }
+  .mobile-task-card header strong {
+    overflow: hidden;
+    color: #172033;
+    font-size: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-task-card__heading span {
+    flex: none;
+    color: #94a3b8;
+    font-size: 11px;
+  }
+  .mobile-task-card > p {
+    margin: 0;
+    padding: 0 16px 12px;
+    color: #475569;
+    font-size: 12px;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+  .mobile-task-card > p.is-empty {
+    color: #94a3b8;
+  }
+  .mobile-task-card__facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    padding: 0 16px 13px;
+  }
+  .mobile-task-card__facts span {
+    min-width: 0;
+    padding-left: 10px;
+    border-left: 1px solid #e2e8f0;
+    color: #94a3b8;
+    font-size: 11px;
+  }
+  .mobile-task-card__facts span:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .mobile-task-card__facts strong {
+    display: block;
+    margin-top: 3px;
+    overflow: hidden;
+    color: #334155;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-task-card footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    min-height: 42px;
+    padding: 8px 16px;
+    border-top: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 11px;
+  }
+  .mobile-task-card__policies {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .mobile-task-card__policies span {
+    padding: 3px 7px;
+    border-radius: 999px;
+    color: #475569;
+    background: #f1f5f9;
+  }
+  .task-account-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+  }
+  .task-account-toolbar .el-select {
+    width: 100% !important;
+  }
+  .task-account-toolbar .el-button {
+    min-height: 40px;
+    margin: 0;
+  }
+  .task-account-toolbar .el-tag {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
   .section-header {
-    flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 8px;
   }
-  
+  .section-header .el-button {
+    min-height: 40px;
+    margin: 0;
+  }
+  .project-section {
+    margin: 8px -16px 0;
+    padding: 16px;
+    border-top: 8px solid #f1f5f9;
+    border-radius: 0;
+    background: #fff;
+  }
+
   .project-item {
     padding: 10px;
   }
-  
+
   .project-title {
     font-size: 13px;
   }
-  
-  .task-form-card :deep(.el-form-item__label) {
-    width: 80px !important;
-    font-size: 12px;
+
+  .task-settings-form :deep(.el-form-item) {
+    display: block;
+    margin-bottom: 20px;
   }
-  
-  .task-form-card :deep(.el-form-item__content) {
+  .task-settings-form :deep(.el-form-item__label) {
+    display: block;
+    width: 100% !important;
+    height: auto;
+    margin-bottom: 8px;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: left;
+  }
+  .task-settings-form :deep(.el-form-item__content) {
+    width: 100%;
     margin-left: 0 !important;
+  }
+  .task-primary-actions :deep(.el-form-item__content) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .task-primary-actions .el-button {
+    min-height: 44px;
+    margin: 0;
+  }
+  .task-secondary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .task-secondary-grid .el-button {
+    width: 100%;
+    min-height: 44px;
+    margin: 0;
   }
 }
 
 @media (max-width: 480px) {
-  .project-section {
-    padding: 12px;
+  .mobile-task-card__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 0;
   }
-  
+  .mobile-task-card__facts span:nth-child(3) {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .project-section {
+    padding: 14px 16px;
+  }
+
   .project-item {
     padding: 8px;
     gap: 8px;
   }
-  
+
   .project-index {
     width: 22px;
     height: 22px;
     font-size: 11px;
   }
-  
+
   .project-title {
     font-size: 12px;
   }
-  
-  .task-form-card :deep(.el-form-item__label) {
-    width: 70px !important;
-    font-size: 11px;
+
+  .task-account-toolbar {
+    grid-template-columns: 1fr;
   }
-  
-  .task-form-card :deep(.el-form-item__content) {
-    margin-left: 0 !important;
-  }
-  
-  .el-button {
+  .task-account-toolbar .el-button {
     width: 100%;
-    margin-bottom: 4px;
+  }
+  .task-settings-form :deep(.el-form-item__label) {
+    font-size: 12px;
   }
 }
 </style>

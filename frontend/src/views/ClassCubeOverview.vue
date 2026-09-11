@@ -84,4 +84,13 @@ onMounted(async () => {
 
 <style scoped>
 .cube-subpage{display:grid;gap:18px}.cube-hero{padding:28px;border-radius:24px;color:#fff;background:linear-gradient(125deg,#1d4ed8,#0ea5e9);box-shadow:0 20px 50px #2563eb38}.cube-hero span{font-size:11px;letter-spacing:.18em}.cube-hero h1{margin:10px 0 6px;font-size:30px}.cube-hero p{margin:0;color:#e0f2fe}.cube-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.cube-stats .el-card{display:grid;gap:8px}.cube-stats strong{font-size:30px;color:#1d4ed8}.cube-stats span{color:#64748b}.setting-head{display:flex;align-items:center;justify-content:space-between}@media(max-width:700px){.cube-stats{grid-template-columns:1fr}}
+@media(max-width:700px){
+  .cube-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:0;background:#fff}
+  .cube-stats .el-card{border-right:1px solid #e8edf5!important;text-align:center}
+  .cube-stats .el-card:last-child{border-right:0!important}
+  .cube-stats :deep(.el-card__body){padding:16px 8px!important}
+  .cube-stats strong{font-size:26px}
+  .cube-stats span{font-size:12px}
+  .setting-head{align-items:flex-start;gap:10px;flex-direction:column}
+}
 </style>

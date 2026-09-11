@@ -225,4 +225,39 @@ async function handleLogin() {
 :deep(.el-form-item__label) {
   color: #cbd5e1;
 }
+
+@media (max-width: 768px) {
+  .login-container {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .login-card {
+    display: flex;
+    width: 100%;
+    max-width: none;
+    min-height: 100dvh;
+    flex-direction: column;
+    justify-content: center;
+    padding: max(32px, env(safe-area-inset-top)) 24px max(28px, env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .login-header {
+    margin-bottom: 28px;
+  }
+
+  .brand-logo {
+    width: 68px;
+    height: 68px;
+    border-radius: 18px;
+  }
+
+  .login-header h1 {
+    font-size: 24px;
+  }
+}
 </style>
