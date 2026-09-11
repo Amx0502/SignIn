@@ -113,7 +113,7 @@
       <el-button v-else @click="resetFilters">清除筛选</el-button>
     </div>
 
-    <el-dialog v-model="editorVisible" :title="editingId ? '编辑自动任务' : '新增自动任务'" width="min(1180px, 96vw)" class="task-editor-dialog" align-center append-to-body>
+    <el-dialog v-model="editorVisible" :title="editingId ? '编辑自动任务' : '新增自动任务'" width="min(1180px, 96vw)" class="task-editor-dialog" align-center append-to-body :close-on-click-modal="false" :before-close="beforeEditorClose">
       <el-form label-position="top" class="task-editor-form">
         <div class="editor-layout">
           <section class="editor-section">
@@ -196,7 +196,7 @@
         </div>
       </el-form>
       <template #footer>
-        <el-button @click="editorVisible = false">取消</el-button>
+        <el-button @click="requestEditorClose">取消</el-button>
         <el-button type="primary" :loading="saving" @click="save">保存任务</el-button>
       </template>
     </el-dialog>
@@ -254,6 +254,7 @@ import { coordinateText, normalizeScheduleTimes, parseCoordinates } from '../../
 import LocationPanelLoading from './LocationPanelLoading.vue'
 import TaskImageUpload from '../TaskImageUpload.vue'
 import TaskDateSchedule from '../TaskDateSchedule.vue'
+import { useUnsavedChangesGuard } from '../../composables/useUnsavedChangesGuard.js'
 
 const LocationSearchPanel = defineAsyncComponent({
   loader: () => import('./LocationSearchPanel.vue'),
@@ -289,6 +290,10 @@ const emptyDatePlan = () => ({ start_date: null, end_date: null, date_mode: 'dai
 const emptyDraft = () => ({ owner_user_id: null, account_id: null, course_id: null, name: '', enabled: true, coordinateInput: '', latitude: null, longitude: null, accuracy: 20, photo_path: '', photo_res: '', password: '', has_password: false, schedule_times: ['08:00:00'], ...emptyDatePlan(), notify_wecom: true })
 const draft = reactive(emptyDraft())
 const scheduleDraft = reactive(emptyDatePlan())
+const {markClean:markEditorClean,beforeClose:beforeEditorClose,requestClose:requestEditorClose}=useUnsavedChangesGuard({
+  visible:editorVisible,
+  snapshot:()=>draft,
+})
 const enabledCount = computed(() => props.tasks.filter(row => row.enabled).length)
 const filteredTasks = computed(() => {
   const search = keyword.value.trim().toLowerCase()
@@ -352,8 +357,8 @@ function resetDraft(values = {}) {
     status: 'success',
   }] : []
 }
-function openCreate() { editingId.value = null; resetDraft(); locationPanelKey.value += 1; editorVisible.value = true }
-function openEdit(row) { editingId.value = row.id; resetDraft(row); locationPanelKey.value += 1; emit('select-account', row.account_id); editorVisible.value = true }
+function openCreate() { editingId.value = null; resetDraft(); locationPanelKey.value += 1; markEditorClean(); editorVisible.value = true }
+function openEdit(row) { editingId.value = row.id; resetDraft(row); locationPanelKey.value += 1; emit('select-account', row.account_id); markEditorClean(); editorVisible.value = true }
 function accountChanged(id) {
   const account = props.accounts.find(item => item.id === id)
   draft.owner_user_id = account?.owner_user_id ?? null
@@ -402,6 +407,7 @@ async function save() {
   saving.value = true
   try {
     await props.saveTaskAction({ ...draft, name: draft.name.trim() }, editingId.value)
+    markEditorClean()
     editorVisible.value = false
     ElMessage.success(editingId.value ? '任务已更新' : '任务已创建')
     emit('refresh')

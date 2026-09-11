@@ -37,6 +37,7 @@
           </template>
 
           <el-table
+            class="desktop-task-table"
             :data="accountTasks"
             highlight-current-row
             @current-change="onSelectTask"
@@ -99,6 +100,32 @@
               </template>
             </el-table-column>
           </el-table>
+          <div class="mobile-task-list">
+            <el-empty v-if="!accountTasks.length" description="当前账号下暂无任务" :image-size="72" />
+            <article
+              v-for="row in accountTasks"
+              :key="row.actualIndex"
+              class="mobile-task-card"
+              :class="{ 'is-active': selectedActualIndex === row.actualIndex }"
+              @click="onSelectTask(row)"
+            >
+              <header>
+                <div><strong>{{ row.task.title || '未命名任务' }}</strong><span>序号 {{ row.task.index }}</span></div>
+                <el-tag :type="taskStatusType(row.task)" size="small">{{ taskStatusText(row.task) }}</el-tag>
+              </header>
+              <p>{{ row.task.text || '无签到文本' }}</p>
+              <div class="mobile-task-card__facts">
+                <span>时间 <strong>{{ (row.task.times || []).join('、') || '未设置' }}</strong></span>
+                <span>日期 <strong>{{ row.task.date_mode === 'specific' ? `指定 ${(row.task.run_dates || []).length} 天` : '每天' }}</strong></span>
+                <span>位置 <strong>{{ locationTagText(row.task) }}</strong></span>
+                <span>图片 <strong>{{ (row.task.pic_path || []).length }} 张</strong></span>
+              </div>
+              <footer>
+                <span>{{ row.task.skip_weekends ? '跳过周末' : '周末执行' }} · {{ row.task.notify_wechat !== false ? '企微通知' : '不通知' }}</span>
+                <el-button link type="primary" @click.stop="onSelectTask(row)">编辑任务</el-button>
+              </footer>
+            </article>
+          </div>
 
           <div class="form-section project-section">
             <div class="section-header">
@@ -589,6 +616,7 @@ async function deleteTask() {
   color: #94a3b8;
   margin-top: 8px;
 }
+.mobile-task-list { display: none; }
 
 /* The sidebar reduces the real content width considerably.  Keep the two
    cards stacked until there is enough room for the form labels and calendar. */
@@ -610,6 +638,19 @@ async function deleteTask() {
 }
 
 @media (max-width: 768px) {
+  .desktop-task-table { display: none; }
+  .mobile-task-list { display: grid; gap: 10px; }
+  .mobile-task-card { overflow: hidden; border: 1px solid #e1e9f4; border-radius: 13px; background: #fff; transition: border-color .2s, background .2s; }
+  .mobile-task-card.is-active { border-color: #60a5fa; background: #f4f8ff; }
+  .mobile-task-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 13px 13px 8px; }
+  .mobile-task-card header strong, .mobile-task-card header span { display: block; }
+  .mobile-task-card header strong { color: #172033; font-size: 14px; }
+  .mobile-task-card header span { margin-top: 3px; color: #94a3b8; font-size: 11px; }
+  .mobile-task-card > p { margin: 0; padding: 0 13px 10px; color: #64748b; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+  .mobile-task-card__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; padding: 10px 13px; background: rgb(248 250 252 / 80%); }
+  .mobile-task-card__facts span { min-width: 0; color: #94a3b8; font-size: 11px; }
+  .mobile-task-card__facts strong { display: block; margin-top: 2px; overflow: hidden; color: #475569; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-task-card footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 13px; color: #64748b; font-size: 11px; }
   .section-header {
     flex-direction: column;
     align-items: flex-start;

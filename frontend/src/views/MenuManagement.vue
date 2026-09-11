@@ -106,7 +106,7 @@
       <template #header>
         <div class="audit-head"><strong>修改记录</strong><el-button link type="primary" @click="loadLogs">刷新记录</el-button></div>
       </template>
-      <el-table :data="logs" v-loading="logsLoading" empty-text="暂无修改记录">
+      <el-table class="desktop-audit-table" :data="logs" v-loading="logsLoading" empty-text="暂无修改记录">
         <el-table-column label="时间" min-width="170">
           <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
         </el-table-column>
@@ -123,6 +123,14 @@
         </el-table-column>
         <el-table-column prop="version" label="版本" width="90" />
       </el-table>
+      <div class="mobile-audit-list" v-loading="logsLoading">
+        <el-empty v-if="!logs.length && !logsLoading" description="暂无修改记录" />
+        <article v-for="row in logs" :key="`${row.created_at}-${row.version}`" class="mobile-audit-card">
+          <header><strong>{{ row.target_type === 'global' ? '全局默认' : userName(row.target_user_id) }}</strong><el-tag size="small">v{{ row.version }}</el-tag></header>
+          <p>{{ changeSummary(row) }}</p>
+          <footer><span>{{ userName(row.actor_user_id, '已删除管理员') }}</span><time>{{ formatTime(row.created_at) }}</time></footer>
+        </article>
+      </div>
     </el-card>
   </div>
 </template>
@@ -359,5 +367,6 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
 .level-badge { flex: none; padding: 3px 7px; color: #2563eb; font-size: 10px; border-radius: 999px; background: #dbeafe; }.is-child .level-badge { color: #0f766e; background: #ccfbf1; }
 .save-bar { position: sticky; bottom: 0; margin-top: 16px; padding: 14px 16px; color: #64748b; border: 1px solid #dbeafe; border-radius: 14px; background: rgb(255 255 255 / 94%); box-shadow: 0 -8px 24px rgb(15 23 42 / 5%); }
 .user-picker { margin-bottom: 16px; }.user-picker div { display: grid; gap: 4px; }.user-picker .el-select { width: min(360px, 100%); }.override-row .el-radio-group { flex: none; }
-@media(max-width:760px){.page-heading,.user-picker,.menu-config-row,.save-bar{align-items:stretch;flex-direction:column}.menu-label{padding-left:0!important}.override-row .el-radio-group{display:grid;grid-template-columns:1fr 1fr 1fr;width:100%}.override-row :deep(.el-radio-button__inner){width:100%;padding-inline:8px}.save-bar .el-button{width:100%}}
+.mobile-audit-list { display: none; }
+@media(max-width:760px){.desktop-audit-table{display:none}.mobile-audit-list{display:grid;gap:10px}.mobile-audit-card{padding:13px;border:1px solid #e1e9f4;border-radius:13px;background:#fff}.mobile-audit-card header,.mobile-audit-card footer{display:flex;align-items:center;justify-content:space-between;gap:10px}.mobile-audit-card header strong{color:#1e293b;font-size:13px}.mobile-audit-card p{margin:10px 0;color:#475569;font-size:12px;line-height:1.55;overflow-wrap:anywhere}.mobile-audit-card footer{color:#94a3b8;font-size:11px}.mobile-audit-card time{text-align:right}.page-heading,.user-picker,.menu-config-row,.save-bar{align-items:stretch;flex-direction:column}.menu-label{padding-left:0!important}.override-row .el-radio-group{display:grid;grid-template-columns:1fr 1fr 1fr;width:100%}.override-row :deep(.el-radio-button__inner){width:100%;padding-inline:8px}.save-bar .el-button{width:100%}}
 </style>

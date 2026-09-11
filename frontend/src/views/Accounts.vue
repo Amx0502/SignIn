@@ -31,6 +31,7 @@
             <span>显示 {{ filteredAccounts.length }}/{{ state.accounts.length }} 个账号</span>
           </div>
           <el-table
+            class="desktop-account-table"
             ref="tableRef"
             :data="filteredAccounts"
             row-key="mobile"
@@ -54,6 +55,31 @@
               </template>
             </el-table-column>
           </el-table>
+          <div class="mobile-account-list">
+            <el-empty v-if="!filteredAccounts.length" description="暂无匹配账号" />
+            <article
+              v-for="account in filteredAccounts"
+              :key="account.mobile"
+              class="mobile-account-card"
+              :class="{ 'is-active': selectedMobile === account.mobile }"
+              @click="onSelectAccount(account)"
+            >
+              <header>
+                <el-checkbox
+                  :model-value="isAccountSelected(account)"
+                  :aria-label="`选择账号 ${account.name}`"
+                  @click.stop
+                  @change="checked => toggleMobileAccountSelection(account, checked)"
+                />
+                <div><strong>{{ account.name }}</strong><span>{{ account.mobile }}</span></div>
+                <el-tag :type="account.token ? 'success' : 'info'" size="small">{{ account.token ? 'Token 有效' : '无 Token' }}</el-tag>
+              </header>
+              <footer>
+                <span>任务 {{ (account.tasks || []).length }} 个</span>
+                <el-button link type="primary" @click.stop="onSelectAccount(account)">编辑账号</el-button>
+              </footer>
+            </article>
+          </div>
         </el-card>
       </el-col>
 
@@ -161,6 +187,14 @@ function onSelectAccount(row) {
 
 function onSelectionChange(rows) {
   selectedAccounts.value = rows
+}
+
+function isAccountSelected(account) {
+  return selectedAccounts.value.some(item => item.mobile === account.mobile)
+}
+
+function toggleMobileAccountSelection(account, checked) {
+  tableRef.value?.toggleRowSelection(account, checked)
 }
 
 async function saveAccount() {
@@ -303,14 +337,21 @@ async function refreshAllTokens() {
 }
 .account-search-bar .el-input { max-width: 360px; }
 .account-search-bar span { flex: none; color: #64748b; font-size: 12px; }
+.mobile-account-list { display: none; }
 
 @media (max-width: 768px) {
+  .desktop-account-table { display: none; }
+  .mobile-account-list { display: grid; gap: 10px; }
+  .mobile-account-card { border: 1px solid #e1e9f4; border-radius: 13px; background: #fff; transition: border-color .2s, background .2s; }
+  .mobile-account-card.is-active { border-color: #60a5fa; background: #f4f8ff; box-shadow: 0 0 0 2px rgb(59 130 246 / 8%); }
+  .mobile-account-card header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 13px; }
+  .mobile-account-card header strong, .mobile-account-card header span { display: block; }
+  .mobile-account-card header strong { overflow: hidden; color: #172033; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-account-card header span { margin-top: 3px; color: #718096; font-size: 12px; }
+  .mobile-account-card footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 13px; border-top: 1px solid #edf2f7; color: #64748b; font-size: 12px; }
   .card-header { flex-direction: column; align-items: flex-start; }
   .account-search-bar { align-items: stretch; flex-direction: column; }
   .account-search-bar .el-input { max-width: none; }
 }
 
-@media (max-width: 480px) {
-  .el-table { font-size: 11px; }
-}
 </style>

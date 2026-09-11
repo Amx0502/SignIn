@@ -6,7 +6,7 @@
     </div>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="users" v-loading="loading">
+      <el-table class="desktop-user-table" :data="users" v-loading="loading">
         <el-table-column prop="username" label="用户名" min-width="150" />
         <el-table-column label="角色" width="110">
           <template #default="{ row }">
@@ -61,6 +61,31 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="mobile-user-list" v-loading="loading">
+        <el-empty v-if="!users.length && !loading" description="暂无用户" />
+        <article v-for="row in users" :key="row.id" class="mobile-user-card">
+          <header>
+            <div>
+              <strong>{{ row.username }}</strong>
+              <span>{{ row.role === 'admin' ? '管理员' : row.class_cube_only ? '仅班级魔方' : '普通用户' }}</span>
+            </div>
+            <el-tag :type="isExpired(row) ? 'warning' : row.is_active ? 'success' : 'info'" size="small">
+              {{ isExpired(row) ? '已到期' : row.is_active ? '已启用' : '已禁用' }}
+            </el-tag>
+          </header>
+          <dl>
+            <div><dt>账号额度</dt><dd>{{ row.role === 'admin' || row.class_cube_account_limit == null ? '不限' : row.class_cube_account_limit }}</dd></div>
+            <div><dt>地址搜索</dt><dd>{{ row.role === 'admin' || row.location_search_daily_limit == null ? '不限' : `${row.location_search_used || 0} / ${row.location_search_daily_limit}` }}</dd></div>
+            <div class="mobile-user-card__wide"><dt>有效期</dt><dd :class="{ 'expired-time': isExpired(row) }">{{ formatExpiry(row) }}</dd></div>
+            <div class="mobile-user-card__wide"><dt>最后登录</dt><dd>{{ formatTime(row.last_login) }}</dd></div>
+          </dl>
+          <footer>
+            <el-button type="primary" plain @click="openEdit(row)">编辑</el-button>
+            <el-button type="warning" plain @click="openReset(row)">重置密码</el-button>
+            <el-button type="danger" plain @click="removeUser(row)">删除</el-button>
+          </footer>
+        </article>
+      </div>
     </el-card>
 
     <el-dialog
@@ -380,6 +405,7 @@ onBeforeUnmount(() => {
 .page-heading h2 { margin: 0 0 6px; color: #0f172a; }
 .page-heading p { margin: 0; color: #64748b; }
 .table-card { border-radius: 18px; }
+.mobile-user-list { display: none; }
 .field-help { width: 100%; margin-top: 6px; color: #64748b; font-size: 12px; line-height: 1.5; }
 .quota-row { display: flex; align-items: center; gap: 16px; width: 100%; }
 .user-editor-form {
@@ -473,7 +499,22 @@ onBeforeUnmount(() => {
   line-height: 1.5;
 }
 @media (max-width: 640px) {
+  .desktop-user-table { display: none; }
+  .mobile-user-list { display: grid; gap: 12px; }
+  .mobile-user-card { overflow: hidden; border: 1px solid #e1e9f4; border-radius: 14px; background: #fff; }
+  .mobile-user-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px; background: #f8fbff; }
+  .mobile-user-card header strong, .mobile-user-card header span { display: block; }
+  .mobile-user-card header strong { color: #172033; font-size: 15px; }
+  .mobile-user-card header span { margin-top: 3px; color: #718096; font-size: 12px; }
+  .mobile-user-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 14px; }
+  .mobile-user-card dl div { min-width: 0; }
+  .mobile-user-card dt { color: #8a98aa; font-size: 11px; }
+  .mobile-user-card dd { margin: 3px 0 0; overflow-wrap: anywhere; color: #334155; font-size: 13px; }
+  .mobile-user-card__wide { grid-column: 1 / -1; }
+  .mobile-user-card footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 14px 14px; }
+  .mobile-user-card footer .el-button { width: 100%; margin: 0; padding-inline: 6px; }
   .page-heading { align-items: flex-start; flex-direction: column; }
+  .page-heading .el-button { width: 100%; }
   .user-editor-form { max-height: 76vh; }
   .user-form-section { padding: 14px 12px 3px; }
   .user-form-grid,
