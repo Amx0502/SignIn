@@ -89,9 +89,9 @@
             </el-button>
             <img
               v-if="isMobile"
-              src="./img/logo.png"
+              :src="mobilePlatform?.image || appLogo"
               class="mobile-header-logo"
-              alt="签到管理系统"
+              :alt="mobilePlatform ? `${mobilePlatform.title} Logo` : '签到管理系统'"
             />
             <div class="header-copy">
               <p class="breadcrumb">
@@ -546,6 +546,7 @@ import { logoutApi } from "./api";
 import xxqdImage from "./img/xxqd.png";
 import classCubeImage from "./img/bjmf.png";
 import miaoyingImage from "./img/miaoying.png";
+import appLogo from "./img/logo.png";
 import {
   menuState,
   resetMenuState,
