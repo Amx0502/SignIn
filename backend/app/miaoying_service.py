@@ -729,6 +729,12 @@ class MiaoyingService:
                 label = field.get("unsupported_label") or field["title"] or "复杂必填项"
                 if label not in unsupported:
                     unsupported.append(label)
+        roster = [
+            {"name": str(row.get("name") or ""), "no": row.get("no"),
+             "groupName": str(row.get("groupName") or ""),
+             "noLabel": str(row.get("noLabel") if row.get("noLabel") is not None else row.get("no", ""))}
+            for row in (data.get("nameList") or []) if isinstance(row, dict)
+        ]
         return {
             "location": bool(data.get("needLocation") or data.get("needSubmitLocation")),
             # 秒应由项目创建者决定结果页是否公开详细位置。关闭时仍需提交
@@ -739,12 +745,9 @@ class MiaoyingService:
             "identity": {
                 "class_label": str(data.get("groupLabelName") or "班级").strip(),
                 "fixed": bool(data.get("fixedNo") or data.get("showNameList")),
-                "roster": [
-                    {"name": str(row.get("name") or ""), "no": row.get("no"),
-                     "groupName": str(row.get("groupName") or ""),
-                     "noLabel": str(row.get("noLabel") if row.get("noLabel") is not None else row.get("no", ""))}
-                    for row in (data.get("nameList") or []) if isinstance(row, dict)
-                ],
+                "roster": roster,
+                "has_group": any(row["groupName"] and row["groupName"] not in {"未分班", "未分组", "无班级"} for row in roster),
+                "has_number": any(row["noLabel"] for row in roster),
                 "name_label": str(data.get("nameLabel") or "姓名").strip(),
                 "number_label": str(data.get("noName") or "学号").strip(),
             },
@@ -919,12 +922,16 @@ class MiaoyingService:
         )
         if not real_name:
             raise MiaoyingValidationError("请先在账号资料中填写签到姓名")
-        if not school_no:
+        requires_number = bool(identity.get("has_number"))
+        if requires_number and not school_no:
             raise MiaoyingValidationError("请先在账号资料中填写数字学号")
-        try:
-            number = int(roster_entry["no"] if roster_entry else school_no)
-        except (ValueError, TypeError) as exc:
-            raise MiaoyingValidationError("学号必须为数字") from exc
+        if requires_number:
+            try:
+                number = int(roster_entry["no"] if roster_entry else school_no)
+            except (ValueError, TypeError) as exc:
+                raise MiaoyingValidationError("学号必须为数字") from exc
+        else:
+            number = None
 
         info_keys: list[str] = []
         info_vals: list[str] = []

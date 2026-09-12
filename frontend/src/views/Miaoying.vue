@@ -207,8 +207,8 @@
                 >
               </div>
               <div class="identity-grid">
-                <label
-                  ><span>班级</span
+                <label v-if="identityLabels.has_group"
+                  ><span>{{ identityLabels.class_label || '班级' }}</span
                   ><el-input
                     v-model="manualProfile.class_name"
                     clearable
@@ -221,7 +221,7 @@
                     clearable
                     :placeholder="`请输入${identityLabels.name_label}`"
                 /></label>
-                <label
+                <label v-if="identityLabels.has_number"
                   ><span>{{ identityLabels.number_label }}</span
                   ><el-input
                     v-model="manualProfile.school_no"
@@ -1432,10 +1432,10 @@ async function saveManualProfile(showMessage = true) {
     return Boolean(manualAnswers.value.__identity);
   const account = selectedAccount.value;
   if (!account) return false;
-  if (!manualProfile.real_name.trim() || !manualProfile.school_no.trim()) {
-    ElMessage.warning(
-      `请填写${identityLabels.value.name_label}和${identityLabels.value.number_label}`,
-    );
+  if (!manualProfile.real_name.trim() || (identityLabels.value.has_number && !manualProfile.school_no.trim())) {
+    ElMessage.warning(identityLabels.value.has_number
+      ? `请填写${identityLabels.value.name_label}和${identityLabels.value.number_label}`
+      : `请填写${identityLabels.value.name_label}`);
     return false;
   }
   profileSaving.value = true;
