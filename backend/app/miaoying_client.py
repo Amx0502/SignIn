@@ -8,7 +8,7 @@ import requests
 from . import config
 
 
-TONGJI_FIELDS = """_id title content createdAt updatedAt isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel} needInfo needLocation needSubmitLocation openLocationInfo needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt mediaSourceType showConditions{optionId optionIdxs optionLogic} showConditionsLogic} allowSubmitTimeRules{_id startTime endTime}"""
+TONGJI_FIELDS = """_id isRemove title content createdAt updatedAt isClosed isRepeat startTime endTime repeatStartDate repeatEndDate noName nameLabel groupLabelName fixedNo showNameList nameList{name no groupName noLabel} needInfo needLocation needSubmitLocation openLocationInfo needWifi wifiInfos{ssid bssid} locations{name longtitude latitude distance} locationInfos{name longtitude latitude} needImages imageIsRequired needVideo videoIsRequired needAudio audioIsRequired needSignature requiredFields needOptions optionFields{title isImage isMulti required maxSelect options} infoForms{id isRemove type title desc order required options maxSelect minSelect textareaRow limitCharGt limitCharlt mediaSourceType showConditions{optionId optionIdxs optionLogic} showConditionsLogic infoOptions{title isImage imageUrl score} questionOptions{title} groupInfoForms{id isRemove type title desc order required options maxSelect minSelect} courseSetting{id title description image schedule{dayOfWeek startTime endTime} teacher quota location}} allowSubmitTimeRules{_id startTime endTime}"""
 
 
 class MiaoyingRemoteError(RuntimeError):
@@ -197,6 +197,8 @@ class MiaoyingClient:
         for index in range(len(cached_ids)):
             item = data.get(f"cached{index}")
             if isinstance(item, dict) and item.get("_id"):
+                if item.get("isRemove"):
+                    item = {**item, "__deleted": True}
                 forms_by_id[str(item["_id"])] = item
         return list(forms_by_id.values()), data.get("baomings") or []
 
@@ -221,7 +223,7 @@ class MiaoyingClient:
             data = self.graphql(token, "getTongjisByIds", query, variables)
             rows.extend(
                 item for item in data.values()
-                if isinstance(item, dict) and item.get("_id")
+                if isinstance(item, dict) and item.get("_id") and not item.get("isRemove")
             )
         return rows
 
@@ -246,7 +248,7 @@ class MiaoyingClient:
         original_name: str,
         content_type: str = "",
     ) -> dict:
-        """Upload one image with Miaoying's signed OSS workflow."""
+        """Upload one supported form attachment with Miaoying's signed OSS workflow."""
         # The upstream endpoint rejects a zero-length POST. Browser FormData
         # sends an empty multipart body containing only the closing boundary.
         boundary = f"----SignInMiaoying{uuid.uuid4().hex}"
@@ -291,7 +293,8 @@ class MiaoyingClient:
             pass
 
         suffix = Path(original_name or "image.jpg").suffix.lower()
-        if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        allowed_suffixes = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt"}
+        if suffix not in allowed_suffixes:
             suffix = mimetypes.guess_extension(content_type or "") or ".jpg"
         object_name = f"{remote_user_id}_{uuid.uuid4().hex}{suffix}"
         object_key = f"uploads/{object_name}"

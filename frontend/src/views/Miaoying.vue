@@ -108,15 +108,16 @@
                   <strong>选择签到项目</strong
                   ><small
                     >可签到 {{ activeAccountForms.length }} 项，已关闭
-                    {{ closedAccountForms.length }} 项</small
+                    {{ closedAccountForms.length - deletedAccountForms.length }} 项，已删除
+                    {{ deletedAccountForms.length }} 项</small
                   >
                 </div>
               </div>
               <el-tag
                 size="small"
-                :type="selectedManualForm.is_closed ? 'warning' : 'success'"
+                :type="selectedManualForm.is_deleted || selectedManualForm.is_closed ? 'warning' : 'success'"
                 >{{
-                  selectedManualForm.is_closed ? "已关闭" : "可签到"
+                  selectedManualForm.is_deleted ? "已删除" : selectedManualForm.is_closed ? "已关闭" : "可签到"
                 }}</el-tag
               >
             </div>
@@ -177,7 +178,7 @@
             v-else-if="selectedManualForm.requirements?.unsupported?.length"
             type="warning"
             :closable="false"
-            :title="`暂不支持：${selectedManualForm.requirements.unsupported.join('、')}`"
+            :title="`以下字段需手动填写：${selectedManualForm.requirements.unsupported.join('、')}`"
           />
           <section class="checkin-section details-section">
             <div class="checkin-section-head">
@@ -234,6 +235,7 @@
               v-model="manualAnswers"
               :fields="manualFields"
               :image-uploader="uploadManualImage"
+              :location-value="locationDisplayName(manualLocationInfo, manualLocationName)"
               compact
             />
           </section>
@@ -476,7 +478,7 @@
               v-else-if="selectedTaskForm?.requirements?.unsupported?.length"
               type="warning"
               :closable="false"
-              :title="`暂不支持：${selectedTaskForm.requirements.unsupported.join('、')}`"
+              :title="`以下字段需手动填写：${selectedTaskForm.requirements.unsupported.join('、')}`"
             />
           </section>
 
@@ -568,6 +570,7 @@
                 v-model="form.answers"
                 :fields="taskFields"
                 :image-uploader="uploadTaskImage"
+                :location-value="locationDisplayName(form.location_info, form.location_name)"
               />
               <section
                 v-if="selectedTaskForm.requirements?.location"
@@ -747,6 +750,7 @@ const route = useRoute(),
 const qrVisible = ref(false),
   qrImage = ref(""),
   qrState = ref("pending"),
+  qrAccount = ref(null),
   qrId = ref(""),
   qrLoading = ref(false),
   qrRemainingSeconds = ref(0),
@@ -755,6 +759,7 @@ let qrTimer, qrCountdownTimer;
 const miaoyingQrSession = computed(() => ({
   status: qrState.value,
   qrImage: qrImage.value,
+  account: qrAccount.value,
 }));
 const editingId = ref(null),
   taskEditorVisible = ref(false),
@@ -856,11 +861,12 @@ const selectedAccount = computed(
     accounts.value.find((item) => item.id === selectedAccountId.value) || null,
 );
 const activeAccountForms = computed(() =>
-  accountForms.value.filter((item) => !item.is_closed),
+  accountForms.value.filter((item) => !item.is_closed && !item.is_deleted),
 );
 const closedAccountForms = computed(() =>
   accountForms.value.filter((item) => item.is_closed),
 );
+const deletedAccountForms = computed(() => accountForms.value.filter((item) => item.is_deleted));
 const manualFields = computed(
   () => selectedManualForm.value?.requirements?.fields || [],
 );
@@ -876,7 +882,7 @@ const selectedTaskForm = computed(
   () => forms.value.find((item) => item.id === form.form_id) || null,
 );
 const activeTaskForms = computed(() =>
-  forms.value.filter((item) => !item.is_closed),
+  forms.value.filter((item) => !item.is_closed && !item.is_deleted),
 );
 const closedTaskForms = computed(() =>
   forms.value.filter((item) => item.is_closed),
@@ -893,7 +899,7 @@ const miaoyingLogEntries = computed(() =>
 );
 const canManualCheckin = computed(() => {
   const item = selectedManualForm.value;
-  if (!item || item.is_closed || item.requirements?.unsupported?.length)
+  if (!item || item.is_closed || item.is_deleted)
     return false;
   if (identityLabels.value.fixed && !manualAnswers.value.__identity)
     return false;
@@ -914,9 +920,8 @@ const manualValidationHint = computed(() => {
   const item = selectedManualForm.value;
   if (!selectedAccount.value) return "请先选择一个秒应账号";
   if (!item) return "请先选择一个签到项目";
+  if (item.is_deleted) return "该签到项目已删除，请同步项目后选择其他项目";
   if (item.is_closed) return "该签到项目已经关闭";
-  if (item.requirements?.unsupported?.length)
-    return `暂不支持：${item.requirements.unsupported.join("、")}`;
   if (identityLabels.value.fixed && !manualAnswers.value.__identity)
     return "请选择项目固定名单中的班级和姓名";
   if (
@@ -924,8 +929,11 @@ const manualValidationHint = computed(() => {
     (!manualProfile.real_name.trim() || !manualProfile.school_no.trim())
   )
     return `请填写${identityLabels.value.name_label}和${identityLabels.value.number_label}`;
-  if (!answersValid(manualFields.value, manualAnswers.value))
-    return "请完成所有必填的项目填写项";
+  const invalidField = manualFields.value.find(field => !isAnswerValid(field, manualAnswers.value?.[field.key]));
+  if (invalidField)
+    return invalidField.required
+      ? `请完成或检查：${invalidField.title}`
+      : `请检查：${invalidField.title}`;
   if (item.requirements?.location) {
     try {
       parseCoordinates(manualCoordinate.value);
@@ -1213,6 +1221,7 @@ async function openQr() {
   qrVisible.value = true;
   qrLoading.value = true;
   qrState.value = "pending";
+  qrAccount.value = null;
   try {
     const data = await api.createQr();
     qrId.value = data.id;
@@ -1261,12 +1270,31 @@ async function pollQr() {
     if (data.status === "completed") {
       clearQrTimers();
       qrState.value = "success";
-      ElMessage.success("秒应账号添加成功");
-      window.setTimeout(() => {
-        qrVisible.value = false;
-        stopQr();
-        load();
-      }, 700);
+      qrAccount.value = data.account || null;
+      const accountName = data.account?.nickname || data.account?.remark || "秒应账号";
+      const accountUid = data.account?.remote_user_id || "";
+      ElMessage.success(`秒应账号添加成功：${accountName}${accountUid ? `（UID：${accountUid}）` : ""}`);
+      await load();
+      if (data.account?.id) {
+        selectedAccountId.value = data.account.id;
+        await loadAccountForms();
+        try {
+          formsSyncing.value = true;
+          const result = await api.syncFormsDetailed(data.account.id);
+          accountForms.value = result.forms;
+          selectedFormId.value = defaultFormId(accountForms.value);
+          manualAnswers.value = seedAnswers(
+            manualFields.value,
+            selectedAccount.value,
+            {},
+          );
+          showSyncSummary(result.summary);
+        } catch (error) {
+          ElMessage.error(`账号已添加，但项目同步失败：${error.message || "请稍后重试"}`);
+        } finally {
+          formsSyncing.value = false;
+        }
+      }
     } else if (data.status === "expired") {
       clearQrTimers();
       qrState.value = "expired";
@@ -1281,6 +1309,7 @@ function stopQr() {
   clearQrTimers();
   qrId.value = "";
   qrImage.value = "";
+  qrAccount.value = null;
   qrExpiresAt.value = 0;
   qrRemainingSeconds.value = 0;
   qrState.value = "pending";
@@ -1663,12 +1692,6 @@ async function saveTask() {
     ElMessage.warning("该签到项目已关闭，请选择其他项目");
     return;
   }
-  if (selectedTaskForm.value?.requirements?.unsupported?.length) {
-    ElMessage.warning(
-      `暂不支持：${selectedTaskForm.value.requirements.unsupported.join("、")}`,
-    );
-    return;
-  }
   if (!answersValid(taskFields.value, form.answers)) {
     ElMessage.warning("请完整填写项目必填项");
     return;
@@ -1830,10 +1853,10 @@ function seedAnswers(fields, account, current = {}) {
   return result;
 }
 function answersValid(fields, answers) {
-  return visibleMiaoyingFields(fields, answers).every((field) => {
-    if (field.control === "unsupported") return !field.required;
-    const value = answers?.[field.key];
-    if (!field.required) return true;
+  return visibleMiaoyingFields(fields, answers).every((field) => isAnswerValid(field, answers?.[field.key]));
+}
+function isAnswerValid(field, value) {
+    if (!field.required && (value === undefined || value === null || String(value).trim() === "")) return true;
     if (Array.isArray(value)) {
       const size = value.length;
       return (
@@ -1841,8 +1864,21 @@ function answersValid(fields, answers) {
         (!field.max_select || size <= Number(field.max_select))
       );
     }
-    return value !== undefined && value !== null && String(value).trim() !== "";
-  });
+    if (value === undefined || value === null || String(value).trim() === "") return !field.required;
+    const text = String(value).trim();
+    switch (field.unsupported_label) {
+      case "手机号码": return /^1\d{10}$/.test(text);
+      case "身份证号码": return /^\d{17}[\dXx]$/.test(text);
+      case "邮箱": return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
+      case "车牌号": return /^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(text);
+      case "年龄": return /^\d+$/.test(text) && Number(text) >= 0 && Number(text) <= 150;
+      case "数字": return Number.isFinite(Number(text));
+      case "出生日期": {
+        const date = new Date(`${text}T00:00:00`);
+        return !Number.isNaN(date.getTime()) && date <= new Date();
+      }
+      default: return true;
+    }
 }
 watch(selectedFormId, () => {
   manualCoordinate.value = "";

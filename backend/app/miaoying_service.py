@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import html
 import json
 import logging
 import random
@@ -40,6 +41,38 @@ class MiaoyingValidationError(ValueError):
 
 class MiaoyingNotFound(LookupError):
     pass
+
+
+# 秒应 infoForms 的扩展控件没有对应的稳定提交控件，必须明确标记，
+# 否则未知类型会被当作普通文本提交，产生“界面可填但上游不认”的风险。
+MIAOYING_UNSUPPORTED_FIELD_TYPES = {
+    "5": "语音",
+    "audio": "语音",
+    "voice": "语音",
+    "recording": "语音",
+    "录音": "语音",
+    "3": "文档",
+    "6": "视频",
+    "7": "多行文本",
+    "8": "日期",
+    "9": "数字",
+    "10": "省市区",
+    "11": "手机号码",
+    "12": "身份证号码",
+    "13": "出生日期",
+    "15": "拼图",
+    "16": "评分",
+    "17": "矩阵单选",
+    "18": "矩阵多选",
+    "19": "表格",
+    "21": "签名",
+    "22": "地点",
+    "23": "扫码录入",
+    "24": "选课",
+    "36": "年龄",
+    "37": "车牌号",
+    "38": "邮箱",
+}
 
 
 class MiaoyingService:
@@ -179,12 +212,9 @@ class MiaoyingService:
         user: dict,
     ) -> dict:
         if not content:
-            raise MiaoyingValidationError("请选择需要上传的图片")
-        if len(content) > 20 * 1024 * 1024:
-            raise MiaoyingValidationError("图片大小不能超过 20 MB")
-        allowed_types = {"image/jpeg", "image/png", "image/webp"}
-        if content_type not in allowed_types:
-            raise MiaoyingValidationError("仅支持 JPG、PNG 或 WebP 图片")
+            raise MiaoyingValidationError("请选择需要上传的文件")
+        if len(content) > 50 * 1024 * 1024:
+            raise MiaoyingValidationError("文件大小不能超过 50 MB")
         with self.database.session() as session:
             account = self._get_account(session, account_id, user)
             if account.status != "active":
@@ -250,12 +280,13 @@ class MiaoyingService:
                         unchanged += 1
                     else:
                         updated += 1
-                row.title = str(item.get("title") or "未命名签到")
-                row.content = str(item.get("content") or "")
-                row.is_closed = bool(item.get("isClosed"))
+                row.title = html.unescape(str(item.get("title") or "未命名签到"))
+                row.content = html.unescape(str(item.get("content") or ""))
+                is_deleted = bool(item.get("__deleted") or item.get("isRemove"))
+                row.is_closed = bool(item.get("isClosed")) or is_deleted
                 row.is_repeat = bool(item.get("isRepeat"))
                 row.requirements = self._requirements(item)
-                row.raw_snapshot = item
+                row.raw_snapshot = {**item, "__deleted": True} if is_deleted else item
                 row.synced_at = now
             account.last_sync_at = now
             account.last_error = ""
@@ -370,6 +401,8 @@ class MiaoyingService:
             form = session.get(MiaoyingFormRow, form_id)
             if not form or form.account_id != account.id:
                 raise MiaoyingValidationError("签到项目与账号不匹配")
+            if form.is_closed and (form.raw_snapshot or {}).get("__deleted"):
+                raise MiaoyingValidationError("签到项目已删除，请同步项目后选择其他项目")
             if not account.enabled or account.status != "active":
                 raise MiaoyingValidationError("秒应账号不可用，请重新扫码")
             token = self._token(account)
@@ -377,11 +410,6 @@ class MiaoyingService:
                 token, form.remote_tongji_id, account.remote_user_id
             )
             requirements = self._requirements(detail)
-            if requirements["unsupported"]:
-                raise MiaoyingValidationError(
-                    "该项目需要当前版本不支持的字段："
-                    + "、".join(requirements["unsupported"])
-                )
             if detail.get("isClosed"):
                 raise MiaoyingValidationError("秒应项目已关闭")
             if not detail.get("isRepeat") and any(
@@ -584,6 +612,8 @@ class MiaoyingService:
             return {"status":"skipped","message":"该时间点已被其他调度进程处理","task_id":task.id}
         try:
             if not account or not form: raise MiaoyingValidationError("任务关联数据不存在")
+            if form.is_closed and (form.raw_snapshot or {}).get("__deleted"):
+                raise MiaoyingValidationError("签到项目已删除，请同步项目后重新配置任务")
             if not account.enabled or account.status != "active": raise MiaoyingValidationError("秒应账号不可用，请重新扫码")
             minimum, maximum = get_checkin_delay_range("miaoying")
             delay = random.uniform(minimum, maximum)
@@ -594,8 +624,6 @@ class MiaoyingService:
                 token, form.remote_tongji_id, account.remote_user_id
             )
             requirements = self._requirements(detail)
-            blocked = requirements["unsupported"]
-            if blocked: raise MiaoyingValidationError("该项目需要当前版本不支持的字段：" + "、".join(blocked))
             if detail.get("isClosed"): raise MiaoyingValidationError("秒应项目已关闭")
             if not detail.get("isRepeat") and any(str(item.get("tongjiId")) == form.remote_tongji_id for item in records):
                 raise MiaoyingValidationError("该账号已提交此签到项目")
@@ -698,7 +726,7 @@ class MiaoyingService:
         supported_controls = {"text", "textarea", "single", "multiple", "select", "image"}
         for field in fields:
             if field["required"] and field["control"] not in supported_controls:
-                label = field["title"] or "复杂必填项"
+                label = field.get("unsupported_label") or field["title"] or "复杂必填项"
                 if label not in unsupported:
                     unsupported.append(label)
         return {
@@ -767,6 +795,10 @@ class MiaoyingService:
         is_multi = bool(raw.get("isMulti")) or raw_type in {"14", "checkbox", "checkboxes", "multiple", "multi", "multiselect"}
         options = []
         raw_options = raw.get("options") or []
+        if raw_type == "19" and not raw_options:
+            raw_options = raw.get("groupInfoForms") or []
+        if raw_type == "24" and not raw_options:
+            raw_options = raw.get("courseSetting") or []
         if isinstance(raw_options, str):
             try:
                 decoded = json.loads(raw_options)
@@ -779,18 +811,30 @@ class MiaoyingService:
             if isinstance(option, dict):
                 label = str(option.get("label") or option.get("title") or option.get("name") or option.get("value") or "").strip()
                 value = option.get("value", option.get("id", label))
+                meta = option
             else:
                 label = str(option).strip()
                 value = option
             if label:
-                options.append({
+                entry = {
                     "label": label,
                     "value": str(value),
                     # 秒应新版 infoForms 的选项提交值不是显示文本，而是
                     # 该选项在 options 数组中的零基序号。
-                    "submit_value": str(option_index) if source == "info" else str(value),
-                })
-        if raw_type in {"4", "image", "photo", "picture"}:
+                    "submit_value": str(option_index) if source == "info" and raw_type != "24" else str(value),
+                }
+                if raw_type == "19":
+                    entry["field_type"] = str(meta.get("type") or "")
+                    entry["field_options"] = meta.get("options") or []
+                if raw_type == "24":
+                    entry["schedule"] = meta.get("schedule") or []
+                    entry["image"] = str(meta.get("image") or "")
+                    entry["teacher"] = str(meta.get("teacher") or "")
+                    entry["location"] = str(meta.get("location") or "")
+                options.append(entry)
+        if raw_type in MIAOYING_UNSUPPORTED_FIELD_TYPES:
+            control = "unsupported"
+        elif raw_type in {"4", "image", "photo", "picture"}:
             control = "image"
         elif bool(raw.get("isImage")):
             control = "unsupported"
@@ -813,8 +857,10 @@ class MiaoyingService:
             "title": title,
             "description": str(raw.get("desc") or "").strip(),
             "control": control,
+            "unsupported_label": MIAOYING_UNSUPPORTED_FIELD_TYPES.get(raw_type, "") if control == "unsupported" else "",
             "required": bool(raw.get("required")) or forced_required,
             "options": options,
+            "matrix_rows": [str(item.get("title") or "").strip() for item in (raw.get("questionOptions") or []) if isinstance(item, dict) and str(item.get("title") or "").strip()],
             "min_select": MiaoyingService._safe_int(raw.get("minSelect"), 1 if raw.get("required") or forced_required else 0),
             "max_select": MiaoyingService._safe_int(raw.get("maxSelect"), len(options) if is_multi and options else 1),
             "max_length": MiaoyingService._safe_int(raw.get("limitCharlt"), 0),
@@ -1153,6 +1199,30 @@ class MiaoyingService:
                     or not filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
                 ):
                     raise MiaoyingValidationError(f"{title}包含无效的图片，请重新上传")
+        if field.get("unsupported_label") == "表格":
+            rows = value if isinstance(value, list) else []
+            if not all(isinstance(row, (list, dict)) for row in rows):
+                raise MiaoyingValidationError(f"{title}的填写格式不正确，请重新填写")
+            columns = field.get("options") or []
+            for row in rows:
+                for index, column in enumerate(columns):
+                    if isinstance(row, dict):
+                        cell = row.get(column.get("value"), row.get(str(index), ""))
+                    else:
+                        cell = row[index] if index < len(row) else ""
+                    choices = {
+                        str(candidate)
+                        for candidate in (column.get("field_options") or [])
+                        if candidate is not None
+                    }
+                    if choices and str(cell or "") not in choices:
+                        column_title = column.get("label") or f"第 {index + 1} 列"
+                        raise MiaoyingValidationError(
+                            f"{title}的“{column_title}”选项已发生变化，请重新确认"
+                        )
+            return
+        if field.get("unsupported_label") in {"矩阵单选", "矩阵多选"}:
+            return
         allowed = {
             str(candidate)
             for option in field.get("options") or []
@@ -1179,6 +1249,10 @@ class MiaoyingService:
         前端和旧任务可能保存显示文字，也可能保存 value；这里统一按当前
         项目定义解析，避免项目选项变更时静默提交错误答案。
         """
+        if field.get("unsupported_label") == "表格":
+            return json.dumps(value if isinstance(value, list) else [], ensure_ascii=False, separators=(",", ":"))
+        if field.get("unsupported_label") in {"矩阵单选", "矩阵多选"}:
+            return str(value or "")
         if field.get("control") == "image":
             values = value if isinstance(value, list) else [value]
             return ",".join(str(item) for item in values)
@@ -1231,7 +1305,7 @@ class MiaoyingService:
                 if value not in remote_times: remote_times.append(value)
         requirements = dict(r.requirements or {})
         requirements["location_detail_visible"] = bool(snapshot.get("openLocationInfo"))
-        return {"id":r.id,"account_id":r.account_id,"remote_tongji_id":r.remote_tongji_id,"title":r.title,"content":r.content,"is_closed":r.is_closed,"is_repeat":r.is_repeat,"requirements":requirements,"remote_schedule_times":remote_times,"synced_at":r.synced_at}
+        return {"id":r.id,"account_id":r.account_id,"remote_tongji_id":r.remote_tongji_id,"title":r.title,"content":r.content,"is_closed":r.is_closed,"is_deleted":bool((r.raw_snapshot or {}).get("__deleted")),"is_repeat":r.is_repeat,"requirements":requirements,"remote_schedule_times":remote_times,"synced_at":r.synced_at}
     @staticmethod
     def _task_dict(r): return {"id":r.id,"owner_user_id":r.owner_user_id,"account_id":r.account_id,"form_id":r.form_id,"name":r.name,"enabled":r.enabled,"schedule_times":r.schedule_times,"start_date":r.start_date,"end_date":r.end_date,"date_mode":r.date_mode,"run_dates":r.run_dates,"skip_dates":r.skip_dates,"skip_weekends":r.skip_weekends,"auto_disable_after_finish":r.auto_disable_after_finish,"location_name":r.location_name,"location_info":r.location_info or {},"latitude":float(r.latitude) if r.latitude is not None else None,"longitude":float(r.longitude) if r.longitude is not None else None,"answers":r.answers or {},"answer_schema":r.answer_schema or [],"updated_at":r.updated_at}
     @staticmethod

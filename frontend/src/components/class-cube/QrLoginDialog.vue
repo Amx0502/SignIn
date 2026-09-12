@@ -24,6 +24,10 @@
         <span v-if="session?.status === 'pending'">二维码将在 <b>{{ qrRemainingSeconds }}</b> 秒后失效</span>
         <span v-else>{{ statusMeta.tip }}</span>
       </div>
+      <div v-if="session?.status === 'success' && session?.account" class="qr-account-result">
+        <strong>已添加账号：{{ session.account.remote_user_name || session.account.nickname || session.account.remark || session.account.name || '未命名账号' }}</strong>
+        <small>UID：{{ session.account.remote_uid || session.account.remote_user_id || session.account.uid || '暂无' }}</small>
+      </div>
       <el-progress
         v-if="session?.status === 'pending'"
         :percentage="countdownPercent"
@@ -86,6 +90,9 @@ const countdownPercent = computed(() =>
 .qr-overlay .el-icon { font-size: 52px; }
 .qr-state { display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 13px; }
 .qr-state b { color: #2563eb; font-size: 18px; font-variant-numeric: tabular-nums; }
+.qr-account-result { display: grid; gap: 4px; width: 248px; padding: 10px 12px; border: 1px solid #bbf7d0; border-radius: 10px; color: #166534; background: #f0fdf4; }
+.qr-account-result strong { font-size: 13px; }
+.qr-account-result small { color: #4d7c0f; font-size: 11px; overflow-wrap: anywhere; }
 .el-progress { width: 248px; }
 </style>
 

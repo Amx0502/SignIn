@@ -324,6 +324,8 @@ export function useClassCube(api = classCubeApi) {
           status: status.status || 'pending',
           retryable: Boolean(status.retryable),
           syncWarning: status.sync_warning || '',
+          account: status.account || qrSession.value.account || null,
+          courses: Array.isArray(status.courses) ? status.courses : (qrSession.value.courses || []),
         }
         if (qrSession.value.status === 'error' && qrSession.value.retryable) {
           scheduleQrPoll(token, generation)

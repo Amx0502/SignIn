@@ -1,6 +1,6 @@
 <template>
   <div
-    class="task-image-upload"
+    :class="['task-image-upload', { 'is-file-only': !showPreview }]"
     @paste.prevent="handlePaste"
     @dragover.prevent
     @drop.prevent="handleDrop"
@@ -9,29 +9,30 @@
       <article
         v-for="(file, index) in fileList"
         :key="file.uid || file.url || file.path || index"
-        class="task-image-upload__card"
+        :class="['task-image-upload__card', { 'is-file-only': !showPreview }]"
       >
-        <img class="task-image-upload__image" :src="resolveFileUrl(file)" :alt="file.name || `签到图片 ${index + 1}`" />
+        <img v-if="isPreviewable(file)" class="task-image-upload__image" :src="resolveFileUrl(file)" :alt="file.name || `上传文件 ${index + 1}`" />
+        <div v-else-if="showPreview" class="task-image-upload__file-icon" aria-hidden="true">📄</div>
         <div class="task-image-upload__actions">
-          <button type="button" @click="openPreview(file)"><el-icon><View /></el-icon><span>预览</span></button>
+          <button v-if="showPreview" type="button" @click="openPreview(file)"><el-icon><View /></el-icon><span>预览</span></button>
           <button type="button" class="is-danger" @click="removeFile(file)"><el-icon><Delete /></el-icon><span>删除</span></button>
         </div>
         <div class="task-image-upload__filename" :title="file.name">{{ file.name || `签到图片 ${index + 1}` }}</div>
       </article>
 
-      <el-upload
+        <el-upload
         v-if="fileList.length < limit"
         class="task-image-upload__uploader"
         :show-file-list="false"
         :http-request="httpRequest"
-        accept="image/*"
+        :accept="accept"
         multiple
         :limit="limit"
         drag
       >
         <div class="task-image-upload__trigger">
           <el-icon><UploadFilled /></el-icon>
-          <strong>上传图片</strong>
+          <strong>{{ uploadLabel }}</strong>
           <span>{{ fileList.length }}/{{ limit }}</span>
         </div>
       </el-upload>
@@ -64,6 +65,9 @@ const props = defineProps({
   limit: { type: Number, default: 3 },
   httpRequest: { type: Function, required: true },
   onRemove: { type: Function, required: true },
+  accept: { type: String, default: 'image/*' },
+  uploadLabel: { type: String, default: '上传图片' },
+  showPreview: { type: Boolean, default: true },
 })
 
 const previewVisible = ref(false)
@@ -190,7 +194,20 @@ function removeFile(file) {
 }
 
 function isImage(file) {
-  return file instanceof File && (file.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name || ''))
+  return isAccepted(file)
+}
+
+function isAccepted(file) {
+  if (!(file instanceof File)) return false
+  const type = String(file.type || '').toLowerCase()
+  const name = String(file.name || '').toLowerCase()
+  if (props.accept === 'image/*') return type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(name)
+  if (props.accept === 'audio/*') return type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|amr|flac)$/i.test(name)
+  return true
+}
+
+function isPreviewable(file) {
+  return String(props.accept || '').includes('image')
 }
 
 function addFile(file) {
@@ -202,7 +219,7 @@ function handlePaste(event) {
   const file = Array.from(event.clipboardData?.items || [])
     .find(item => item.kind === 'file' && item.type.startsWith('image/'))
     ?.getAsFile()
-  if (file) addFile(file)
+  if (file && props.accept === 'image/*') addFile(file)
 }
 
 function handleDrop(event) {
@@ -213,9 +230,16 @@ function handleDrop(event) {
 
 <style scoped>
 .task-image-upload { width: 100%; min-width: 0; max-width: 100%; }
+.task-image-upload.is-file-only .task-image-upload__grid { grid-template-columns: minmax(0, 1fr); max-width: 620px; }
 .task-image-upload__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(132px, 100%), 1fr)); align-items: stretch; gap: 12px; width: 100%; min-width: 0; max-width: 620px; }
 .task-image-upload__card, .task-image-upload__trigger { position: relative; min-height: 132px; overflow: hidden; border: 1px solid #dbe7f5; border-radius: 14px; background: #f8fbff; }
 .task-image-upload__card { box-shadow: 0 8px 22px rgb(37 99 235 / 8%); }
+.task-image-upload__card.is-file-only { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-height: 64px; padding: 10px 12px; gap: 10px; }
+.task-image-upload__card.is-file-only .task-image-upload__file-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; color: #2563eb; font-size: 20px; background: #eaf3ff; }
+.task-image-upload__card.is-file-only .task-image-upload__filename { grid-column: 1; grid-row: 1; min-width: 0; padding: 0; font-size: 13px; line-height: 20px; }
+.task-image-upload__card.is-file-only .task-image-upload__actions { grid-column: 2; grid-row: 1; position: static; inset: auto; display: flex; opacity: 1; background: transparent; backdrop-filter: none; }
+.task-image-upload__card.is-file-only .task-image-upload__actions button { padding: 5px 7px; border-color: #fecaca; color: #dc2626; background: #fff; white-space: nowrap; }
+.task-image-upload__card.is-file-only .task-image-upload__actions button:hover { color: #b91c1c; background: #fef2f2; }
 .task-image-upload__image { display: block; width: 100%; height: 98px; object-fit: cover; background: linear-gradient(135deg, #eef6ff, #f8fafc); }
 .task-image-upload__filename { overflow: hidden; padding: 8px 10px; color: #526078; font-size: 12px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
 .task-image-upload__actions { position: absolute; inset: 0 0 34px; display: flex; align-items: center; justify-content: center; gap: 8px; opacity: 0; background: rgb(9 23 45 / 72%); backdrop-filter: blur(3px); transition: opacity 0.2s ease; }
