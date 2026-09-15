@@ -599,7 +599,7 @@ const imageMap = {
   miaoying: miaoyingImage,
 };
 
-const isLoginPage = computed(() => route.path === "/login");
+const isLoginPage = computed(() => route.path === "/login" || route.path === "/");
 
 const {
   mobileMoreVisible,

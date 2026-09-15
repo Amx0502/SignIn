@@ -14,6 +14,10 @@ from .auth_models import UserFeaturePolicyRow, UserRow, UserSessionRow
 
 
 PBKDF2_ITERATIONS = 600_000
+CARD_SINGLE = "single"
+CARD_MONTHLY = "monthly"
+CARD_TYPES = {CARD_SINGLE, CARD_MONTHLY}
+MONTHLY_CARD_DAYS = 30
 
 
 class DuplicateUsernameError(ValueError):
@@ -34,6 +38,39 @@ def normalize_expiration(value: datetime | None) -> datetime | None:
     if value.tzinfo is not None:
         return value.astimezone().replace(tzinfo=None)
     return value
+
+
+def normalize_card_type(value: str | None) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return None
+    if normalized not in CARD_TYPES:
+        raise ValueError("会员卡类型无效")
+    return normalized
+
+
+def normalize_delete_delay_minutes(value: int | None) -> int:
+    if value is None:
+        return 5
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("次卡删除延迟必须是整数分钟") from exc
+    if not 0 <= minutes <= 1440:
+        raise ValueError("次卡删除延迟必须在 0 到 1440 分钟之间")
+    return minutes
+
+
+def normalize_total_uses(value: int | None) -> int:
+    if value is None:
+        return 1
+    try:
+        total = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("次卡签到次数必须是整数") from exc
+    if not 1 <= total <= 999:
+        raise ValueError("次卡签到次数必须在 1 到 999 之间")
+    return total
 
 
 def hash_password(password: str) -> str:
@@ -70,6 +107,17 @@ class AuthRepository:
     @staticmethod
     def _to_dict(row: UserRow) -> dict:
         policy = row.feature_policy
+        now = datetime.now()
+        total_uses = int(
+            row.card_total_uses
+            if row.card_total_uses is not None
+            else 1
+        )
+        used_count = int(
+            row.card_used_count
+            if row.card_used_count is not None
+            else 0
+        )
         location_search_used = (
             int(policy.location_search_used or 0)
             if policy and policy.location_search_date == date.today()
@@ -85,8 +133,33 @@ class AuthRepository:
             "last_login": row.last_login.isoformat() if row.last_login else None,
             "expires_at": row.expires_at.isoformat() if row.expires_at else None,
             "is_expired": bool(
-                row.expires_at and row.expires_at <= datetime.now()
+                row.expires_at and row.expires_at <= now
             ),
+            "card_type": row.card_type,
+            "card_activated_at": (
+                row.card_activated_at.isoformat()
+                if row.card_activated_at
+                else None
+            ),
+            "card_used_at": (
+                row.card_used_at.isoformat()
+                if row.card_used_at
+                else None
+            ),
+            "card_total_uses": total_uses,
+            "card_used_count": used_count,
+            "card_remaining_uses": max(total_uses - used_count, 0),
+            "card_delete_delay_minutes": int(
+                row.card_delete_delay_minutes
+                if row.card_delete_delay_minutes is not None
+                else 5
+            ),
+            "card_delete_due_at": (
+                row.card_delete_due_at.isoformat()
+                if row.card_delete_due_at
+                else None
+            ),
+            "card_status": AuthRepository._card_status(row, now),
             "class_cube_only": bool(policy.class_cube_only) if policy else False,
             "class_cube_account_limit": (
                 policy.class_cube_account_limit if policy else None
@@ -106,6 +179,21 @@ class AuthRepository:
                 else None
             ),
         }
+
+    @staticmethod
+    def _card_status(row: UserRow, now: datetime | None = None) -> str | None:
+        if not row.card_type:
+            return None
+        if row.card_used_at is not None:
+            return "used"
+        if not row.is_active:
+            return "expired"
+        current = now or datetime.now()
+        if row.expires_at is not None and row.expires_at <= current:
+            return "expired"
+        if row.card_type == CARD_MONTHLY and row.card_activated_at is None:
+            return "pending"
+        return "active"
 
     def initialize_users(self, path: Path) -> int:
         with self.database.session() as session:
@@ -172,12 +260,24 @@ class AuthRepository:
         class_cube_account_limit: int | None = None,
         location_search_daily_limit: int | None = None,
         expires_at: datetime | None = None,
+        card_type: str | None = None,
+        card_delete_delay_minutes: int | None = None,
+        card_total_uses: int | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
+        card_type = normalize_card_type(card_type)
+        delete_delay_minutes = normalize_delete_delay_minutes(
+            card_delete_delay_minutes
+        )
+        total_uses = normalize_total_uses(card_total_uses)
         if role not in {"admin", "user"}:
             raise ValueError("角色无效")
+        if card_type is not None and role != "user":
+            raise ValueError("只有普通用户可以分配会员卡")
         if role == "admin" and expires_at is not None:
             raise ValueError("管理员账号不能设置到期时间")
+        if card_type is not None:
+            expires_at = None
         if is_active and expires_at is not None and expires_at <= datetime.now():
             raise ValueError("启用用户的到期时间必须晚于当前时间")
         try:
@@ -185,6 +285,9 @@ class AuthRepository:
                 row = UserRow(
                     username=username.strip(), password_hash=hash_password(password),
                     role=role, is_active=is_active, expires_at=expires_at,
+                    card_type=card_type,
+                    card_delete_delay_minutes=delete_delay_minutes,
+                    card_total_uses=total_uses,
                 )
                 session.add(row)
                 session.flush()
@@ -224,10 +327,26 @@ class AuthRepository:
         class_cube_account_limit: int | None = None,
         location_search_daily_limit: int | None = None,
         expires_at: datetime | None = None,
+        card_type: str | None = None,
+        card_delete_delay_minutes: int | None = None,
+        card_total_uses: int | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
+        card_type = normalize_card_type(card_type)
+        delete_delay_minutes = (
+            normalize_delete_delay_minutes(card_delete_delay_minutes)
+            if card_delete_delay_minutes is not None
+            else None
+        )
+        total_uses = (
+            normalize_total_uses(card_total_uses)
+            if card_total_uses is not None
+            else None
+        )
         if role not in {"admin", "user"}:
             raise ValueError("角色无效")
+        if card_type is not None and role != "user":
+            raise ValueError("只有普通用户可以分配会员卡")
         if role == "admin" and expires_at is not None:
             raise ValueError("管理员账号不能设置到期时间")
         if is_active and expires_at is not None and expires_at <= datetime.now():
@@ -241,10 +360,73 @@ class AuthRepository:
                     role != "admin" or not is_active
                 ) and self._active_admin_count(session) <= 1:
                     raise LastAdminError("必须保留至少一个启用中的管理员")
+                previous_card_type = row.card_type
                 row.username = username.strip()
                 row.role = role
                 row.is_active = is_active
-                row.expires_at = expires_at if role == "user" else None
+                if role != "user" or card_type is None:
+                    row.expires_at = expires_at if role == "user" else None
+                    row.card_type = None
+                    row.card_activated_at = None
+                    row.card_used_at = None
+                    row.card_used_count = 0
+                    row.card_total_uses = 1
+                    row.card_delete_delay_minutes = 5
+                    row.card_delete_due_at = None
+                else:
+                    row.card_type = card_type
+                    if previous_card_type != card_type:
+                        row.card_activated_at = None
+                        row.card_used_at = None
+                        row.card_used_count = 0
+                        row.card_total_uses = total_uses or 1
+                        row.expires_at = None
+                        row.card_delete_due_at = None
+                        row.card_delete_delay_minutes = (
+                            delete_delay_minutes
+                            if delete_delay_minutes is not None
+                            else 5
+                        )
+                    elif (
+                        card_type == CARD_MONTHLY
+                        and row.card_activated_at is not None
+                        and row.expires_at is None
+                    ):
+                        row.expires_at = (
+                            row.card_activated_at
+                            + timedelta(days=MONTHLY_CARD_DAYS)
+                        )
+                    elif card_type == CARD_SINGLE:
+                        row.expires_at = None
+                    if (
+                        card_type == CARD_SINGLE
+                        and delete_delay_minutes is not None
+                    ):
+                        row.card_delete_delay_minutes = delete_delay_minutes
+                    if card_type == CARD_SINGLE and total_uses is not None:
+                        if row.card_used_at is not None:
+                            raise ValueError("已核销次卡不能修改签到次数")
+                        if total_uses < int(row.card_used_count or 0):
+                            raise ValueError(
+                                "次卡总次数不能小于已签到次数"
+                            )
+                        row.card_total_uses = total_uses
+                        if (
+                            row.card_used_count
+                            and row.card_used_count >= total_uses
+                        ):
+                            now = datetime.now()
+                            row.card_used_at = now
+                            row.expires_at = now
+                            row.card_delete_due_at = now + timedelta(
+                                minutes=normalize_delete_delay_minutes(
+                                    row.card_delete_delay_minutes
+                                )
+                            )
+                            row.is_active = False
+                            session.execute(delete(UserSessionRow).where(
+                                UserSessionRow.user_id == row.id
+                            ))
                 policy = session.get(UserFeaturePolicyRow, row.id)
                 if policy is None:
                     policy = UserFeaturePolicyRow(user_id=row.id)
@@ -300,9 +482,74 @@ class AuthRepository:
                 return None
             if upgrade:
                 row.password_hash = hash_password(password)
-            row.last_login = datetime.now()
+            now = datetime.now()
+            row.last_login = now
+            if (
+                row.card_type == CARD_MONTHLY
+                and row.card_activated_at is None
+            ):
+                row.card_activated_at = now
+                row.expires_at = now + timedelta(days=MONTHLY_CARD_DAYS)
             session.flush()
             return row
+
+    def record_single_card_checkin(self, user_id: int) -> dict | None:
+        with self.database.session() as session:
+            row = session.scalar(
+                select(UserRow)
+                .where(UserRow.id == int(user_id))
+                .with_for_update()
+            )
+            if (
+                row is None
+                or row.role != "user"
+                or row.card_type != CARD_SINGLE
+                or row.card_used_at is not None
+            ):
+                return None
+            now = datetime.now()
+            total_uses = normalize_total_uses(row.card_total_uses)
+            used_count = min(
+                int(row.card_used_count or 0) + 1,
+                total_uses,
+            )
+            row.card_used_count = used_count
+            consumed = used_count >= total_uses
+            if consumed:
+                delete_delay_minutes = normalize_delete_delay_minutes(
+                    row.card_delete_delay_minutes
+                )
+                row.card_used_at = now
+                row.expires_at = now
+                row.card_delete_due_at = now + timedelta(
+                    minutes=delete_delay_minutes
+                )
+                row.is_active = False
+                session.execute(
+                    delete(UserSessionRow).where(UserSessionRow.user_id == row.id)
+                )
+            row.updated_at = now
+            session.flush()
+            return {
+                **self._to_dict(row),
+                "card_consumed": consumed,
+            }
+
+    def list_due_single_card_user_ids(
+        self,
+        now: datetime | None = None,
+    ) -> list[int]:
+        current = now or datetime.now()
+        with self.database.session() as session:
+            return list(session.scalars(
+                select(UserRow.id).where(
+                    UserRow.role == "user",
+                    UserRow.card_type == CARD_SINGLE,
+                    UserRow.card_used_at.is_not(None),
+                    UserRow.card_delete_due_at.is_not(None),
+                    UserRow.card_delete_due_at <= current,
+                )
+            ).all())
 
     def change_password(
         self,

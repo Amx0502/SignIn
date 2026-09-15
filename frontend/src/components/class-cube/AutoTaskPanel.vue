@@ -188,7 +188,7 @@
               </div>
             </el-form-item>
             <div class="switch-options">
-              <el-checkbox v-model="draft.notify_wecom">发送企业微信通知</el-checkbox>
+              <el-checkbox v-if="isAdmin" v-model="draft.notify_wecom">发送企业微信通知</el-checkbox>
               <el-checkbox v-model="draft.enabled">保存后立即启用</el-checkbox>
             </div>
           </section>
@@ -347,7 +347,7 @@ function resetDraft(values = {}) {
   Object.assign(draft, emptyDraft(), values, {
     coordinateInput: coordinateText(values),
     schedule_times: values.schedule_times?.length ? [...values.schedule_times] : ['08:00:00'],
-    notify_wecom: values.notify_wecom !== false,
+    notify_wecom: props.isAdmin ? values.notify_wecom !== false : true,
   })
   photoFiles.value = draft.photo_path ? [{
     uid: `saved-${draft.photo_path}`,

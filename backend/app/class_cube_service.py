@@ -307,12 +307,14 @@ class ClassCubeService:
         clock: Callable[[], float] | None = None,
         notifier: ClassCubeNotifier | None = None,
         geocoder: ClassCubeGeocoder | None = None,
+        membership_consumer: Callable[[int], dict[str, Any] | None] | None = None,
     ):
         self.repository = repository
         self.client = client
         self.logger = logger
         self._clock = clock or time.monotonic
         self.notifier = notifier or ClassCubeNotifier()
+        self.membership_consumer = membership_consumer
         self.geocoder = geocoder or ClassCubeGeocoder(
             base_url=config.CLASS_CUBE_TENCENT_URL,
             user_agent=config.CLASS_CUBE_TENCENT_USER_AGENT,
@@ -1386,6 +1388,24 @@ class ClassCubeService:
                     expected_lease_token=claim["lease_token"],
                     started_at=claim["started_at"],
                 )
+                if checkin_result.get("membership_card_consumed"):
+                    delay = checkin_result.get(
+                        "membership_card_delete_delay_minutes"
+                    )
+                    result["message"] = (
+                        "签到成功，次卡已核销并立即删除"
+                        if delay == 0
+                        else f"签到成功，次卡已核销，{delay or 5} 分钟后删除"
+                    )
+                    break
+                if checkin_result.get("membership_card_type") == "single":
+                    result["message"] = (
+                        "签到成功，次卡已使用 "
+                        f"{checkin_result.get('membership_card_used_count')}/"
+                        f"{checkin_result.get('membership_card_total_uses')} 次，"
+                        "剩余 "
+                        f"{checkin_result.get('membership_card_remaining_uses')} 次"
+                    )
             if result["failed"]:
                 result["status"] = "failed"
                 result["message"] = "部分或全部签到执行失败"
@@ -1645,6 +1665,50 @@ class ClassCubeService:
             is_admin,
         )
 
+    def _finalize_successful_checkin(
+        self,
+        context: dict[str, Any],
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
+        if (
+            result.get("status") != "success"
+            or self.membership_consumer is None
+        ):
+            return result
+        owner_user_id = context.get("card_owner_user_id")
+        if owner_user_id is None:
+            owner_user_id = context.get("actor_user_id")
+        try:
+            recorded = self.membership_consumer(int(owner_user_id))
+        except Exception as exc:
+            self.logger.error(
+                "次卡核销失败；用户：%s；异常：%s",
+                owner_user_id,
+                type(exc).__name__,
+            )
+            return result
+        if recorded is not None:
+            result["membership_card_consumed"] = bool(
+                recorded.get("card_consumed")
+            )
+            result["membership_card_type"] = recorded.get("card_type")
+            result["membership_card_total_uses"] = recorded.get(
+                "card_total_uses"
+            )
+            result["membership_card_used_count"] = recorded.get(
+                "card_used_count"
+            )
+            result["membership_card_remaining_uses"] = recorded.get(
+                "card_remaining_uses"
+            )
+            result["membership_card_delete_delay_minutes"] = recorded.get(
+                "card_delete_delay_minutes"
+            )
+            result["membership_card_delete_due_at"] = recorded.get(
+                "card_delete_due_at"
+            )
+        return result
+
     def _manual_checkin_context(self, item_id, actor):
         actor_user_id, is_admin = self._actor_scope(actor)
         item = self.repository.get_item(
@@ -1664,6 +1728,11 @@ class ClassCubeService:
         )
         return {
             "actor_user_id": actor_user_id,
+            "card_owner_user_id": (
+                actor_user_id
+                if not is_admin
+                else account.get("owner_user_id")
+            ),
             "is_admin": is_admin,
             "item": item,
             "course": course,
@@ -2199,9 +2268,12 @@ class ClassCubeService:
                 self._log_remote_failure("二维码签到", exc)
                 return self._checkin_view("failed", str(exc))
             status = qr_result.status or "unknown_result"
-            return self._checkin_view(
-                status,
-                qr_result.message or "二维码签到完成",
+            return self._finalize_successful_checkin(
+                context,
+                self._checkin_view(
+                    status,
+                    qr_result.message or "二维码签到完成",
+                ),
             )
         if (
             not form.submit_capable
@@ -2294,9 +2366,12 @@ class ClassCubeService:
             )
         except ClassCubeSubmissionUnknown as exc:
             if self._confirm_unknown_submission(context, actor):
-                return self._checkin_view(
-                    "success",
-                    "签到成功",
+                return self._finalize_successful_checkin(
+                    context,
+                    self._checkin_view(
+                        "success",
+                        "签到成功",
+                    ),
                 )
             self._log_remote_failure("提交签到", exc)
             return self._checkin_view(
@@ -2321,10 +2396,13 @@ class ClassCubeService:
                 "班级魔方登录已失效，请重新扫码",
             )
         if result.status == "success":
-            return self._checkin_view(
-                "success",
-                "签到成功",
-                photo_res=photo_res_value,
+            return self._finalize_successful_checkin(
+                context,
+                self._checkin_view(
+                    "success",
+                    "签到成功",
+                    photo_res=photo_res_value,
+                ),
             )
         if result.status == "already_signed":
             return self._checkin_view(
@@ -2339,9 +2417,12 @@ class ClassCubeService:
             )
         if result.status == "unknown_result":
             if self._confirm_unknown_submission(context, actor):
-                return self._checkin_view(
-                    "success",
-                    "签到成功",
+                return self._finalize_successful_checkin(
+                    context,
+                    self._checkin_view(
+                        "success",
+                        "签到成功",
+                    ),
                 )
             return self._checkin_view(
                 "unknown_result",

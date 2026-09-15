@@ -54,6 +54,20 @@ class AuthDatabase:
                 connection.execute(
                     text("ALTER TABLE users ADD COLUMN expires_at DATETIME NULL")
                 )
+            card_definitions = {
+                "card_type": "VARCHAR(16) NULL",
+                "card_activated_at": "DATETIME NULL",
+                "card_used_at": "DATETIME NULL",
+                "card_total_uses": "INT NOT NULL DEFAULT 1",
+                "card_used_count": "INT NOT NULL DEFAULT 0",
+                "card_delete_delay_minutes": "INT NOT NULL DEFAULT 5",
+                "card_delete_due_at": "DATETIME NULL",
+            }
+            for name, definition in card_definitions.items():
+                if name not in columns:
+                    connection.execute(text(
+                        f"ALTER TABLE users ADD COLUMN {name} {definition}"
+                    ))
             policy_columns = {
                 column["name"]
                 for column in inspect(connection).get_columns(

@@ -323,7 +323,7 @@
             </el-form-item>
             <el-form-item class="task-primary-actions">
               <el-checkbox v-model="form.enable">启用任务</el-checkbox>
-              <el-checkbox v-model="form.notify_wechat"
+              <el-checkbox v-if="isAdmin" v-model="form.notify_wechat"
                 >发送企业微信通知</el-checkbox
               >
             </el-form-item>
@@ -374,6 +374,15 @@ import api from "../api";
 
 const { state, refreshState, refreshLogs, selectedAccountIndex } =
   useAppState();
+
+const isAdmin = (() => {
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+    return user?.role === "admin";
+  } catch {
+    return false;
+  }
+})();
 
 const selectedActualIndex = ref(-1);
 const projects = ref([]);
@@ -558,7 +567,7 @@ function onSelectTask(row) {
   form.skip_dates = [...(task.skip_dates || [])];
   form.auto_disable_after_finish = task.auto_disable_after_finish === true;
   form.mode = task.mode || (taskPicPaths.length ? "image" : "normal");
-  form.notify_wechat = task.notify_wechat !== false;
+  form.notify_wechat = isAdmin ? task.notify_wechat !== false : true;
   syncLocationMode();
   syncFileList();
 }
@@ -644,6 +653,7 @@ async function saveTask() {
     return;
   }
   form.mode = form.pic_path && form.pic_path.length ? "image" : "normal";
+  if (!isAdmin) form.notify_wechat = true;
   try {
     const account = state.value.accounts[selectedAccountIndex.value];
     const tasks = account?.tasks || [];

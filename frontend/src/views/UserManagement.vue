@@ -2,7 +2,10 @@
   <div class="users-page">
     <div class="page-heading">
       <div><h2>用户管理</h2><p>管理后台登录用户、角色、启用状态和账号有效期</p></div>
-      <el-button type="primary" :icon="Plus" @click="openCreate">新增用户</el-button>
+      <div class="page-heading__actions">
+        <el-button plain @click="openMemberCreate">一键创建班级魔方用户</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreate">新增用户</el-button>
+      </div>
     </div>
 
     <el-card shadow="never" class="table-card">
@@ -13,6 +16,14 @@
             <el-tag :type="row.role === 'admin' ? 'danger' : 'info'">
               {{ row.role === 'admin' ? '管理员' : '普通用户' }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="会员卡" width="110">
+          <template #default="{ row }">
+            <el-tag v-if="row.card_type" :type="cardTagType(row)" size="small">
+              {{ cardTypeLabel(row.card_type) }}
+            </el-tag>
+            <span v-else class="muted-text">无</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100">
@@ -76,6 +87,7 @@
           <dl>
             <div><dt>账号额度</dt><dd>{{ row.role === 'admin' || row.class_cube_account_limit == null ? '不限' : row.class_cube_account_limit }}</dd></div>
             <div><dt>地址搜索</dt><dd>{{ row.role === 'admin' || row.location_search_daily_limit == null ? '不限' : `${row.location_search_used || 0} / ${row.location_search_daily_limit}` }}</dd></div>
+            <div><dt>会员卡</dt><dd>{{ row.card_type ? cardTypeLabel(row.card_type) : '无' }}</dd></div>
             <div class="mobile-user-card__wide"><dt>有效期</dt><dd :class="{ 'expired-time': isExpired(row) }">{{ formatExpiry(row) }}</dd></div>
             <div class="mobile-user-card__wide"><dt>最后登录</dt><dd>{{ formatTime(row.last_login) }}</dd></div>
           </dl>
@@ -111,6 +123,48 @@
                 <el-option label="普通用户" value="user" />
               </el-select>
             </el-form-item>
+            <el-form-item v-if="userForm.role === 'user'" label="会员卡类型">
+              <el-select
+                v-model="userForm.card_type"
+                clearable
+                placeholder="不分配会员卡"
+                style="width: 100%"
+                @change="handleCardTypeChange"
+              >
+                <el-option label="次卡（可设置多次签到）" value="single" />
+                <el-option label="月卡（首次登录起 30 天）" value="monthly" />
+              </el-select>
+            </el-form-item>
+            <el-form-item
+              v-if="userForm.role === 'user' && userForm.card_type === 'single'"
+              label="可签到次数"
+            >
+              <div class="minute-stepper">
+                <el-input-number
+                  v-model="userForm.card_total_uses"
+                  :min="1"
+                  :max="999"
+                  :precision="0"
+                />
+                <em>次</em>
+              </div>
+              <div class="field-help">达到总次数并签到成功后，账号按下方延迟时间删除。</div>
+            </el-form-item>
+            <el-form-item
+              v-if="userForm.role === 'user' && userForm.card_type === 'single'"
+              label="签到后删除延迟"
+            >
+              <div class="minute-stepper">
+                <el-input-number
+                  v-model="userForm.card_delete_delay_minutes"
+                  :min="0"
+                  :max="1440"
+                  :precision="0"
+                />
+                <em>分钟</em>
+              </div>
+              <div class="field-help">默认 3 分钟；设为 0 表示立即删除。</div>
+            </el-form-item>
             <el-form-item v-if="!editingId" label="初始密码" prop="password">
               <el-input v-model="userForm.password" type="password" show-password />
             </el-form-item>
@@ -120,7 +174,7 @@
                 <el-switch v-model="userForm.is_active" active-text="启用" inactive-text="禁用" />
               </div>
             </el-form-item>
-            <el-form-item v-if="userForm.role === 'user'" label="账号到期时间" class="user-form-grid__full">
+            <el-form-item v-if="userForm.role === 'user' && !userForm.card_type" label="账号到期时间" class="user-form-grid__full">
               <el-date-picker
                 v-model="userForm.expires_at"
                 type="datetime"
@@ -133,7 +187,12 @@
               />
               <div class="field-help">到期后账号会自动变为禁用，已登录会话也会失效；清空表示永不过期。</div>
             </el-form-item>
-            <div v-else class="admin-expiry-note user-form-grid__full">管理员账号不设置到期时间，避免系统失去可用管理员。</div>
+            <div v-if="userForm.role === 'user' && userForm.card_type" class="admin-expiry-note user-form-grid__full">
+              {{ userForm.card_type === 'monthly'
+                ? '月卡在用户首次成功登录时激活，到期时间自动设为激活后 30 天。'
+                : `次卡可成功签到 ${userForm.card_total_uses ?? 1} 次，最后一次核销后 ${userForm.card_delete_delay_minutes ?? 3} 分钟删除账号。` }}
+            </div>
+            <div v-else-if="userForm.role !== 'user'" class="admin-expiry-note user-form-grid__full">管理员账号不设置到期时间，避免系统失去可用管理员。</div>
           </div>
         </section>
 
@@ -210,6 +269,74 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="memberDialog" title="一键创建班级魔方用户" width="480px" align-center>
+      <div class="member-create-panel">
+        <div class="member-type-options">
+          <button
+            v-for="option in memberTypeOptions"
+            :key="option.value"
+            type="button"
+            class="member-type-option"
+            :class="{ active: memberForm.card_type === option.value }"
+            @click="memberForm.card_type = option.value"
+          >
+            <strong>{{ option.label }}</strong>
+            <small>{{ option.description }}</small>
+          </button>
+        </div>
+        <label v-if="memberForm.card_type === 'single'" class="member-delay-field">
+          <span>可签到次数</span>
+          <div class="minute-stepper">
+            <el-input-number
+              v-model="memberForm.card_total_uses"
+              :min="1"
+              :max="999"
+              :precision="0"
+            />
+            <em>次</em>
+          </div>
+          <small>默认 1 次；达到总次数后按下方延迟时间删除</small>
+        </label>
+        <label v-if="memberForm.card_type === 'single'" class="member-delay-field">
+          <span>签到成功后延迟删除</span>
+          <div class="minute-stepper">
+            <el-input-number
+              v-model="memberForm.card_delete_delay_minutes"
+              :min="0"
+              :max="1440"
+              :precision="0"
+            />
+            <em>分钟</em>
+          </div>
+          <small>默认 3 分钟；设为 0 表示立即删除</small>
+        </label>
+        <p class="field-help">系统将自动生成随机用户名和密码，并仅开放班级魔方核心功能。</p>
+      </div>
+      <template #footer>
+        <el-button @click="memberDialog = false">取消</el-button>
+        <el-button type="primary" :loading="memberCreating" @click="createMember">创建并生成凭据</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="memberResultDialog" title="创建成功" width="460px" align-center>
+      <div v-if="memberCredentials" class="member-credentials">
+        <div class="member-credentials__row">
+          <span>用户名</span>
+          <strong>{{ memberCredentials.username }}</strong>
+          <el-button link type="primary" @click="copyCredential(memberCredentials.username)">复制</el-button>
+        </div>
+        <div class="member-credentials__row">
+          <span>初始密码</span>
+          <strong>{{ memberCredentials.password }}</strong>
+          <el-button link type="primary" @click="copyCredential(memberCredentials.password)">复制</el-button>
+        </div>
+        <p class="field-help">密码仅在本次创建后展示，请立即交付给用户。</p>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="memberResultDialog = false">完成</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="resetDialog" title="重置密码" width="420px">
       <el-form ref="resetFormRef" :model="resetForm" :rules="resetRules" label-position="top">
         <el-form-item label="新密码" prop="new_password">
@@ -229,7 +356,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  createUserApi, deleteUserApi, getUsersApi,
+  createClassCubeMemberApi, createUserApi, deleteUserApi, getUsersApi,
   resetUserPasswordApi, updateUserApi
 } from '../api'
 import classCubeApi from '../api/classCube.js'
@@ -239,6 +366,10 @@ const accountPool = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const userDialog = ref(false)
+const memberDialog = ref(false)
+const memberResultDialog = ref(false)
+const memberCreating = ref(false)
+const memberCredentials = ref(null)
 const resetDialog = ref(false)
 const editingId = ref(null)
 const resetUserId = ref(null)
@@ -252,7 +383,19 @@ const userForm = reactive({
   location_search_daily_limit: 100,
   initial_class_cube_account_id: null,
   expires_at: null,
+  card_type: null,
+  card_total_uses: 1,
+  card_delete_delay_minutes: 3,
 })
+const memberForm = reactive({
+  card_type: 'single',
+  card_total_uses: 1,
+  card_delete_delay_minutes: 3,
+})
+const memberTypeOptions = [
+  { value: 'single', label: '次卡', description: '成功签到一次后核销，账号自动失效并删除' },
+  { value: 'monthly', label: '月卡', description: '首次登录激活，自激活起 30 天内有效' },
+]
 const resetForm = reactive({ new_password: '' })
 const userRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }, { min: 3, message: '至少 3 个字符', trigger: 'blur' }],
@@ -261,10 +404,25 @@ const userRules = {
 const resetRules = { new_password: [{ required: true, message: '请输入新密码', trigger: 'blur' }, { min: 6, message: '密码至少 6 位', trigger: 'blur' }] }
 
 function formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN') : '从未登录' }
+function cardTypeLabel(value) {
+  return { single: '次卡', monthly: '月卡' }[value] || '无'
+}
+function cardTagType(row) {
+  if (row.card_status === 'expired' || row.card_status === 'used') return 'warning'
+  if (row.card_status === 'pending') return 'info'
+  return row.card_type === 'monthly' ? 'success' : 'primary'
+}
 function isExpired(row) {
   return Boolean(row.is_expired || (row.expires_at && new Date(row.expires_at) <= new Date()))
 }
 function formatExpiry(row) {
+  if (row.card_type === 'monthly' && !row.card_activated_at) return '首次登录后激活'
+  if (row.card_type === 'single') {
+    if (row.card_delete_due_at) {
+      return `${formatTime(row.card_delete_due_at)} 删除`
+    }
+    return `已签到 ${row.card_used_count ?? 0}/${row.card_total_uses ?? 1} 次，剩余 ${row.card_remaining_uses ?? 1} 次`
+  }
   if (!row.expires_at) return '永不过期'
   return new Date(row.expires_at).toLocaleString('zh-CN')
 }
@@ -289,6 +447,39 @@ function accountLabel(account) {
   const name = account.name || account.remote_user_name || `账号 ${account.id}`
   return account.remote_uid ? `${name} · UID ${account.remote_uid}` : `${name} · 待确认 UID`
 }
+function openMemberCreate() {
+  memberForm.card_type = 'single'
+  memberForm.card_total_uses = 1
+  memberForm.card_delete_delay_minutes = 3
+  memberCredentials.value = null
+  memberDialog.value = true
+}
+async function createMember() {
+  memberCreating.value = true
+  try {
+    const response = await createClassCubeMemberApi({
+      card_type: memberForm.card_type,
+      card_total_uses: memberForm.card_total_uses,
+      card_delete_delay_minutes: memberForm.card_delete_delay_minutes,
+    })
+    memberCredentials.value = response.data.credentials
+    memberDialog.value = false
+    memberResultDialog.value = true
+    await loadUsers()
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    memberCreating.value = false
+  }
+}
+async function copyCredential(value) {
+  try {
+    await navigator.clipboard.writeText(value)
+    ElMessage.success('已复制')
+  } catch {
+    ElMessage.warning('浏览器未允许复制，请手动记录')
+  }
+}
 function openCreate() {
   editingId.value = null
   accountQuotaUnlimited.value = true
@@ -299,6 +490,9 @@ function openCreate() {
     location_search_daily_limit: 100,
     initial_class_cube_account_id: null,
     expires_at: null,
+    card_type: null,
+    card_total_uses: 1,
+    card_delete_delay_minutes: 3,
   })
   userDialog.value = true
 }
@@ -313,6 +507,9 @@ function openEdit(row) {
     location_search_daily_limit: row.location_search_daily_limit ?? 100,
     initial_class_cube_account_id: null,
     expires_at: row.role === 'user' ? formExpiryValue(row.expires_at) : null,
+    card_type: row.role === 'user' ? row.card_type : null,
+    card_total_uses: row.card_total_uses ?? 1,
+    card_delete_delay_minutes: row.card_delete_delay_minutes ?? 3,
   })
   userDialog.value = true
 }
@@ -322,6 +519,22 @@ function handleClassCubeOnlyChange(enabled) {
     userForm.class_cube_account_limit = 1
   }
   if (!enabled) userForm.initial_class_cube_account_id = null
+}
+function handleCardTypeChange(cardType) {
+  if (!cardType) return
+  userForm.card_type = cardType
+  userForm.class_cube_only = true
+  userForm.expires_at = null
+  if (cardType === 'single' && userForm.card_delete_delay_minutes == null) {
+    userForm.card_delete_delay_minutes = 3
+  }
+  if (cardType === 'single' && userForm.card_total_uses == null) {
+    userForm.card_total_uses = 1
+  }
+  if (accountQuotaUnlimited.value) {
+    accountQuotaUnlimited.value = false
+    userForm.class_cube_account_limit = 1
+  }
 }
 async function saveUser() {
   await userFormRef.value.validate()
@@ -344,7 +557,11 @@ async function saveUser() {
           ? userForm.class_cube_account_limit : null,
         location_search_daily_limit: userForm.role === 'user' && !locationQuotaUnlimited.value
           ? userForm.location_search_daily_limit : null,
-        expires_at: userForm.role === 'user' ? userForm.expires_at : null,
+        expires_at: userForm.role === 'user' && !userForm.card_type ? userForm.expires_at : null,
+        card_type: userForm.role === 'user' ? userForm.card_type : null,
+        card_total_uses: userForm.role === 'user' ? userForm.card_total_uses : 1,
+        card_delete_delay_minutes: userForm.role === 'user'
+          ? userForm.card_delete_delay_minutes : 3,
       })
     } else {
       await createUserApi({
@@ -356,7 +573,11 @@ async function saveUser() {
           ? userForm.location_search_daily_limit : null,
         initial_class_cube_account_id: userForm.class_cube_only
           ? userForm.initial_class_cube_account_id : null,
-        expires_at: userForm.role === 'user' ? userForm.expires_at : null,
+        expires_at: userForm.role === 'user' && !userForm.card_type ? userForm.expires_at : null,
+        card_type: userForm.role === 'user' ? userForm.card_type : null,
+        card_total_uses: userForm.role === 'user' ? userForm.card_total_uses : 1,
+        card_delete_delay_minutes: userForm.role === 'user'
+          ? userForm.card_delete_delay_minutes : 3,
       })
     }
     ElMessage.success('保存成功')
@@ -402,8 +623,64 @@ onBeforeUnmount(() => {
 <style scoped>
 .users-page { display: grid; gap: 20px; }
 .page-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.page-heading__actions { display: flex; align-items: center; gap: 10px; }
 .page-heading h2 { margin: 0 0 6px; color: #0f172a; }
 .page-heading p { margin: 0; color: #64748b; }
+.muted-text { color: #94a3b8; font-size: 12px; }
+.member-create-panel { display: grid; gap: 14px; }
+.member-type-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.member-type-option {
+  display: grid;
+  gap: 6px;
+  min-height: 108px;
+  padding: 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  background: #f8fbff;
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+.member-type-option:hover,
+.member-type-option.active { border-color: #3b82f6; background: #eff6ff; box-shadow: 0 8px 20px rgb(37 99 235 / 12%); }
+.member-type-option strong { color: #172033; font-size: 16px; }
+.member-type-option small { color: #64748b; font-size: 12px; line-height: 1.55; }
+.member-delay-field {
+  display: grid;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 13px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+.member-delay-field > span { color: #334155; font-size: 13px; font-weight: 700; }
+.member-delay-field > small { grid-column: 1 / -1; color: #64748b; font-size: 11px; }
+.minute-stepper { position: relative; display: block; width: 100%; }
+.minute-stepper :deep(.el-input-number) { width: 100%; }
+.minute-stepper em {
+  position: absolute;
+  top: 50%;
+  right: 46px;
+  color: #8b9ab0;
+  font-style: normal;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.member-credentials { display: grid; gap: 10px; }
+.member-credentials__row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+.member-credentials__row span { color: #64748b; font-size: 12px; }
+.member-credentials__row strong { overflow-wrap: anywhere; color: #172033; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .table-card { border-radius: 18px; }
 .mobile-user-list { display: none; }
 .field-help { width: 100%; margin-top: 6px; color: #64748b; font-size: 12px; line-height: 1.5; }
@@ -513,10 +790,33 @@ onBeforeUnmount(() => {
   .mobile-user-card__wide { grid-column: auto; }
   .mobile-user-card footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px 14px 11px; border-top: 1px solid #edf2f7; }
   .mobile-user-card footer .el-button { width: 100%; min-height: 36px; margin: 0; padding-inline: 6px; }
-  .page-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; }
+  .page-heading { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 10px; }
   .page-heading h2 { margin-bottom: 3px; font-size: 20px; }
   .page-heading p { font-size: 12px; line-height: 1.45; }
   .page-heading .el-button { width: auto; min-width: 104px; margin: 0; }
+  .page-heading__actions { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .page-heading__actions .el-button { width: 100%; margin: 0; }
+  .member-type-options { grid-template-columns: minmax(0, 1fr); }
+  .member-delay-field { grid-template-columns: minmax(0, 1fr); }
+  .minute-stepper :deep(.el-input-number) { height: 46px; }
+  .minute-stepper :deep(.el-input-number__decrease),
+  .minute-stepper :deep(.el-input-number__increase) {
+    width: 48px;
+    color: #2563eb;
+    background: #f5f9ff;
+    font-size: 18px;
+  }
+  .minute-stepper :deep(.el-input-number__decrease:active),
+  .minute-stepper :deep(.el-input-number__increase:active) {
+    background: #e8f1ff;
+  }
+  .minute-stepper :deep(.el-input__wrapper) {
+    padding-right: 78px;
+    padding-left: 54px;
+  }
+  .minute-stepper em { right: 58px; }
+  .member-credentials__row { grid-template-columns: minmax(0, 1fr) auto; }
+  .member-credentials__row span { grid-column: 1 / -1; }
   .user-editor-form { max-height: 76vh; }
   .user-form-section { padding: 14px 12px 3px; }
   .user-form-grid,

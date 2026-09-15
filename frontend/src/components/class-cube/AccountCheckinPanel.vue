@@ -190,7 +190,7 @@
             </el-form-item>
             <el-alert v-if="selectedItem.mode === 'unknown'" title="暂时无法识别签到类型，请重新同步签到项后再试。" type="warning" :closable="false" show-icon />
             <div class="manual-actions">
-              <el-checkbox v-model="form.notify_wecom">发送企业微信通知</el-checkbox>
+              <el-checkbox v-if="isAdmin" v-model="form.notify_wecom">发送企业微信通知</el-checkbox>
               <div class="manual-action-buttons" :class="{ 'has-batch-action': canBatchCheckin }">
                 <el-button type="primary" size="large" :loading="checkingIn" :disabled="selectedItem.mode === 'unknown' || batchCheckingIn" @click="submitManual">
                   <el-icon><Position /></el-icon>执行{{ modeMeta(selectedItem.mode).label }}
@@ -299,7 +299,7 @@ const selectedBatchAccountIds = ref([])
 const resultVisible = ref(false)
 const result = ref(null)
 const batchDetails = ref([])
-const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', qrUrl: '', notify_wecom: false })
+const form = reactive({ coordinateInput: '', accuracy: 20, password: '', photoPath: '', photoRes: '', qrUrl: '', notify_wecom: true })
 
 function resetManualState() {
   Object.assign(form, {
@@ -309,7 +309,7 @@ function resetManualState() {
     photoPath: '',
     photoRes: '',
     qrUrl: '',
-    notify_wecom: false,
+    notify_wecom: true,
   })
   photoFiles.value = []
   result.value = null
@@ -438,7 +438,7 @@ async function submitManual() {
       photoPath: form.photoPath,
       photoRes: form.photoRes,
       qrUrl: form.qrUrl,
-      notifyWecom: form.notify_wecom,
+      notifyWecom: props.isAdmin ? form.notify_wecom : true,
     })
     result.value = await props.manualCheckinAction(props.selectedItem.id, payload)
     resultVisible.value = true
@@ -460,7 +460,7 @@ async function submitBatchCheckin() {
       accuracy: form.accuracy,
       password: form.password,
       qrUrl: form.qrUrl,
-      notifyWecom: form.notify_wecom,
+      notifyWecom: props.isAdmin ? form.notify_wecom : true,
     })
   } catch (error) {
     ElMessage.error(error.message || '签到参数无效')

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import datetime
 
 
@@ -113,6 +113,9 @@ class UserCreate(BaseModel):
     location_search_daily_limit: int | None = Field(default=None, ge=0)
     initial_class_cube_account_id: int | None = Field(default=None, gt=0)
     expires_at: datetime | None = None
+    card_type: Literal["single", "monthly"] | None = None
+    card_delete_delay_minutes: int = Field(default=5, ge=0, le=1440)
+    card_total_uses: int = Field(default=1, ge=1, le=999)
 
 
 class UserUpdate(BaseModel):
@@ -123,6 +126,17 @@ class UserUpdate(BaseModel):
     class_cube_account_limit: int | None = Field(default=None, ge=0)
     location_search_daily_limit: int | None = Field(default=None, ge=0)
     expires_at: datetime | None = None
+    card_type: Literal["single", "monthly"] | None = None
+    card_delete_delay_minutes: int | None = Field(
+        default=None, ge=0, le=1440
+    )
+    card_total_uses: int | None = Field(default=None, ge=1, le=999)
+
+
+class ClassCubeMemberCreate(BaseModel):
+    card_type: Literal["single", "monthly"]
+    card_delete_delay_minutes: int = Field(default=5, ge=0, le=1440)
+    card_total_uses: int = Field(default=1, ge=1, le=999)
 
 
 class PasswordReset(BaseModel):

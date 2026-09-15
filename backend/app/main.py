@@ -1,4 +1,7 @@
 import uuid
+import secrets
+import string
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -23,6 +26,7 @@ from .models import (
     AccountCreate,
     AccountUpdate,
     CheckinDelaySettingsUpdate,
+    ClassCubeMemberCreate,
     LoginRequest,
     PasswordChange,
     PasswordReset,
@@ -67,6 +71,24 @@ class_cube_log_store = ClassCubeLogStore()
 security = HTTPBearer()
 
 
+def _random_class_cube_username() -> str:
+    alphabet = string.ascii_lowercase + string.digits
+    suffix = "".join(secrets.choice(alphabet) for _ in range(10))
+    return f"bjmf_{suffix}"
+
+
+def _random_class_cube_password() -> str:
+    alphabet = string.ascii_letters + string.digits
+    while True:
+        password = "".join(secrets.choice(alphabet) for _ in range(12))
+        if (
+            any(character.islower() for character in password)
+            and any(character.isupper() for character in password)
+            and any(character.isdigit() for character in password)
+        ):
+            return password
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global auth_database, class_cube_database, miaoying_database, menu_repository
@@ -75,6 +97,7 @@ async def lifespan(app: FastAPI):
     class_cube_scheduler: ClassCubeScheduler | None = None
     miaoying_service: MiaoyingService | None = None
     miaoying_scheduler: MiaoyingScheduler | None = None
+    membership_cleanup_task: asyncio.Task | None = None
     try:
         database_settings = load_database_config()
         app_state.initialize_database(database_settings)
@@ -98,10 +121,53 @@ async def lifespan(app: FastAPI):
         class_cube_database.initialize()
         class_cube_logger = create_class_cube_logger(class_cube_log_store)
         app.state.class_cube_log_store = class_cube_log_store
+        class_cube_repository = ClassCubeRepository(class_cube_database)
+
+        def purge_due_membership_cards():
+            for user_id in auth_service.repository.list_due_single_card_user_ids():
+                try:
+                    class_cube_repository.remove_user_bindings(user_id)
+                    auth_service.repository.delete_user(user_id, 0)
+                except UserNotFoundError:
+                    continue
+                except Exception as exc:
+                    class_cube_logger.warning(
+                        "到期次卡用户清理失败；用户：%s；异常：%s",
+                        user_id,
+                        type(exc).__name__,
+                    )
+
+        def consume_membership_card(user_id: int):
+            recorded = auth_service.repository.record_single_card_checkin(user_id)
+            if recorded is None:
+                return None
+            if recorded.get("card_consumed"):
+                purge_due_membership_cards()
+            return recorded
+
+        async def membership_cleanup_loop():
+            while True:
+                try:
+                    await asyncio.to_thread(purge_due_membership_cards)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    class_cube_logger.warning(
+                        "次卡定期清理失败；异常：%s",
+                        type(exc).__name__,
+                    )
+                await asyncio.sleep(30)
+
+        purge_due_membership_cards()
+        membership_cleanup_task = asyncio.create_task(
+            membership_cleanup_loop()
+        )
+
         class_cube_service = ClassCubeService(
-            ClassCubeRepository(class_cube_database),
+            class_cube_repository,
             ClassCubeClient(),
             class_cube_logger,
+            membership_consumer=consume_membership_card,
         )
         app.state.class_cube_service = class_cube_service
         class_cube_scheduler = ClassCubeScheduler(class_cube_service)
@@ -115,6 +181,12 @@ async def lifespan(app: FastAPI):
         app_state.start_background_scheduler()
         yield
     finally:
+        if membership_cleanup_task is not None:
+            membership_cleanup_task.cancel()
+            try:
+                await membership_cleanup_task
+            except asyncio.CancelledError:
+                pass
         try:
             if miaoying_scheduler is not None:
                 miaoying_scheduler.shutdown()
@@ -553,7 +625,10 @@ async def create_user(
     request: Request,
     admin=Depends(require_admin),
 ):
-    class_cube_only = bool(payload.class_cube_only and payload.role == "user")
+    class_cube_only = bool(
+        (payload.class_cube_only or payload.card_type)
+        and payload.role == "user"
+    )
     account_limit = (
         payload.class_cube_account_limit if payload.role == "user" else None
     )
@@ -590,6 +665,9 @@ async def create_user(
                 else None
             ),
             expires_at=payload.expires_at,
+            card_type=payload.card_type,
+            card_delete_delay_minutes=payload.card_delete_delay_minutes,
+            card_total_uses=payload.card_total_uses,
         )
         menu_result = get_menu_repository().apply_user_access_profile(
             user_id=created["id"],
@@ -618,6 +696,63 @@ async def create_user(
         failure(str(exc))
 
 
+@app.post("/api/users/class-cube-members")
+async def create_class_cube_member(
+    payload: ClassCubeMemberCreate,
+    request: Request,
+    admin=Depends(require_admin),
+):
+    password = ""
+    created = None
+    for _ in range(12):
+        username = _random_class_cube_username()
+        password = _random_class_cube_password()
+        try:
+            created = auth_service.repository.create_user(
+                username,
+                password,
+                "user",
+                True,
+                class_cube_only=True,
+                class_cube_account_limit=1,
+                location_search_daily_limit=100,
+                card_type=payload.card_type,
+                card_delete_delay_minutes=payload.card_delete_delay_minutes,
+                card_total_uses=payload.card_total_uses,
+            )
+            break
+        except DuplicateUsernameError:
+            continue
+    if created is None:
+        failure("随机用户名生成失败，请重试")
+    try:
+        menu_result = get_menu_repository().apply_user_access_profile(
+            user_id=created["id"],
+            class_cube_only=True,
+            actor_user_id=admin["id"],
+        )
+        await menu_event_broker.publish(menu_result["version"])
+        return success({
+            "user": created,
+            "credentials": {
+                "username": created["username"],
+                "password": password,
+            },
+            "card_type": payload.card_type,
+            "card_delete_delay_minutes": payload.card_delete_delay_minutes,
+            "card_total_uses": payload.card_total_uses,
+        })
+    except Exception:
+        try:
+            request.app.state.class_cube_service.repository.remove_user_bindings(
+                created["id"]
+            )
+            auth_service.repository.delete_user(created["id"], admin["id"])
+        except Exception:
+            pass
+        raise
+
+
 @app.put("/api/users/{user_id}")
 async def update_user(
     user_id: int,
@@ -632,7 +767,10 @@ async def update_user(
         )
         if previous is None:
             raise UserNotFoundError(user_id)
-        class_cube_only = bool(payload.class_cube_only and payload.role == "user")
+        class_cube_only = bool(
+            (payload.class_cube_only or payload.card_type)
+            and payload.role == "user"
+        )
         if payload.role != "user":
             account_limit = None
         elif "class_cube_account_limit" in payload.model_fields_set:
@@ -662,6 +800,9 @@ async def update_user(
             class_cube_account_limit=account_limit,
             location_search_daily_limit=location_search_daily_limit,
             expires_at=payload.expires_at,
+            card_type=payload.card_type,
+            card_delete_delay_minutes=payload.card_delete_delay_minutes,
+            card_total_uses=payload.card_total_uses,
         )
         if (
             class_cube_only

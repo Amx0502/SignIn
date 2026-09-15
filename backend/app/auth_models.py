@@ -11,7 +11,11 @@ class AuthBase(DeclarativeBase):
 class UserRow(AuthBase):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     username: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
@@ -22,6 +26,25 @@ class UserRow(AuthBase):
     )
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    card_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    card_activated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    card_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    card_total_uses: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1
+    )
+    card_used_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    card_delete_delay_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=5
+    )
+    card_delete_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
 
     sessions: Mapped[list["UserSessionRow"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
