@@ -477,7 +477,15 @@ async function copyCredential(value) {
     await navigator.clipboard.writeText(value)
     ElMessage.success('已复制')
   } catch {
-    ElMessage.warning('浏览器未允许复制，请手动记录')
+    const textarea = document.createElement('textarea')
+    textarea.value = value
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    ElMessage.success('已复制')
   }
 }
 function openCreate() {
