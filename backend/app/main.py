@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -35,6 +35,7 @@ from .models import (
     TaskUpdate,
     UserCreate,
     UserUpdate,
+    XxqdMemberCreate,
 )
 from .checkin_delay_settings import (
     CheckinDelaySettingsError,
@@ -126,7 +127,9 @@ async def lifespan(app: FastAPI):
         def purge_due_membership_cards():
             for user_id in auth_service.repository.list_due_single_card_user_ids():
                 try:
+                    class_cube_repository.delete_accounts_by_owner(user_id)
                     class_cube_repository.remove_user_bindings(user_id)
+                    app_state.repository.delete_accounts_by_owner(user_id)
                     auth_service.repository.delete_user(user_id, 0)
                 except UserNotFoundError:
                     continue
@@ -156,7 +159,7 @@ async def lifespan(app: FastAPI):
                         "次卡定期清理失败；异常：%s",
                         type(exc).__name__,
                     )
-                await asyncio.sleep(30)
+                await asyncio.sleep(5)
 
         purge_due_membership_cards()
         membership_cleanup_task = asyncio.create_task(
@@ -168,7 +171,9 @@ async def lifespan(app: FastAPI):
             ClassCubeClient(),
             class_cube_logger,
             membership_consumer=consume_membership_card,
+            membership_guard=auth_service.repository.membership_is_usable,
         )
+        app_state.set_membership_consumer(consume_membership_card)
         app.state.class_cube_service = class_cube_service
         class_cube_scheduler = ClassCubeScheduler(class_cube_service)
         app.state.class_cube_scheduler = class_cube_scheduler
@@ -242,6 +247,29 @@ def success(data=None):
 
 def failure(message: str, status: int = 400):
     raise HTTPException(status_code=status, detail={"ok": False, "error": message})
+
+
+def _xxqd_scope(user: dict) -> tuple[int | None, bool]:
+    is_admin = user.get("role") == "admin"
+    return (None if is_admin else int(user["id"]), is_admin)
+
+
+def _enforce_xxqd_account_quota(user: dict) -> None:
+    if user.get("role") == "admin":
+        return
+    limit = user.get("xxqd_account_limit")
+    if limit is None:
+        return
+    count = app_state.repository.count_accounts(int(user["id"]))
+    if count >= int(limit):
+        failure(f"小小签到账号额度已满（{limit} 个），请联系管理员调整额度")
+
+
+def _assert_xxqd_card_usable(user: dict) -> None:
+    if user.get("role") == "admin":
+        return
+    if user.get("card_type") == "single" and user.get("card_used_at"):
+        failure("次卡次数已用完，账号将在删除延迟到期后失效")
 
 
 @app.exception_handler(HTTPException)
@@ -420,8 +448,9 @@ def get_dashboard_summary(
 
 
 @app.get("/api/state")
-def get_state(_user=Depends(require_menu("xxqd"))):
-    return success(app_state.snapshot())
+def get_state(user=Depends(require_menu("xxqd"))):
+    owner_user_id, is_admin = _xxqd_scope(user)
+    return success(app_state.snapshot(owner_user_id, is_admin))
 
 
 @app.get("/api/xxqd/logs")
@@ -429,52 +458,98 @@ def get_logs(limit: int = 200, _user=Depends(require_menu("xxqd.logs"))):
     return success(app_state.get_logs(limit))
 
 
+@app.get("/api/xxqd/runs")
+def list_xxqd_runs(
+    account_id: int | None = Query(default=None, gt=0),
+    task_id: int | None = Query(default=None, gt=0),
+    status: str | None = Query(default=None, max_length=32),
+    source: str | None = Query(default=None, max_length=32),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user=Depends(require_menu("xxqd.runs")),
+):
+    owner_user_id, is_admin = _xxqd_scope(user)
+    return success(app_state.repository.list_runs(
+        owner_user_id=owner_user_id,
+        is_admin=is_admin,
+        account_id=account_id,
+        task_id=task_id,
+        status=status,
+        source=source,
+        limit=limit,
+        offset=offset,
+    ))
+
+
 @app.post("/api/accounts")
-def add_account(payload: AccountCreate, _user=Depends(require_menu("xxqd.accounts"))):
-    return success(app_state.add_account(payload.model_dump()))
+def add_account(payload: AccountCreate, user=Depends(require_menu("xxqd.accounts"))):
+    try:
+        _assert_xxqd_card_usable(user)
+        _enforce_xxqd_account_quota(user)
+        owner_user_id, _ = _xxqd_scope(user)
+        return success(app_state.add_account(
+            payload.model_dump(),
+            owner_user_id,
+            user.get("xxqd_account_limit"),
+        ))
+    except (DuplicateMobileError, ValueError) as exc:
+        failure(str(exc))
 
 
 @app.put("/api/accounts/{account_index}")
 def update_account(
     account_index: int,
     payload: AccountUpdate,
-    _user=Depends(require_menu("xxqd.accounts")),
+    user=Depends(require_menu("xxqd.accounts")),
 ):
     try:
-        return success(app_state.update_account(account_index, payload.model_dump()))
+        owner_user_id, is_admin = _xxqd_scope(user)
+        return success(app_state.update_account(
+            account_index, payload.model_dump(), owner_user_id, is_admin
+        ))
     except IndexError:
         failure("索引越界，请重新选择账号")
 
 
 @app.delete("/api/accounts/{account_index}")
-def delete_account(account_index: int, _user=Depends(require_menu("xxqd.accounts"))):
+def delete_account(account_index: int, user=Depends(require_menu("xxqd.accounts"))):
     try:
-        app_state.delete_account(account_index)
+        owner_user_id, is_admin = _xxqd_scope(user)
+        app_state.delete_account(account_index, owner_user_id, is_admin)
         return success(True)
     except IndexError:
         failure("索引越界，请重新选择账号")
 
 
 @app.post("/api/accounts/{account_index}/login")
-def login_account(account_index: int, _user=Depends(require_menu("xxqd.accounts"))):
+def login_account(account_index: int, user=Depends(require_menu("xxqd.accounts"))):
     try:
-        return success(app_state.login_account(account_index))
+        owner_user_id, is_admin = _xxqd_scope(user)
+        return success(app_state.login_account(
+            account_index, owner_user_id, is_admin
+        ))
     except IndexError:
         failure("索引越界，请重新选择账号")
 
 
 @app.post("/api/accounts/{account_index}/refresh-token")
-def refresh_token(account_index: int, _user=Depends(require_menu("xxqd.accounts"))):
+def refresh_token(account_index: int, user=Depends(require_menu("xxqd.accounts"))):
     try:
-        return success(app_state.refresh_single_token(account_index))
+        owner_user_id, is_admin = _xxqd_scope(user)
+        return success(app_state.refresh_single_token(
+            account_index, owner_user_id, is_admin
+        ))
     except IndexError:
         failure("索引越界，请重新选择账号")
 
 
 @app.get("/api/accounts/{account_index}/projects")
-def fetch_projects(account_index: int, _user=Depends(require_menu("xxqd.accounts"))):
+def fetch_projects(account_index: int, user=Depends(require_menu("xxqd.accounts"))):
     try:
-        return success(app_state.fetch_projects(account_index))
+        owner_user_id, is_admin = _xxqd_scope(user)
+        return success(app_state.fetch_projects(
+            account_index, owner_user_id, is_admin
+        ))
     except IndexError:
         failure("索引越界，请重新选择账号")
 
@@ -483,10 +558,14 @@ def fetch_projects(account_index: int, _user=Depends(require_menu("xxqd.accounts
 def add_task(
     account_index: int,
     payload: TaskCreate,
-    _user=Depends(require_menu("xxqd.tasks")),
+    user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
-        return success(app_state.add_task(account_index, payload.model_dump()))
+        _assert_xxqd_card_usable(user)
+        owner_user_id, is_admin = _xxqd_scope(user)
+        return success(app_state.add_task(
+            account_index, payload.model_dump(), owner_user_id, is_admin
+        ))
     except IndexError:
         failure("索引越界，请重新选择账号")
     except ValueError as exc:
@@ -498,10 +577,17 @@ def update_task(
     account_index: int,
     task_index: int,
     payload: TaskUpdate,
-    _user=Depends(require_menu("xxqd.tasks")),
+    user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
-        return success(app_state.update_task(account_index, task_index, payload.model_dump()))
+        owner_user_id, is_admin = _xxqd_scope(user)
+        return success(app_state.update_task(
+            account_index,
+            task_index,
+            payload.model_dump(),
+            owner_user_id,
+            is_admin,
+        ))
     except IndexError:
         failure("索引越界，请重新选择账号或任务")
     except ValueError as exc:
@@ -512,10 +598,13 @@ def update_task(
 def delete_task(
     account_index: int,
     task_index: int,
-    _user=Depends(require_menu("xxqd.tasks")),
+    user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
-        app_state.delete_task(account_index, task_index)
+        owner_user_id, is_admin = _xxqd_scope(user)
+        app_state.delete_task(
+            account_index, task_index, owner_user_id, is_admin
+        )
         return success(True)
     except IndexError:
         failure("索引越界，请重新选择账号或任务")
@@ -525,10 +614,14 @@ def delete_task(
 def run_task(
     account_index: int,
     task_index: int,
-    _user=Depends(require_menu("xxqd.tasks")),
+    user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
-        return success(app_state.run_task(account_index, task_index))
+        _assert_xxqd_card_usable(user)
+        owner_user_id, is_admin = _xxqd_scope(user)
+        return success(app_state.run_task(
+            account_index, task_index, owner_user_id, is_admin
+        ))
     except IndexError:
         failure("索引越界，请重新选择账号或任务")
     except RuntimeError as e:
@@ -536,17 +629,22 @@ def run_task(
 
 
 @app.post("/api/accounts/refresh-all")
-def refresh_all_tokens(_user=Depends(require_menu("xxqd.accounts"))):
-    return success(app_state.refresh_all_tokens())
+def refresh_all_tokens(user=Depends(require_menu("xxqd.accounts"))):
+    owner_user_id, is_admin = _xxqd_scope(user)
+    return success(app_state.refresh_all_tokens(owner_user_id, is_admin))
 
 
 @app.post("/api/run-all")
-def run_all_enabled_tasks(_user=Depends(require_menu("xxqd.auto"))):
-    return success(app_state.run_all_enabled_tasks())
+def run_all_enabled_tasks(user=Depends(require_menu("xxqd.tasks"))):
+    _assert_xxqd_card_usable(user)
+    owner_user_id, is_admin = _xxqd_scope(user)
+    return success(app_state.run_all_enabled_tasks(
+        owner_user_id, is_admin
+    ))
 
 
 @app.post("/api/settings")
-def set_settings(payload: Settings, _user=Depends(require_menu("xxqd.auto"))):
+def set_settings(payload: Settings, _user=Depends(require_menu("xxqd.tasks"))):
     try:
         return success(app_state.set_settings(payload.model_dump()))
     except ValueError as exc:
@@ -582,10 +680,10 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 def change_password(
     payload: PasswordChange,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    user=Depends(get_current_user),
+    admin=Depends(require_admin),
 ):
     if not auth_service.change_password(
-        user["id"],
+        admin["id"],
         payload.current_password,
         payload.new_password,
         credentials.credentials,
@@ -625,9 +723,13 @@ async def create_user(
     request: Request,
     admin=Depends(require_admin),
 ):
+    platform_scope = payload.platform_scope
+    if payload.class_cube_only and payload.role == "user":
+        platform_scope = "class_cube"
+    if payload.card_type and platform_scope == "all":
+        failure("会员卡用户必须指定小小签到或班级魔方平台")
     class_cube_only = bool(
-        (payload.class_cube_only or payload.card_type)
-        and payload.role == "user"
+        payload.role == "user" and platform_scope == "class_cube"
     )
     account_limit = (
         payload.class_cube_account_limit if payload.role == "user" else None
@@ -637,6 +739,15 @@ async def create_user(
         and "class_cube_account_limit" not in payload.model_fields_set
     ):
         account_limit = 1
+    xxqd_account_limit = (
+        payload.xxqd_account_limit if payload.role == "user" else None
+    )
+    if (
+        payload.role == "user"
+        and platform_scope == "xxqd"
+        and "xxqd_account_limit" not in payload.model_fields_set
+    ):
+        xxqd_account_limit = 1
     if payload.initial_class_cube_account_id is not None:
         if not class_cube_only:
             failure("只有班级魔方单用户可以选择初始账号")
@@ -658,7 +769,9 @@ async def create_user(
             payload.role,
             payload.is_active,
             class_cube_only=class_cube_only,
+            platform_scope=platform_scope,
             class_cube_account_limit=account_limit,
+            xxqd_account_limit=xxqd_account_limit,
             location_search_daily_limit=(
                 payload.location_search_daily_limit
                 if payload.role == "user"
@@ -666,12 +779,14 @@ async def create_user(
             ),
             expires_at=payload.expires_at,
             card_type=payload.card_type,
+            card_delete_delay_seconds=payload.card_delete_delay_seconds,
             card_delete_delay_minutes=payload.card_delete_delay_minutes,
             card_total_uses=payload.card_total_uses,
         )
         menu_result = get_menu_repository().apply_user_access_profile(
             user_id=created["id"],
             class_cube_only=class_cube_only,
+            platform_scope=platform_scope,
             actor_user_id=admin["id"],
         )
         if payload.initial_class_cube_account_id is not None:
@@ -713,11 +828,12 @@ async def create_class_cube_member(
                 password,
                 "user",
                 True,
+                platform_scope="class_cube",
                 class_cube_only=True,
                 class_cube_account_limit=1,
                 location_search_daily_limit=100,
                 card_type=payload.card_type,
-                card_delete_delay_minutes=payload.card_delete_delay_minutes,
+                card_delete_delay_seconds=payload.card_delete_delay_seconds,
                 card_total_uses=payload.card_total_uses,
             )
             break
@@ -739,7 +855,63 @@ async def create_class_cube_member(
                 "password": password,
             },
             "card_type": payload.card_type,
-            "card_delete_delay_minutes": payload.card_delete_delay_minutes,
+            "card_delete_delay_seconds": payload.card_delete_delay_seconds,
+            "card_total_uses": payload.card_total_uses,
+        })
+    except Exception:
+        try:
+            request.app.state.class_cube_service.repository.remove_user_bindings(
+                created["id"]
+            )
+            auth_service.repository.delete_user(created["id"], admin["id"])
+        except Exception:
+            pass
+        raise
+
+
+@app.post("/api/users/xxqd-members")
+async def create_xxqd_member(
+    payload: XxqdMemberCreate,
+    request: Request,
+    admin=Depends(require_admin),
+):
+    password = ""
+    created = None
+    for _ in range(12):
+        username = _random_class_cube_username().replace("bjmf_", "xxqd_", 1)
+        password = _random_class_cube_password()
+        try:
+            created = auth_service.repository.create_user(
+                username,
+                password,
+                "user",
+                True,
+                platform_scope="xxqd",
+                xxqd_account_limit=1,
+                card_type=payload.card_type,
+                card_delete_delay_seconds=payload.card_delete_delay_seconds,
+                card_total_uses=payload.card_total_uses,
+            )
+            break
+        except DuplicateUsernameError:
+            continue
+    if created is None:
+        failure("随机用户名生成失败，请重试")
+    try:
+        menu_result = get_menu_repository().apply_user_access_profile(
+            user_id=created["id"],
+            platform_scope="xxqd",
+            actor_user_id=admin["id"],
+        )
+        await menu_event_broker.publish(menu_result["version"])
+        return success({
+            "user": created,
+            "credentials": {
+                "username": created["username"],
+                "password": password,
+            },
+            "card_type": payload.card_type,
+            "card_delete_delay_seconds": payload.card_delete_delay_seconds,
             "card_total_uses": payload.card_total_uses,
         })
     except Exception:
@@ -767,9 +939,13 @@ async def update_user(
         )
         if previous is None:
             raise UserNotFoundError(user_id)
+        platform_scope = payload.platform_scope
+        if payload.class_cube_only and payload.role == "user":
+            platform_scope = "class_cube"
+        if payload.card_type and platform_scope == "all":
+            failure("会员卡用户必须指定小小签到或班级魔方平台")
         class_cube_only = bool(
-            (payload.class_cube_only or payload.card_type)
-            and payload.role == "user"
+            payload.role == "user" and platform_scope == "class_cube"
         )
         if payload.role != "user":
             account_limit = None
@@ -779,6 +955,14 @@ async def update_user(
             account_limit = 1
         else:
             account_limit = previous.get("class_cube_account_limit")
+        if payload.role != "user":
+            xxqd_account_limit = None
+        elif "xxqd_account_limit" in payload.model_fields_set:
+            xxqd_account_limit = payload.xxqd_account_limit
+        elif platform_scope == "xxqd" and previous.get("platform_scope") != "xxqd":
+            xxqd_account_limit = 1
+        else:
+            xxqd_account_limit = previous.get("xxqd_account_limit")
         if payload.role != "user":
             location_search_daily_limit = None
         elif "location_search_daily_limit" in payload.model_fields_set:
@@ -797,10 +981,13 @@ async def update_user(
             payload.role,
             payload.is_active,
             class_cube_only=class_cube_only,
+            platform_scope=platform_scope,
             class_cube_account_limit=account_limit,
+            xxqd_account_limit=xxqd_account_limit,
             location_search_daily_limit=location_search_daily_limit,
             expires_at=payload.expires_at,
             card_type=payload.card_type,
+            card_delete_delay_seconds=payload.card_delete_delay_seconds,
             card_delete_delay_minutes=payload.card_delete_delay_minutes,
             card_total_uses=payload.card_total_uses,
         )
@@ -812,6 +999,7 @@ async def update_user(
             menu_result = get_menu_repository().apply_user_access_profile(
                 user_id=user_id,
                 class_cube_only=class_cube_only,
+                platform_scope=platform_scope,
                 actor_user_id=admin["id"],
             )
             await menu_event_broker.publish(menu_result["version"])
@@ -850,6 +1038,7 @@ def delete_user(
     admin=Depends(require_admin),
 ):
     try:
+        app_state.repository.delete_accounts_by_owner(user_id)
         auth_service.repository.delete_user(user_id, admin["id"])
         request.app.state.class_cube_service.repository.remove_user_bindings(user_id)
         return success(True)

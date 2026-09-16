@@ -38,6 +38,7 @@ export const changePasswordApi = data => instance.post('/auth/change-password', 
 export const getUsersApi = () => instance.get('/users')
 export const createUserApi = data => instance.post('/users', data)
 export const createClassCubeMemberApi = data => instance.post('/users/class-cube-members', data)
+export const createXxqdMemberApi = data => instance.post('/users/xxqd-members', data)
 export const updateUserApi = (id, data) => instance.put(`/users/${id}`, data)
 export const resetUserPasswordApi = (id, data) => instance.post(`/users/${id}/reset-password`, data)
 export const deleteUserApi = id => instance.delete(`/users/${id}`)
@@ -53,6 +54,7 @@ export const updateCheckinDelaySettingsApi = data => instance.put('/admin/checki
 export const getDashboardSummaryApi = range => instance.get('/admin/dashboard/summary', {
   params: { range },
 })
+export const listXxqdRunsApi = (params = {}) => instance.get('/xxqd/runs', { params })
 
 export default {
   getState: () => instance.get('/state'),

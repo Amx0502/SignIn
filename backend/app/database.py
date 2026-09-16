@@ -53,6 +53,7 @@ class Database:
         )
         Base.metadata.create_all(self._engine)
         self._migrate_task_columns(self._engine)
+        self._migrate_owner_columns(self._engine)
 
     @staticmethod
     def _migrate_task_columns(engine: Engine) -> None:
@@ -116,6 +117,35 @@ class Database:
                         "DATETIME NULL"
                     )
                 )
+
+    @staticmethod
+    def _migrate_owner_columns(engine: Engine) -> None:
+        account_columns = {
+            column["name"] for column in inspect(engine).get_columns("accounts")
+        }
+        run_columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("xxqd_task_runs")
+        }
+        with engine.begin() as connection:
+            if "owner_user_id" not in account_columns:
+                connection.execute(text(
+                    "ALTER TABLE accounts ADD COLUMN owner_user_id "
+                    "BIGINT NULL"
+                ))
+                connection.execute(text(
+                    "CREATE INDEX ix_accounts_owner_user_id "
+                    "ON accounts (owner_user_id)"
+                ))
+            if "owner_user_id" not in run_columns:
+                connection.execute(text(
+                    "ALTER TABLE xxqd_task_runs ADD COLUMN owner_user_id "
+                    "BIGINT NULL"
+                ))
+                connection.execute(text(
+                    "CREATE INDEX ix_xxqd_task_runs_owner_user_id "
+                    "ON xxqd_task_runs (owner_user_id)"
+                ))
 
     @contextmanager
     def session(self) -> Iterator[Session]:

@@ -22,7 +22,14 @@ class Base(DeclarativeBase):
 class AccountRow(Base):
     __tablename__ = "accounts"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    owner_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     mobile: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     password: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -52,7 +59,11 @@ class TaskRow(Base):
         UniqueConstraint("account_id", "position", name="uq_tasks_account_position"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     account_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -90,7 +101,11 @@ class AccountProjectRow(Base):
         UniqueConstraint("account_id", "position", name="uq_projects_account_position"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     account_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -109,6 +124,9 @@ class XxqdTaskRunRow(Base):
         autoincrement=True,
     )
     account_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True
+    )
     task_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     account_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     task_title: Mapped[str] = mapped_column(String(255), nullable=False, default="")

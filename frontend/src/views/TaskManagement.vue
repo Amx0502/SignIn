@@ -17,6 +17,12 @@
               @click="deleteSelectedTasks"
               >批量删除({{ selectedTaskKeys.size }})</el-button
             >
+            <el-button
+              type="primary"
+              size="small"
+              @click="openCreateTask"
+              >新建任务</el-button
+            >
           </div>
         </div>
       </template>
@@ -93,7 +99,7 @@
                 <span v-if="task.skip_weekends"
                   ><el-icon><Calendar /></el-icon>周末跳过</span
                 >
-                <span v-if="task.notify_wechat !== false"
+                <span v-if="isAdmin && task.notify_wechat !== false"
                   ><el-icon><VideoPlay /></el-icon>企微通知</span
                 >
                 <span
@@ -128,7 +134,7 @@
                 <span v-if="task.pic_path && task.pic_path.length"
                   ><el-icon><Picture /></el-icon>{{ task.pic_path.length }} 图</span
                 >
-                <span v-if="task.notify_wechat !== false"
+                <span v-if="isAdmin && task.notify_wechat !== false"
                   ><el-icon><VideoPlay /></el-icon>企微</span
                 >
               </div>
@@ -244,7 +250,9 @@
                   <el-checkbox v-model="getEditForm(task).enable"
                     >启用任务</el-checkbox
                   >
-                  <el-checkbox v-model="getEditForm(task).notify_wechat"
+                  <el-checkbox
+                    v-if="isAdmin"
+                    v-model="getEditForm(task).notify_wechat"
                     >发送企业微信通知</el-checkbox
                   >
                 </el-form-item>
@@ -260,6 +268,19 @@
         </div>
       </div>
     </el-card>
+
+    <el-dialog
+      v-model="createTaskVisible"
+      title="新建任务"
+      width="min(1180px, 96vw)"
+      align-center
+      append-to-body
+      destroy-on-close
+      class="create-task-dialog"
+      @closed="refreshAfterCreate"
+    >
+      <TaskManager />
+    </el-dialog>
 
     <CheckinResultDialog
       v-model="checkinResultVisible"
@@ -284,6 +305,7 @@ import {
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import CheckinResultDialog from "../components/CheckinResultDialog.vue";
+import TaskManager from "../components/TaskManager.vue";
 import TaskDateSchedule from "../components/TaskDateSchedule.vue";
 import TaskImageUpload from "../components/TaskImageUpload.vue";
 import { useAppState } from "../composables/useAppState";
@@ -294,6 +316,7 @@ import api from "../api";
 const { state: appState, refreshState, refreshLogs } = useAppState();
 const checkinResultVisible = ref(false);
 const checkinResult = ref(null);
+const createTaskVisible = ref(false);
 const editingKey = ref(null);
 const editForms = reactive({});
 const editFileLists = reactive({});
@@ -302,6 +325,15 @@ const editLocationModes = reactive({});
 const selectedTaskKeys = ref(new Set());
 const batchDeleting = ref(false);
 const runningTaskKey = ref(null);
+
+const isAdmin = (() => {
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+    return user?.role === "admin";
+  } catch {
+    return false;
+  }
+})();
 
 const allTasks = computed(() => {
   const tasks = [];
@@ -378,6 +410,16 @@ function resetTaskEditingState() {
       delete cache[key];
     }
   }
+}
+
+function openCreateTask() {
+  createTaskVisible.value = true;
+}
+
+async function refreshAfterCreate() {
+  resetTaskEditingState();
+  selectedTaskKeys.value = new Set();
+  await Promise.allSettled([refreshState(), refreshLogs()]);
 }
 
 function isEditing(task) {
@@ -514,6 +556,7 @@ async function saveInlineEdit(task) {
     editForms[key].pic_path && editForms[key].pic_path.length
       ? "image"
       : "normal";
+  if (!isAdmin) editForms[key].notify_wechat = true;
 
   try {
     await api.updateTask(task.accountIndex, task.taskIndex, {
@@ -644,6 +687,11 @@ async function deleteSelectedTasks() {
 <style scoped>
 .page-container {
   padding: 0;
+}
+:global(.create-task-dialog .el-dialog__body) {
+  max-height: 78vh;
+  padding-top: 8px;
+  overflow: auto;
 }
 .card-header {
   display: flex;

@@ -20,6 +20,9 @@ class UserRow(AuthBase):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    platform_scope: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="all"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
@@ -41,6 +44,9 @@ class UserRow(AuthBase):
     )
     card_delete_delay_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5
+    )
+    card_delete_delay_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=30
     )
     card_delete_due_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True
@@ -67,6 +73,9 @@ class UserFeaturePolicyRow(AuthBase):
     class_cube_account_limit: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
+    xxqd_account_limit: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
     location_search_daily_limit: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
@@ -89,7 +98,11 @@ class UserFeaturePolicyRow(AuthBase):
 class UserSessionRow(AuthBase):
     __tablename__ = "user_sessions"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )

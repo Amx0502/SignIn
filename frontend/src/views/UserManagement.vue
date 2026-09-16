@@ -3,7 +3,7 @@
     <div class="page-heading">
       <div><h2>用户管理</h2><p>管理后台登录用户、角色、启用状态和账号有效期</p></div>
       <div class="page-heading__actions">
-        <el-button plain @click="openMemberCreate">一键创建班级魔方用户</el-button>
+        <el-button plain @click="openMemberCreate()">一键创建用户</el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新增用户</el-button>
       </div>
     </div>
@@ -36,13 +36,18 @@
         <el-table-column label="功能范围" min-width="150">
           <template #default="{ row }">
             <el-tag v-if="row.role === 'admin'" type="danger">全部功能</el-tag>
-            <el-tag v-else-if="row.class_cube_only" type="primary">仅班级魔方</el-tag>
+            <el-tag v-else-if="row.platform_scope === 'xxqd'" type="success">仅小小签到</el-tag>
+            <el-tag v-else-if="row.platform_scope === 'class_cube'" type="primary">仅班级魔方</el-tag>
             <el-tag v-else type="info">普通用户</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="魔方账号额度" width="130">
+        <el-table-column label="平台账号额度" width="130">
           <template #default="{ row }">
-            {{ row.role === 'admin' || row.class_cube_account_limit == null ? '不限' : row.class_cube_account_limit }}
+            {{ row.role === 'admin'
+              ? '不限'
+              : row.platform_scope === 'xxqd'
+                ? (row.xxqd_account_limit == null ? '不限' : row.xxqd_account_limit)
+                : (row.class_cube_account_limit == null ? '不限' : row.class_cube_account_limit) }}
           </template>
         </el-table-column>
         <el-table-column label="今日地址搜索" width="160">
@@ -78,14 +83,14 @@
           <header>
             <div>
               <strong>{{ row.username }}</strong>
-              <span>{{ row.role === 'admin' ? '管理员' : row.class_cube_only ? '仅班级魔方' : '普通用户' }}</span>
+              <span>{{ row.role === 'admin' ? '管理员' : row.platform_scope === 'xxqd' ? '仅小小签到' : row.platform_scope === 'class_cube' ? '仅班级魔方' : '普通用户' }}</span>
             </div>
             <el-tag :type="isExpired(row) ? 'warning' : row.is_active ? 'success' : 'info'" size="small">
               {{ isExpired(row) ? '已到期' : row.is_active ? '已启用' : '已禁用' }}
             </el-tag>
           </header>
           <dl>
-            <div><dt>账号额度</dt><dd>{{ row.role === 'admin' || row.class_cube_account_limit == null ? '不限' : row.class_cube_account_limit }}</dd></div>
+            <div><dt>账号额度</dt><dd>{{ row.role === 'admin' ? '不限' : row.platform_scope === 'xxqd' ? (row.xxqd_account_limit == null ? '不限' : row.xxqd_account_limit) : (row.class_cube_account_limit == null ? '不限' : row.class_cube_account_limit) }}</dd></div>
             <div><dt>地址搜索</dt><dd>{{ row.role === 'admin' || row.location_search_daily_limit == null ? '不限' : `${row.location_search_used || 0} / ${row.location_search_daily_limit}` }}</dd></div>
             <div><dt>会员卡</dt><dd>{{ row.card_type ? cardTypeLabel(row.card_type) : '无' }}</dd></div>
             <div class="mobile-user-card__wide"><dt>有效期</dt><dd :class="{ 'expired-time': isExpired(row) }">{{ formatExpiry(row) }}</dd></div>
@@ -123,6 +128,17 @@
                 <el-option label="普通用户" value="user" />
               </el-select>
             </el-form-item>
+            <el-form-item v-if="userForm.role === 'user'" label="所属平台">
+              <el-select
+                v-model="userForm.platform_scope"
+                style="width: 100%"
+                @change="handlePlatformScopeChange"
+              >
+                <el-option label="小小签到" value="xxqd" />
+                <el-option label="班级魔方" value="class_cube" />
+                <el-option label="全部平台（仅管理员可配置）" value="all" />
+              </el-select>
+            </el-form-item>
             <el-form-item v-if="userForm.role === 'user'" label="会员卡类型">
               <el-select
                 v-model="userForm.card_type"
@@ -156,14 +172,14 @@
             >
               <div class="minute-stepper">
                 <el-input-number
-                  v-model="userForm.card_delete_delay_minutes"
+                  v-model="userForm.card_delete_delay_seconds"
                   :min="0"
-                  :max="1440"
+                  :max="86400"
                   :precision="0"
                 />
-                <em>分钟</em>
+                <em>秒</em>
               </div>
-              <div class="field-help">默认 3 分钟；设为 0 表示立即删除。</div>
+              <div class="field-help">默认 30 秒；设为 0 表示立即删除。</div>
             </el-form-item>
             <el-form-item v-if="!editingId" label="初始密码" prop="password">
               <el-input v-model="userForm.password" type="password" show-password />
@@ -190,7 +206,7 @@
             <div v-if="userForm.role === 'user' && userForm.card_type" class="admin-expiry-note user-form-grid__full">
               {{ userForm.card_type === 'monthly'
                 ? '月卡在用户首次成功登录时激活，到期时间自动设为激活后 30 天。'
-                : `次卡可成功签到 ${userForm.card_total_uses ?? 1} 次，最后一次核销后 ${userForm.card_delete_delay_minutes ?? 3} 分钟删除账号。` }}
+                : `次卡可成功签到 ${userForm.card_total_uses ?? 1} 次，最后一次核销后 ${userForm.card_delete_delay_seconds ?? 30} 秒删除账号。` }}
             </div>
             <div v-else-if="userForm.role !== 'user'" class="admin-expiry-note user-form-grid__full">管理员账号不设置到期时间，避免系统失去可用管理员。</div>
           </div>
@@ -202,7 +218,7 @@
             <div><strong>功能与额度</strong><small>控制菜单范围、账号数量和地址搜索次数</small></div>
           </header>
           <div class="policy-grid">
-            <div class="policy-card policy-card--wide">
+            <div v-if="userForm.platform_scope === 'class_cube'" class="policy-card policy-card--wide">
               <div class="policy-card__title"><strong>班级魔方单用户</strong><small>仅开放账号、任务和运行记录</small></div>
               <el-switch
                 v-model="userForm.class_cube_only"
@@ -213,13 +229,37 @@
               <p>开启后隐藏“小小签到”及全部子菜单，同时隐藏班级魔方的“系统概览”和“魔方日志”。</p>
             </div>
 
-            <div class="policy-card">
+            <div v-else-if="userForm.platform_scope === 'xxqd'" class="policy-card policy-card--wide">
+              <div class="policy-card__title"><strong>小小签到单平台用户</strong><small>仅开放小小签到账号、任务和日志功能</small></div>
+              <p>该用户不会看到班级魔方菜单，也不能访问班级魔方接口。</p>
+            </div>
+
+            <div v-else class="policy-card policy-card--wide">
+              <div class="policy-card__title"><strong>全部平台用户</strong><small>该配置通常只用于管理员</small></div>
+              <p>用户可以使用其菜单权限允许的全部平台功能。</p>
+            </div>
+
+            <div v-if="userForm.platform_scope === 'class_cube'" class="policy-card">
               <div class="policy-card__title"><strong>班级魔方账号额度</strong><small>限制该用户可绑定的账号数量</small></div>
               <div class="quota-row">
                 <el-switch v-model="accountQuotaUnlimited" active-text="不限额度" />
                 <el-input-number
                   v-if="!accountQuotaUnlimited"
                   v-model="userForm.class_cube_account_limit"
+                  :min="0"
+                  :max="999"
+                  controls-position="right"
+                />
+              </div>
+            </div>
+
+            <div v-if="userForm.platform_scope === 'xxqd'" class="policy-card">
+              <div class="policy-card__title"><strong>小小签到账号额度</strong><small>限制该用户可绑定的账号数量</small></div>
+              <div class="quota-row">
+                <el-switch v-model="xxqdAccountQuotaUnlimited" active-text="不限额度" />
+                <el-input-number
+                  v-if="!xxqdAccountQuotaUnlimited"
+                  v-model="userForm.xxqd_account_limit"
                   :min="0"
                   :max="999"
                   controls-position="right"
@@ -269,8 +309,20 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="memberDialog" title="一键创建班级魔方用户" width="480px" align-center>
+    <el-dialog
+      v-model="memberDialog"
+      :title="memberForm.platform_scope === 'xxqd' ? '一键创建小小签到用户' : '一键创建班级魔方用户'"
+      width="480px"
+      align-center
+    >
       <div class="member-create-panel">
+        <div class="member-platform-field">
+          <span>所属平台</span>
+          <el-radio-group v-model="memberForm.platform_scope">
+            <el-radio-button value="xxqd">小小签到</el-radio-button>
+            <el-radio-button value="class_cube">班级魔方</el-radio-button>
+          </el-radio-group>
+        </div>
         <div class="member-type-options">
           <button
             v-for="option in memberTypeOptions"
@@ -301,16 +353,16 @@
           <span>签到成功后延迟删除</span>
           <div class="minute-stepper">
             <el-input-number
-              v-model="memberForm.card_delete_delay_minutes"
+              v-model="memberForm.card_delete_delay_seconds"
               :min="0"
-              :max="1440"
+              :max="86400"
               :precision="0"
             />
-            <em>分钟</em>
+            <em>秒</em>
           </div>
-          <small>默认 3 分钟；设为 0 表示立即删除</small>
+          <small>默认 30 秒；设为 0 表示立即删除</small>
         </label>
-        <p class="field-help">系统将自动生成随机用户名和密码，并仅开放班级魔方核心功能。</p>
+        <p class="field-help">系统将自动生成随机用户名和密码，并仅开放{{ memberForm.platform_scope === 'xxqd' ? '小小签到' : '班级魔方' }}核心功能。</p>
       </div>
       <template #footer>
         <el-button @click="memberDialog = false">取消</el-button>
@@ -356,7 +408,8 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  createClassCubeMemberApi, createUserApi, deleteUserApi, getUsersApi,
+  createClassCubeMemberApi, createUserApi, createXxqdMemberApi,
+  deleteUserApi, getUsersApi,
   resetUserPasswordApi, updateUserApi
 } from '../api'
 import classCubeApi from '../api/classCube.js'
@@ -374,23 +427,27 @@ const resetDialog = ref(false)
 const editingId = ref(null)
 const resetUserId = ref(null)
 const accountQuotaUnlimited = ref(true)
+const xxqdAccountQuotaUnlimited = ref(false)
 const locationQuotaUnlimited = ref(true)
 const userFormRef = ref()
 const resetFormRef = ref()
 const userForm = reactive({
   username: '', password: '', role: 'user', is_active: true,
+  platform_scope: 'all',
   class_cube_only: false, class_cube_account_limit: 1,
+  xxqd_account_limit: 1,
   location_search_daily_limit: 100,
   initial_class_cube_account_id: null,
   expires_at: null,
   card_type: null,
   card_total_uses: 1,
-  card_delete_delay_minutes: 3,
+  card_delete_delay_seconds: 30,
 })
 const memberForm = reactive({
+  platform_scope: 'class_cube',
   card_type: 'single',
   card_total_uses: 1,
-  card_delete_delay_minutes: 3,
+  card_delete_delay_seconds: 30,
 })
 const memberTypeOptions = [
   { value: 'single', label: '次卡', description: '成功签到一次后核销，账号自动失效并删除' },
@@ -447,20 +504,23 @@ function accountLabel(account) {
   const name = account.name || account.remote_user_name || `账号 ${account.id}`
   return account.remote_uid ? `${name} · UID ${account.remote_uid}` : `${name} · 待确认 UID`
 }
-function openMemberCreate() {
+function openMemberCreate(platformScope = 'class_cube') {
+  memberForm.platform_scope = platformScope
   memberForm.card_type = 'single'
   memberForm.card_total_uses = 1
-  memberForm.card_delete_delay_minutes = 3
+  memberForm.card_delete_delay_seconds = 30
   memberCredentials.value = null
   memberDialog.value = true
 }
 async function createMember() {
   memberCreating.value = true
   try {
-    const response = await createClassCubeMemberApi({
+    const api = memberForm.platform_scope === 'xxqd'
+      ? createXxqdMemberApi : createClassCubeMemberApi
+    const response = await api({
       card_type: memberForm.card_type,
       card_total_uses: memberForm.card_total_uses,
-      card_delete_delay_minutes: memberForm.card_delete_delay_minutes,
+      card_delete_delay_seconds: memberForm.card_delete_delay_seconds,
     })
     memberCredentials.value = response.data.credentials
     memberDialog.value = false
@@ -491,50 +551,63 @@ async function copyCredential(value) {
 function openCreate() {
   editingId.value = null
   accountQuotaUnlimited.value = true
+  xxqdAccountQuotaUnlimited.value = false
   locationQuotaUnlimited.value = true
   Object.assign(userForm, {
     username: '', password: '', role: 'user', is_active: true,
+    platform_scope: 'all',
     class_cube_only: false, class_cube_account_limit: 1,
+    xxqd_account_limit: 1,
     location_search_daily_limit: 100,
     initial_class_cube_account_id: null,
     expires_at: null,
     card_type: null,
     card_total_uses: 1,
-    card_delete_delay_minutes: 3,
+    card_delete_delay_seconds: 30,
   })
   userDialog.value = true
 }
 function openEdit(row) {
   editingId.value = row.id
   accountQuotaUnlimited.value = row.class_cube_account_limit == null
+  xxqdAccountQuotaUnlimited.value = row.xxqd_account_limit == null
   locationQuotaUnlimited.value = row.location_search_daily_limit == null
   Object.assign(userForm, {
     username: row.username, password: '', role: row.role, is_active: row.is_active,
+    platform_scope: row.platform_scope || (row.class_cube_only ? 'class_cube' : 'all'),
     class_cube_only: Boolean(row.class_cube_only),
     class_cube_account_limit: row.class_cube_account_limit ?? 1,
+    xxqd_account_limit: row.xxqd_account_limit ?? 1,
     location_search_daily_limit: row.location_search_daily_limit ?? 100,
     initial_class_cube_account_id: null,
     expires_at: row.role === 'user' ? formExpiryValue(row.expires_at) : null,
     card_type: row.role === 'user' ? row.card_type : null,
     card_total_uses: row.card_total_uses ?? 1,
-    card_delete_delay_minutes: row.card_delete_delay_minutes ?? 3,
+    card_delete_delay_seconds: row.card_delete_delay_seconds ?? 30,
   })
   userDialog.value = true
 }
 function handleClassCubeOnlyChange(enabled) {
+  if (enabled) userForm.platform_scope = 'class_cube'
   if (enabled && accountQuotaUnlimited.value) {
     accountQuotaUnlimited.value = false
     userForm.class_cube_account_limit = 1
   }
   if (!enabled) userForm.initial_class_cube_account_id = null
 }
+function handlePlatformScopeChange(scope) {
+  userForm.class_cube_only = scope === 'class_cube'
+  if (scope !== 'class_cube') {
+    userForm.initial_class_cube_account_id = null
+  }
+}
 function handleCardTypeChange(cardType) {
   if (!cardType) return
   userForm.card_type = cardType
   userForm.class_cube_only = true
   userForm.expires_at = null
-  if (cardType === 'single' && userForm.card_delete_delay_minutes == null) {
-    userForm.card_delete_delay_minutes = 3
+  if (cardType === 'single' && userForm.card_delete_delay_seconds == null) {
+    userForm.card_delete_delay_seconds = 30
   }
   if (cardType === 'single' && userForm.card_total_uses == null) {
     userForm.card_total_uses = 1
@@ -560,20 +633,25 @@ async function saveUser() {
     if (editingId.value) {
       await updateUserApi(editingId.value, {
         username: userForm.username, role: userForm.role, is_active: userForm.is_active,
+        platform_scope: userForm.role === 'user' ? userForm.platform_scope : 'all',
         class_cube_only: userForm.role === 'user' && userForm.class_cube_only,
         class_cube_account_limit: userForm.role === 'user' && !accountQuotaUnlimited.value
           ? userForm.class_cube_account_limit : null,
         location_search_daily_limit: userForm.role === 'user' && !locationQuotaUnlimited.value
           ? userForm.location_search_daily_limit : null,
+        xxqd_account_limit: userForm.role === 'user'
+          && !xxqdAccountQuotaUnlimited.value
+          ? userForm.xxqd_account_limit : null,
         expires_at: userForm.role === 'user' && !userForm.card_type ? userForm.expires_at : null,
         card_type: userForm.role === 'user' ? userForm.card_type : null,
         card_total_uses: userForm.role === 'user' ? userForm.card_total_uses : 1,
-        card_delete_delay_minutes: userForm.role === 'user'
-          ? userForm.card_delete_delay_minutes : 3,
+        card_delete_delay_seconds: userForm.role === 'user'
+          ? userForm.card_delete_delay_seconds : 30,
       })
     } else {
       await createUserApi({
         ...userForm,
+        platform_scope: userForm.role === 'user' ? userForm.platform_scope : 'all',
         class_cube_only: userForm.role === 'user' && userForm.class_cube_only,
         class_cube_account_limit: userForm.role === 'user' && !accountQuotaUnlimited.value
           ? userForm.class_cube_account_limit : null,
@@ -584,8 +662,8 @@ async function saveUser() {
         expires_at: userForm.role === 'user' && !userForm.card_type ? userForm.expires_at : null,
         card_type: userForm.role === 'user' ? userForm.card_type : null,
         card_total_uses: userForm.role === 'user' ? userForm.card_total_uses : 1,
-        card_delete_delay_minutes: userForm.role === 'user'
-          ? userForm.card_delete_delay_minutes : 3,
+        card_delete_delay_seconds: userForm.role === 'user'
+          ? userForm.card_delete_delay_seconds : 30,
       })
     }
     ElMessage.success('保存成功')
@@ -636,6 +714,17 @@ onBeforeUnmount(() => {
 .page-heading p { margin: 0; color: #64748b; }
 .muted-text { color: #94a3b8; font-size: 12px; }
 .member-create-panel { display: grid; gap: 14px; }
+.member-platform-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+.member-platform-field > span { color: #334155; font-size: 13px; font-weight: 700; }
 .member-type-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .member-type-option {
   display: grid;
@@ -805,6 +894,10 @@ onBeforeUnmount(() => {
   .page-heading__actions { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
   .page-heading__actions .el-button { width: 100%; margin: 0; }
   .member-type-options { grid-template-columns: minmax(0, 1fr); }
+  .member-platform-field { align-items: flex-start; flex-direction: column; }
+  .member-platform-field :deep(.el-radio-group) { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .member-platform-field :deep(.el-radio-button) { width: 100%; }
+  .member-platform-field :deep(.el-radio-button__inner) { width: 100%; }
   .member-delay-field { grid-template-columns: minmax(0, 1fr); }
   .minute-stepper :deep(.el-input-number) { height: 46px; }
   .minute-stepper :deep(.el-input-number__decrease),

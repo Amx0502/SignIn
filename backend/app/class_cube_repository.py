@@ -190,10 +190,17 @@ class ClassCubeRepository:
         task = session.get(ClassCubeTaskRow, task_id)
         if task is None:
             raise ClassCubeNotFound("班级魔方任务不存在")
+        account = session.get(ClassCubeAccountRow, task.account_id)
         return {
             "source": "task",
             "owner_user_id": task.owner_user_id,
             "account_id": task.account_id,
+            "account_name": (
+                account.remote_user_name
+                or account.name
+                if account is not None
+                else ""
+            ),
             "course_id": task.course_id,
         }
 
@@ -474,6 +481,18 @@ class ClassCubeRepository:
             session.execute(delete(ClassCubeAccountBindingRow).where(
                 ClassCubeAccountBindingRow.user_id == user_id
             ))
+
+    def delete_accounts_by_owner(self, owner_user_id: int) -> int:
+        with self.database.session() as session:
+            rows = session.scalars(
+                select(ClassCubeAccountRow).where(
+                    ClassCubeAccountRow.owner_user_id == owner_user_id
+                )
+            ).all()
+            for row in rows:
+                session.delete(row)
+            session.flush()
+            return len(rows)
 
     def upsert_scanned_account(
         self,
@@ -1539,6 +1558,7 @@ class ClassCubeRepository:
         owner_user_id,
         account_id,
         course_id,
+        account_name="",
         checkin_item_id,
         remote_item_id,
         mode,
@@ -1554,6 +1574,7 @@ class ClassCubeRepository:
                 source="course_manual",
                 owner_user_id=owner_user_id,
                 account_id=account_id,
+                account_name=str(account_name or "")[:255],
                 course_id=course_id,
                 checkin_item_id=checkin_item_id,
                 remote_item_id=str(remote_item_id)[:128],
@@ -1616,9 +1637,10 @@ class ClassCubeRepository:
             records = []
             for row in rows:
                 record = self._run_record(row)
-                record["account_name"] = account_names.get(
-                    int(row.account_id),
-                    f"账号 {row.account_id}",
+                record["account_name"] = (
+                    str(record.get("account_name") or "").strip()
+                    or account_names.get(int(row.account_id))
+                    or f"账号 {row.account_id}"
                 )
                 claim_id = session.scalar(
                     select(ClassCubeTaskItemClaimRow.id).where(

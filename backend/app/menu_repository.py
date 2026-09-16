@@ -19,6 +19,12 @@ CLASS_CUBE_ONLY_VISIBLE_KEYS = frozenset({
     "class_cube.tasks",
     "class_cube.runs",
 })
+XXQD_ONLY_VISIBLE_KEYS = frozenset({
+    "xxqd",
+    "xxqd.accounts",
+    "xxqd.tasks",
+    "xxqd.runs",
+})
 
 
 def _class_cube_only_overrides() -> dict[str, bool]:
@@ -26,6 +32,17 @@ def _class_cube_only_overrides() -> dict[str, bool]:
         key: key in CLASS_CUBE_ONLY_VISIBLE_KEYS
         for key in MENU_KEYS
     }
+
+
+def _platform_overrides(platform_scope: str) -> dict[str, bool]:
+    if platform_scope == "class_cube":
+        return _class_cube_only_overrides()
+    if platform_scope == "xxqd":
+        return {
+            key: key in XXQD_ONLY_VISIBLE_KEYS
+            for key in MENU_KEYS
+        }
+    return {}
 
 
 class MenuVersionConflictError(RuntimeError):
@@ -49,23 +66,27 @@ class MenuRepository:
                 if item["key"] not in existing:
                     session.add(MenuConfigRow(menu_key=item["key"], visible=True))
 
-            desired = _class_cube_only_overrides()
+            migrated = self._migrate_xxqd_auto_menu(session)
+
             restricted_user_ids = session.scalars(
                 select(UserFeaturePolicyRow.user_id)
                 .join(UserRow, UserRow.id == UserFeaturePolicyRow.user_id)
                 .where(
                     UserRow.role == "user",
-                    UserFeaturePolicyRow.class_cube_only.is_(True),
+                    UserRow.platform_scope.in_(("class_cube", "xxqd")),
                 )
             ).all()
-            migrated = False
             for user_id in restricted_user_ids:
-                if self._user_overrides(session, user_id) == desired:
+                user = session.get(UserRow, user_id)
+                requested = _platform_overrides(
+                    user.platform_scope if user else "all"
+                )
+                if self._user_overrides(session, user_id) == requested:
                     continue
                 session.execute(delete(UserMenuOverrideRow).where(
                     UserMenuOverrideRow.user_id == user_id
                 ))
-                for key, visible in desired.items():
+                for key, visible in requested.items():
                     session.add(UserMenuOverrideRow(
                         user_id=user_id,
                         menu_key=key,
@@ -74,6 +95,50 @@ class MenuRepository:
                 migrated = True
             if migrated:
                 state.version = int(state.version or 1) + 1
+
+    @staticmethod
+    def _migrate_xxqd_auto_menu(session) -> bool:
+        changed = False
+        global_rows = {
+            row.menu_key: row
+            for row in session.scalars(
+                select(MenuConfigRow).where(
+                    MenuConfigRow.menu_key.in_(("xxqd.auto", "xxqd.tasks"))
+                )
+            ).all()
+        }
+        auto = global_rows.get("xxqd.auto")
+        tasks = global_rows.get("xxqd.tasks")
+        if auto is not None and tasks is not None and auto.visible:
+            changed = True
+            tasks.visible = True
+
+        overrides = session.scalars(
+            select(UserMenuOverrideRow).where(
+                UserMenuOverrideRow.menu_key.in_(("xxqd.auto", "xxqd.tasks"))
+            )
+        ).all()
+        by_user: dict[int, dict[str, UserMenuOverrideRow]] = {}
+        for row in overrides:
+            by_user.setdefault(row.user_id, {})[row.menu_key] = row
+        for user_id, values in by_user.items():
+            auto_override = values.get("xxqd.auto")
+            task_override = values.get("xxqd.tasks")
+            if auto_override is not None and auto_override.visible:
+                if task_override is None:
+                    session.add(UserMenuOverrideRow(
+                        user_id=user_id,
+                        menu_key="xxqd.tasks",
+                        visible=True,
+                    ))
+                    changed = True
+                else:
+                    changed = changed or not task_override.visible
+                    task_override.visible = True
+            if auto_override is not None:
+                session.delete(auto_override)
+                changed = True
+        return changed
 
     def current_version(self) -> int:
         with self.database.session() as session:
@@ -257,18 +322,23 @@ class MenuRepository:
         self,
         *,
         user_id: int,
-        class_cube_only: bool,
+        class_cube_only: bool = False,
+        platform_scope: str | None = None,
         actor_user_id: int,
     ) -> dict[str, Any]:
+        effective_scope = platform_scope or (
+            "class_cube" if class_cube_only else "all"
+        )
         with self.database.session() as session:
             user = session.get(UserRow, user_id)
             if user is None:
                 raise ValueError("用户不存在")
             current = self._user_overrides(session, user_id)
-            if class_cube_only and user.role == "user":
-                requested = _class_cube_only_overrides()
-            else:
-                requested = {}
+            requested = (
+                _platform_overrides(effective_scope)
+                if user.role == "user"
+                else {}
+            )
             if current == requested:
                 state = session.get(MenuConfigStateRow, 1)
                 return {

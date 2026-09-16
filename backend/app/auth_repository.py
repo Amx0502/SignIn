@@ -18,6 +18,7 @@ CARD_SINGLE = "single"
 CARD_MONTHLY = "monthly"
 CARD_TYPES = {CARD_SINGLE, CARD_MONTHLY}
 MONTHLY_CARD_DAYS = 30
+PLATFORM_SCOPES = {"all", "xxqd", "class_cube"}
 
 
 class DuplicateUsernameError(ValueError):
@@ -49,6 +50,13 @@ def normalize_card_type(value: str | None) -> str | None:
     return normalized
 
 
+def normalize_platform_scope(value: str | None) -> str:
+    normalized = str(value or "all").strip().lower()
+    if normalized not in PLATFORM_SCOPES:
+        raise ValueError("用户平台范围无效")
+    return normalized
+
+
 def normalize_delete_delay_minutes(value: int | None) -> int:
     if value is None:
         return 5
@@ -59,6 +67,18 @@ def normalize_delete_delay_minutes(value: int | None) -> int:
     if not 0 <= minutes <= 1440:
         raise ValueError("次卡删除延迟必须在 0 到 1440 分钟之间")
     return minutes
+
+
+def normalize_delete_delay_seconds(value: int | None) -> int:
+    if value is None:
+        return 30
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("次卡删除延迟必须是整数秒") from exc
+    if not 0 <= seconds <= 86400:
+        raise ValueError("次卡删除延迟必须在 0 到 86400 秒之间")
+    return seconds
 
 
 def normalize_total_uses(value: int | None) -> int:
@@ -128,6 +148,7 @@ class AuthRepository:
             "username": row.username,
             "role": row.role,
             "is_active": row.is_active,
+            "platform_scope": row.platform_scope or "all",
             "created_at": row.created_at.isoformat(),
             "updated_at": row.updated_at.isoformat(),
             "last_login": row.last_login.isoformat() if row.last_login else None,
@@ -149,11 +170,16 @@ class AuthRepository:
             "card_total_uses": total_uses,
             "card_used_count": used_count,
             "card_remaining_uses": max(total_uses - used_count, 0),
-            "card_delete_delay_minutes": int(
-                row.card_delete_delay_minutes
-                if row.card_delete_delay_minutes is not None
-                else 5
+            "card_delete_delay_seconds": int(
+                row.card_delete_delay_seconds
+                if row.card_delete_delay_seconds is not None
+                else 30
             ),
+            "card_delete_delay_minutes": int(
+                row.card_delete_delay_seconds
+                if row.card_delete_delay_seconds is not None
+                else 30
+            ) // 60,
             "card_delete_due_at": (
                 row.card_delete_due_at.isoformat()
                 if row.card_delete_due_at
@@ -163,6 +189,9 @@ class AuthRepository:
             "class_cube_only": bool(policy.class_cube_only) if policy else False,
             "class_cube_account_limit": (
                 policy.class_cube_account_limit if policy else None
+            ),
+            "xxqd_account_limit": (
+                policy.xxqd_account_limit if policy else None
             ),
             "location_search_daily_limit": (
                 policy.location_search_daily_limit if policy else None
@@ -256,24 +285,39 @@ class AuthRepository:
         role: str,
         is_active: bool,
         *,
+        platform_scope: str = "all",
         class_cube_only: bool = False,
         class_cube_account_limit: int | None = None,
+        xxqd_account_limit: int | None = None,
         location_search_daily_limit: int | None = None,
         expires_at: datetime | None = None,
         card_type: str | None = None,
         card_delete_delay_minutes: int | None = None,
+        card_delete_delay_seconds: int | None = None,
         card_total_uses: int | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
         card_type = normalize_card_type(card_type)
-        delete_delay_minutes = normalize_delete_delay_minutes(
-            card_delete_delay_minutes
-        )
+        if card_delete_delay_seconds is not None:
+            delete_delay_seconds = normalize_delete_delay_seconds(
+                card_delete_delay_seconds
+            )
+        elif card_delete_delay_minutes is not None:
+            delete_delay_seconds = (
+                normalize_delete_delay_minutes(card_delete_delay_minutes) * 60
+            )
+        else:
+            delete_delay_seconds = 30
         total_uses = normalize_total_uses(card_total_uses)
+        platform_scope = normalize_platform_scope(platform_scope)
         if role not in {"admin", "user"}:
             raise ValueError("角色无效")
         if card_type is not None and role != "user":
             raise ValueError("只有普通用户可以分配会员卡")
+        if role != "user":
+            platform_scope = "all"
+        if card_type is not None and platform_scope == "all":
+            raise ValueError("会员卡用户必须指定使用平台")
         if role == "admin" and expires_at is not None:
             raise ValueError("管理员账号不能设置到期时间")
         if card_type is not None:
@@ -285,8 +329,10 @@ class AuthRepository:
                 row = UserRow(
                     username=username.strip(), password_hash=hash_password(password),
                     role=role, is_active=is_active, expires_at=expires_at,
+                    platform_scope=platform_scope,
                     card_type=card_type,
-                    card_delete_delay_minutes=delete_delay_minutes,
+                    card_delete_delay_minutes=delete_delay_seconds // 60,
+                    card_delete_delay_seconds=delete_delay_seconds,
                     card_total_uses=total_uses,
                 )
                 session.add(row)
@@ -296,6 +342,9 @@ class AuthRepository:
                     class_cube_only=bool(class_cube_only and role == "user"),
                     class_cube_account_limit=(
                         class_cube_account_limit if role == "user" else None
+                    ),
+                    xxqd_account_limit=(
+                        xxqd_account_limit if role == "user" else None
                     ),
                     location_search_daily_limit=(
                         location_search_daily_limit
@@ -323,30 +372,43 @@ class AuthRepository:
         role: str,
         is_active: bool,
         *,
+        platform_scope: str = "all",
         class_cube_only: bool = False,
         class_cube_account_limit: int | None = None,
+        xxqd_account_limit: int | None = None,
         location_search_daily_limit: int | None = None,
         expires_at: datetime | None = None,
         card_type: str | None = None,
         card_delete_delay_minutes: int | None = None,
+        card_delete_delay_seconds: int | None = None,
         card_total_uses: int | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
         card_type = normalize_card_type(card_type)
-        delete_delay_minutes = (
-            normalize_delete_delay_minutes(card_delete_delay_minutes)
-            if card_delete_delay_minutes is not None
-            else None
-        )
+        if card_delete_delay_seconds is not None:
+            delete_delay_seconds = normalize_delete_delay_seconds(
+                card_delete_delay_seconds
+            )
+        elif card_delete_delay_minutes is not None:
+            delete_delay_seconds = (
+                normalize_delete_delay_minutes(card_delete_delay_minutes) * 60
+            )
+        else:
+            delete_delay_seconds = None
         total_uses = (
             normalize_total_uses(card_total_uses)
             if card_total_uses is not None
             else None
         )
+        platform_scope = normalize_platform_scope(platform_scope)
         if role not in {"admin", "user"}:
             raise ValueError("角色无效")
         if card_type is not None and role != "user":
             raise ValueError("只有普通用户可以分配会员卡")
+        if role != "user":
+            platform_scope = "all"
+        if card_type is not None and platform_scope == "all":
+            raise ValueError("会员卡用户必须指定使用平台")
         if role == "admin" and expires_at is not None:
             raise ValueError("管理员账号不能设置到期时间")
         if is_active and expires_at is not None and expires_at <= datetime.now():
@@ -364,6 +426,7 @@ class AuthRepository:
                 row.username = username.strip()
                 row.role = role
                 row.is_active = is_active
+                row.platform_scope = platform_scope
                 if role != "user" or card_type is None:
                     row.expires_at = expires_at if role == "user" else None
                     row.card_type = None
@@ -371,7 +434,8 @@ class AuthRepository:
                     row.card_used_at = None
                     row.card_used_count = 0
                     row.card_total_uses = 1
-                    row.card_delete_delay_minutes = 5
+                    row.card_delete_delay_seconds = 30
+                    row.card_delete_delay_minutes = 0
                     row.card_delete_due_at = None
                 else:
                     row.card_type = card_type
@@ -382,10 +446,13 @@ class AuthRepository:
                         row.card_total_uses = total_uses or 1
                         row.expires_at = None
                         row.card_delete_due_at = None
+                        row.card_delete_delay_seconds = (
+                            delete_delay_seconds
+                            if delete_delay_seconds is not None
+                            else 30
+                        )
                         row.card_delete_delay_minutes = (
-                            delete_delay_minutes
-                            if delete_delay_minutes is not None
-                            else 5
+                            row.card_delete_delay_seconds // 60
                         )
                     elif (
                         card_type == CARD_MONTHLY
@@ -400,9 +467,12 @@ class AuthRepository:
                         row.expires_at = None
                     if (
                         card_type == CARD_SINGLE
-                        and delete_delay_minutes is not None
+                        and delete_delay_seconds is not None
                     ):
-                        row.card_delete_delay_minutes = delete_delay_minutes
+                        row.card_delete_delay_seconds = delete_delay_seconds
+                        row.card_delete_delay_minutes = (
+                            delete_delay_seconds // 60
+                        )
                     if card_type == CARD_SINGLE and total_uses is not None:
                         if row.card_used_at is not None:
                             raise ValueError("已核销次卡不能修改签到次数")
@@ -417,16 +487,13 @@ class AuthRepository:
                         ):
                             now = datetime.now()
                             row.card_used_at = now
-                            row.expires_at = now
-                            row.card_delete_due_at = now + timedelta(
-                                minutes=normalize_delete_delay_minutes(
-                                    row.card_delete_delay_minutes
+                            delete_due_at = now + timedelta(
+                                seconds=normalize_delete_delay_seconds(
+                                    row.card_delete_delay_seconds
                                 )
                             )
-                            row.is_active = False
-                            session.execute(delete(UserSessionRow).where(
-                                UserSessionRow.user_id == row.id
-                            ))
+                            row.expires_at = delete_due_at
+                            row.card_delete_due_at = delete_due_at
                 policy = session.get(UserFeaturePolicyRow, row.id)
                 if policy is None:
                     policy = UserFeaturePolicyRow(user_id=row.id)
@@ -436,6 +503,9 @@ class AuthRepository:
                 )
                 policy.class_cube_account_limit = (
                     class_cube_account_limit if role == "user" else None
+                )
+                policy.xxqd_account_limit = (
+                    xxqd_account_limit if role == "user" else None
                 )
                 policy.location_search_daily_limit = (
                     location_search_daily_limit if role == "user" else None
@@ -516,18 +586,15 @@ class AuthRepository:
             row.card_used_count = used_count
             consumed = used_count >= total_uses
             if consumed:
-                delete_delay_minutes = normalize_delete_delay_minutes(
-                    row.card_delete_delay_minutes
+                delete_delay_seconds = normalize_delete_delay_seconds(
+                    row.card_delete_delay_seconds
                 )
                 row.card_used_at = now
-                row.expires_at = now
-                row.card_delete_due_at = now + timedelta(
-                    minutes=delete_delay_minutes
+                delete_due_at = now + timedelta(
+                    seconds=delete_delay_seconds
                 )
-                row.is_active = False
-                session.execute(
-                    delete(UserSessionRow).where(UserSessionRow.user_id == row.id)
-                )
+                row.expires_at = delete_due_at
+                row.card_delete_due_at = delete_due_at
             row.updated_at = now
             session.flush()
             return {
@@ -550,6 +617,18 @@ class AuthRepository:
                     UserRow.card_delete_due_at <= current,
                 )
             ).all())
+
+    def membership_is_usable(self, user_id: int) -> bool:
+        with self.database.session() as session:
+            row = session.get(UserRow, int(user_id))
+            if row is None or not row.is_active:
+                return False
+            now = datetime.now()
+            if row.expires_at is not None and row.expires_at <= now:
+                return False
+            if row.card_type == CARD_SINGLE and row.card_used_at is not None:
+                return False
+            return True
 
     def change_password(
         self,

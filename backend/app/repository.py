@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .database import Database
 from .db_models import AccountProjectRow, AccountRow, TaskRow, XxqdTaskRunRow
+from .auth_models import UserFeaturePolicyRow, UserRow
 from .task_date_schedule import get_last_effective_occurrence, normalize_task_date_rule
 
 
@@ -95,6 +96,7 @@ class AccountRepository:
     def _account_to_dict(cls, row: AccountRow) -> dict:
         return {
             "id": row.id,
+            "owner_user_id": row.owner_user_id,
             "name": row.name,
             "mobile": row.mobile,
             "password": row.password,
@@ -126,6 +128,7 @@ class AccountRepository:
         with self.database.session() as session:
             row = XxqdTaskRunRow(
                 account_id=account.get("id"),
+                owner_user_id=account.get("owner_user_id"),
                 task_id=task.get("id"),
                 account_name=str(account.get("name") or account.get("mobile") or "未知账号")[:255],
                 task_title=str(task.get("title") or "未命名任务")[:255],
@@ -182,17 +185,67 @@ class AccountRepository:
                 "ranking": [{"name": name or "未知账号", "value": int(value)} for name, value in rank_rows],
             }
 
+    def list_runs(
+        self,
+        *,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+        account_id: int | None = None,
+        task_id: int | None = None,
+        status: str | None = None,
+        source: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict:
+        with self.database.session() as session:
+            conditions = []
+            if not is_admin and owner_user_id is not None:
+                conditions.append(
+                    XxqdTaskRunRow.owner_user_id == owner_user_id
+                )
+            if account_id is not None:
+                conditions.append(XxqdTaskRunRow.account_id == account_id)
+            if task_id is not None:
+                conditions.append(XxqdTaskRunRow.task_id == task_id)
+            if status:
+                conditions.append(XxqdTaskRunRow.status == status)
+            if source:
+                conditions.append(XxqdTaskRunRow.source == source)
+            total = int(session.scalar(
+                select(func.count(XxqdTaskRunRow.id)).where(*conditions)
+            ) or 0)
+            rows = session.scalars(
+                select(XxqdTaskRunRow)
+                .where(*conditions)
+                .order_by(
+                    desc(XxqdTaskRunRow.started_at),
+                    desc(XxqdTaskRunRow.id),
+                )
+                .offset(max(int(offset), 0))
+                .limit(min(max(int(limit), 1), 200))
+            ).all()
+            return {
+                "total": total,
+                "items": [self._run_to_dict(row) for row in rows],
+            }
+
     @staticmethod
-    def _resolve_account(session: Session, index: int) -> AccountRow:
+    def _resolve_account(
+        session: Session,
+        index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> AccountRow:
         if index < 0:
             raise AccountIndexError(index)
-        row = session.scalar(
+        query = (
             select(AccountRow)
             .options(selectinload(AccountRow.tasks), selectinload(AccountRow.projects))
             .order_by(AccountRow.id)
-            .offset(index)
-            .limit(1)
         )
+        if not is_admin and owner_user_id is not None:
+            query = query.where(AccountRow.owner_user_id == owner_user_id)
+        row = session.scalar(query.offset(index).limit(1))
         if row is None:
             raise AccountIndexError(index)
         return row
@@ -202,20 +255,105 @@ class AccountRepository:
         original = getattr(exc, "orig", None)
         return bool(getattr(original, "args", None) and original.args[0] == 1062)
 
-    def list_accounts(self) -> list[dict]:
+    def list_accounts(
+        self,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+        active_owners_only: bool = False,
+    ) -> list[dict]:
         with self.database.session() as session:
-            rows = session.scalars(
+            query = (
                 select(AccountRow)
                 .options(selectinload(AccountRow.tasks), selectinload(AccountRow.projects))
                 .order_by(AccountRow.id)
-            ).all()
+            )
+            if not is_admin and owner_user_id is not None:
+                query = query.where(AccountRow.owner_user_id == owner_user_id)
+            if active_owners_only:
+                query = query.outerjoin(
+                    UserRow, UserRow.id == AccountRow.owner_user_id
+                ).where(
+                    (AccountRow.owner_user_id.is_(None))
+                    | (
+                        (UserRow.is_active.is_(True))
+                        & (
+                            (UserRow.expires_at.is_(None))
+                            | (UserRow.expires_at > dt.datetime.now())
+                        )
+                        & (UserRow.card_used_at.is_(None))
+                    )
+                )
+            rows = session.scalars(query).all()
             return [self._account_to_dict(row) for row in rows]
 
-    def add_account(self, data: dict) -> dict:
+    def count_accounts(self, owner_user_id: int) -> int:
+        with self.database.session() as session:
+            return int(session.scalar(
+                select(func.count(AccountRow.id)).where(
+                    AccountRow.owner_user_id == owner_user_id
+                )
+            ) or 0)
+
+    def delete_accounts_by_owner(self, owner_user_id: int) -> int:
+        with self.database.session() as session:
+            rows = session.scalars(
+                select(AccountRow).where(
+                    AccountRow.owner_user_id == owner_user_id
+                )
+            ).all()
+            for row in rows:
+                session.delete(row)
+            session.flush()
+            return len(rows)
+
+    def add_account(
+        self,
+        data: dict,
+        owner_user_id: int | None = None,
+        account_limit: int | None = None,
+    ) -> dict:
         account = _normalize_account(data)
         try:
             with self.database.session() as session:
-                row = AccountRow(**account)
+                existing = None
+                if owner_user_id is not None and account["mobile"]:
+                    existing = session.scalar(
+                        select(AccountRow)
+                        .options(
+                            selectinload(AccountRow.tasks),
+                            selectinload(AccountRow.projects),
+                        )
+                        .where(AccountRow.mobile == account["mobile"])
+                        .with_for_update()
+                    )
+                    if existing is not None:
+                        if existing.owner_user_id == owner_user_id:
+                            return self._account_to_dict(existing)
+                        if existing.owner_user_id is not None:
+                            raise DuplicateMobileError(
+                                "手机号已绑定其他用户，无法重复关联"
+                            )
+                if owner_user_id is not None and account_limit is not None:
+                    session.scalar(
+                        select(UserFeaturePolicyRow)
+                        .where(UserFeaturePolicyRow.user_id == owner_user_id)
+                        .with_for_update()
+                    )
+                    count = int(session.scalar(
+                        select(func.count(AccountRow.id)).where(
+                            AccountRow.owner_user_id == owner_user_id
+                        )
+                    ) or 0)
+                    if count >= int(account_limit):
+                        raise ValueError(
+                            f"小小签到账号额度已满（{account_limit} 个），"
+                            "请联系管理员调整额度"
+                        )
+                if existing is not None:
+                    existing.owner_user_id = owner_user_id
+                    session.flush()
+                    return self._account_to_dict(existing)
+                row = AccountRow(**account, owner_user_id=owner_user_id)
                 session.add(row)
                 session.flush()
                 return self._account_to_dict(row)
@@ -224,11 +362,19 @@ class AccountRepository:
                 raise DuplicateMobileError("手机号已存在") from exc
             raise
 
-    def update_account(self, account_index: int, data: dict) -> dict:
+    def update_account(
+        self,
+        account_index: int,
+        data: dict,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
         account = _normalize_account(data)
         try:
             with self.database.session() as session:
-                row = self._resolve_account(session, account_index)
+                row = self._resolve_account(
+                    session, account_index, owner_user_id, is_admin
+                )
                 row.name = account["name"]
                 row.mobile = account["mobile"]
                 row.password = account["password"]
@@ -240,9 +386,16 @@ class AccountRepository:
                 raise DuplicateMobileError("手机号已存在") from exc
             raise
 
-    def delete_account(self, account_index: int) -> None:
+    def delete_account(
+        self,
+        account_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> None:
         with self.database.session() as session:
-            row = self._resolve_account(session, account_index)
+            row = self._resolve_account(
+                session, account_index, owner_user_id, is_admin
+            )
             session.delete(row)
 
     @staticmethod
@@ -313,10 +466,18 @@ class AccountRepository:
             session.flush()
             return self._task_to_dict(row)
 
-    def add_task(self, account_index: int, data: dict) -> dict:
+    def add_task(
+        self,
+        account_index: int,
+        data: dict,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
         task = _normalize_task(data)
         with self.database.session() as session:
-            account = self._resolve_account(session, account_index)
+            account = self._resolve_account(
+                session, account_index, owner_user_id, is_admin
+            )
             position = session.scalar(
                 select(func.count(TaskRow.id)).where(TaskRow.account_id == account.id)
             )
@@ -326,18 +487,35 @@ class AccountRepository:
             session.flush()
             return self._task_to_dict(row)
 
-    def update_task(self, account_index: int, task_index: int, data: dict) -> dict:
+    def update_task(
+        self,
+        account_index: int,
+        task_index: int,
+        data: dict,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
         task = _normalize_task(data)
         with self.database.session() as session:
-            account = self._resolve_account(session, account_index)
+            account = self._resolve_account(
+                session, account_index, owner_user_id, is_admin
+            )
             row = self._resolve_task(session, account.id, task_index)
             self._apply_task(row, task)
             session.flush()
             return self._task_to_dict(row)
 
-    def delete_task(self, account_index: int, task_index: int) -> None:
+    def delete_task(
+        self,
+        account_index: int,
+        task_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> None:
         with self.database.session() as session:
-            account = self._resolve_account(session, account_index)
+            account = self._resolve_account(
+                session, account_index, owner_user_id, is_admin
+            )
             row = self._resolve_task(session, account.id, task_index)
             session.delete(row)
             session.flush()
@@ -350,9 +528,16 @@ class AccountRepository:
             for position, task_row in enumerate(remaining):
                 task_row.position = position
 
-    def task_positions(self, account_index: int) -> list[int]:
+    def task_positions(
+        self,
+        account_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> list[int]:
         with self.database.session() as session:
-            account = self._resolve_account(session, account_index)
+            account = self._resolve_account(
+                session, account_index, owner_user_id, is_admin
+            )
             return list(
                 session.scalars(
                     select(TaskRow.position)
@@ -361,9 +546,17 @@ class AccountRepository:
                 ).all()
             )
 
-    def update_token(self, account_index: int, token: str) -> dict:
+    def update_token(
+        self,
+        account_index: int,
+        token: str,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
         with self.database.session() as session:
-            account = self._resolve_account(session, account_index)
+            account = self._resolve_account(
+                session, account_index, owner_user_id, is_admin
+            )
             account.token = str(token)
             session.flush()
             return self._account_to_dict(account)
@@ -376,9 +569,17 @@ class AccountRepository:
             account.token = str(token)
             return True
 
-    def replace_projects(self, account_index: int, projects: list[dict]) -> list[dict]:
+    def replace_projects(
+        self,
+        account_index: int,
+        projects: list[dict],
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> list[dict]:
         with self.database.session() as session:
-            account = self._resolve_account(session, account_index)
+            account = self._resolve_account(
+                session, account_index, owner_user_id, is_admin
+            )
             account.projects.clear()
             session.flush()
             for position, project in enumerate(projects):

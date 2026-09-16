@@ -125,7 +125,7 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="企微通知" width="80">
+            <el-table-column v-if="isAdmin" label="企微通知" width="80">
               <template #default="scope">
                 <el-tag
                   :type="
@@ -190,10 +190,10 @@
               </div>
               <footer>
                 <div class="mobile-task-card__policies">
-                  <span>{{
+                  <span v-if="isAdmin">{{
                     row.task.skip_weekends ? "跳过周末" : "周末执行"
                   }}</span>
-                  <span>{{
+                  <span v-if="isAdmin">{{
                     row.task.notify_wechat !== false ? "企微通知" : "不通知"
                   }}</span>
                 </div>

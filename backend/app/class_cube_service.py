@@ -308,6 +308,7 @@ class ClassCubeService:
         notifier: ClassCubeNotifier | None = None,
         geocoder: ClassCubeGeocoder | None = None,
         membership_consumer: Callable[[int], dict[str, Any] | None] | None = None,
+        membership_guard: Callable[[int], bool] | None = None,
     ):
         self.repository = repository
         self.client = client
@@ -315,6 +316,7 @@ class ClassCubeService:
         self._clock = clock or time.monotonic
         self.notifier = notifier or ClassCubeNotifier()
         self.membership_consumer = membership_consumer
+        self.membership_guard = membership_guard
         self.geocoder = geocoder or ClassCubeGeocoder(
             base_url=config.CLASS_CUBE_TENCENT_URL,
             user_agent=config.CLASS_CUBE_TENCENT_USER_AGENT,
@@ -962,6 +964,10 @@ class ClassCubeService:
 
     def create_task(self, payload, actor):
         actor_user_id, is_admin = self._actor_scope(actor)
+        if not self._membership_allows(
+            payload.get("owner_user_id") or actor_user_id
+        ):
+            raise ClassCubeValidationError("次卡次数已用完，不能创建新任务")
         values = dict(payload)
         values = self._validate_task_schedule(values)
         values["poll_interval_seconds"] = 30
@@ -978,6 +984,8 @@ class ClassCubeService:
         current = self.repository.get_task(
             task_id, actor_user_id, is_admin
         )
+        if not self._membership_allows(current.get("owner_user_id")):
+            raise ClassCubeValidationError("次卡次数已用完，不能修改任务")
         values = dict(current)
         supplied = dict(payload)
         if supplied.pop("clear_password", False):
@@ -1014,6 +1022,8 @@ class ClassCubeService:
         for task in self.repository.list_tasks(
             0, True, enabled=True
         ):
+            if not self._membership_allows(task.get("owner_user_id")):
+                continue
             schedule_key = due_schedule_key(task, now)
             if schedule_key:
                 due.append({**task, "_schedule_key": schedule_key})
@@ -1179,6 +1189,22 @@ class ClassCubeService:
             with self._execution_lock:
                 self._running_task_ids.discard(task_id)
             raise
+        if not self._membership_allows(task.get("owner_user_id")):
+            with self._execution_lock:
+                self._running_task_ids.discard(task_id)
+            return {
+                "task_id": task_id,
+                "task_name": task.get("name", ""),
+                "status": "blocked",
+                "message": "次卡次数已用完，账号将在删除延迟到期后失效",
+                "scanned": 0,
+                "success": 0,
+                "already_signed": 0,
+                "skipped": 1,
+                "failed": 0,
+                "unknown": 0,
+                "details": [],
+            }
         if trigger == "scheduled" and not task.get("enabled"):
             with self._execution_lock:
                 self._running_task_ids.discard(task_id)
@@ -1390,12 +1416,12 @@ class ClassCubeService:
                 )
                 if checkin_result.get("membership_card_consumed"):
                     delay = checkin_result.get(
-                        "membership_card_delete_delay_minutes"
+                        "membership_card_delete_delay_seconds"
                     )
                     result["message"] = (
                         "签到成功，次卡已核销并立即删除"
                         if delay == 0
-                        else f"签到成功，次卡已核销，{delay or 5} 分钟后删除"
+                        else f"签到成功，次卡已核销，{delay or 30} 秒后删除"
                     )
                     break
                 if checkin_result.get("membership_card_type") == "single":
@@ -1701,13 +1727,26 @@ class ClassCubeService:
             result["membership_card_remaining_uses"] = recorded.get(
                 "card_remaining_uses"
             )
-            result["membership_card_delete_delay_minutes"] = recorded.get(
-                "card_delete_delay_minutes"
+            result["membership_card_delete_delay_seconds"] = recorded.get(
+                "card_delete_delay_seconds"
             )
             result["membership_card_delete_due_at"] = recorded.get(
                 "card_delete_due_at"
             )
         return result
+
+    def _membership_allows(self, owner_user_id: int | None) -> bool:
+        if owner_user_id is None or self.membership_guard is None:
+            return True
+        try:
+            return bool(self.membership_guard(int(owner_user_id)))
+        except Exception as exc:
+            self.logger.error(
+                "读取会员卡状态失败；用户：%s；异常：%s",
+                owner_user_id,
+                type(exc).__name__,
+            )
+            return False
 
     def _manual_checkin_context(self, item_id, actor):
         actor_user_id, is_admin = self._actor_scope(actor)
@@ -1726,13 +1765,18 @@ class ClassCubeService:
             actor_user_id,
             is_admin,
         )
+        card_owner_user_id = (
+            actor_user_id
+            if not is_admin
+            else account.get("owner_user_id")
+        )
+        if not self._membership_allows(card_owner_user_id):
+            raise ClassCubeValidationError(
+                "次卡次数已用完，账号将在删除延迟到期后失效"
+            )
         return {
             "actor_user_id": actor_user_id,
-            "card_owner_user_id": (
-                actor_user_id
-                if not is_admin
-                else account.get("owner_user_id")
-            ),
+            "card_owner_user_id": card_owner_user_id,
             "is_admin": is_admin,
             "item": item,
             "course": course,
@@ -1820,6 +1864,11 @@ class ClassCubeService:
         self.repository.record_manual_run(
             owner_user_id=int(context["actor_user_id"]),
             account_id=int(account["id"]),
+            account_name=(
+                account.get("remote_user_name")
+                or account.get("name")
+                or ""
+            ),
             course_id=int(course["id"]),
             checkin_item_id=int(item["id"]),
             remote_item_id=item.get("remote_item_id", ""),

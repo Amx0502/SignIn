@@ -372,6 +372,7 @@ class AppState:
         self.stop_event = threading.Event()
         self._owned_database: Database | None = None
         self.repository = repository
+        self.membership_consumer = None
         settings = load_settings_from_disk()
         self.auto_enabled = settings["auto_enabled"]
         self.refresh_times = settings["refresh_times"]
@@ -393,6 +394,25 @@ class AppState:
         self._owned_database = Database(settings)
         self._owned_database.initialize()
         self.repository = AccountRepository(self._owned_database)
+
+    def set_membership_consumer(self, consumer) -> None:
+        self.membership_consumer = consumer
+
+    def _record_membership_success(self, account: dict, result: dict) -> None:
+        owner_user_id = account.get("owner_user_id")
+        if owner_user_id is None or self.membership_consumer is None:
+            return
+        try:
+            recorded = self.membership_consumer(int(owner_user_id))
+        except Exception as exc:
+            self.logger.error(
+                "小小签到会员卡扣次失败；用户：%s；异常：%s",
+                owner_user_id,
+                type(exc).__name__,
+            )
+            return
+        if recorded is not None:
+            result["membership_card"] = recorded
 
     def start_background_scheduler(self) -> None:
         if not self.scheduler_thread.is_alive():
@@ -485,8 +505,12 @@ class AppState:
                 timer.start()
                 self.wechat_notify_timers[cache_key] = timer
 
-    def snapshot(self) -> dict:
-        accounts = self.repository.list_accounts()
+    def snapshot(
+        self,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
+        accounts = self.repository.list_accounts(owner_user_id, is_admin)
         with self.lock:
             enabled_task_count = sum(
                 1 for account in accounts for task in account.get("tasks", []) if task.get("enable", True)
@@ -525,47 +549,91 @@ class AppState:
         )
         return self.snapshot()
 
-    def add_account(self, data: dict) -> dict:
+    def add_account(
+        self,
+        data: dict,
+        owner_user_id: int | None = None,
+        account_limit: int | None = None,
+    ) -> dict:
         account = normalize_account(data)
         if not account["name"] or not account["mobile"] or not account["password"]:
             raise ValueError("账号名称、手机号、密码不能为空")
-        account = self.repository.add_account(account)
+        account = self.repository.add_account(
+            account, owner_user_id, account_limit
+        )
         self.logger.info("已新增账号：%s", account["name"])
         return account
 
-    def update_account(self, account_index: int, data: dict) -> dict:
+    def update_account(
+        self,
+        account_index: int,
+        data: dict,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
         account = normalize_account(data)
         if not account["name"] or not account["mobile"] or not account["password"]:
             raise ValueError("账号名称、手机号、密码不能为空")
-        account = self.repository.update_account(account_index, account)
+        account = self.repository.update_account(
+            account_index, account, owner_user_id, is_admin
+        )
         self.logger.info("已更新账号：%s", account["name"])
         return account
 
-    def delete_account(self, account_index: int) -> None:
-        account = self.repository.list_accounts()[account_index]
-        self.repository.delete_account(account_index)
+    def delete_account(
+        self,
+        account_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> None:
+        account = self.repository.list_accounts(
+            owner_user_id, is_admin
+        )[account_index]
+        self.repository.delete_account(
+            account_index, owner_user_id, is_admin
+        )
         self.logger.info("已删除账号：%s", account["name"])
 
-    def login_account(self, account_index: int) -> dict:
-        account = self.repository.list_accounts()[account_index]
+    def login_account(
+        self,
+        account_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
+        account = self.repository.list_accounts(
+            owner_user_id, is_admin
+        )[account_index]
         token = self.service.login(account["mobile"], account["password"])
         if not token:
             raise RuntimeError("登录失败，请检查账号信息")
-        updated = self.repository.update_token(account_index, token)
+        updated = self.repository.update_token(
+            account_index, token, owner_user_id, is_admin
+        )
         self.logger.info("[%s] 登录成功并获取 Token", updated["name"])
         return updated
 
-    def refresh_single_token(self, account_index: int) -> dict:
-        return self.login_account(account_index)
+    def refresh_single_token(
+        self,
+        account_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
+        return self.login_account(account_index, owner_user_id, is_admin)
 
-    def refresh_all_tokens(self) -> dict:
-        accounts = self.repository.list_accounts()
+    def refresh_all_tokens(
+        self,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
+        accounts = self.repository.list_accounts(owner_user_id, is_admin)
         success = 0
         failed_names: list[str] = []
         for index, account in enumerate(accounts):
             token = self.service.login(account["mobile"], account["password"])
             if token:
-                self.repository.update_token(index, token)
+                self.repository.update_token(
+                    index, token, owner_user_id, is_admin
+                )
                 success += 1
             else:
                 failed_names.append(account["name"])
@@ -592,38 +660,78 @@ class AppState:
         except Exception as exc:
             self.logger.error("[Token刷新] 用户[%s] 刷新过程异常：%s", mobile, str(exc))
 
-    def fetch_projects(self, account_index: int) -> list[dict]:
-        account = self.repository.list_accounts()[account_index]
+    def fetch_projects(
+        self,
+        account_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> list[dict]:
+        account = self.repository.list_accounts(
+            owner_user_id, is_admin
+        )[account_index]
         if not account.get("token"):
             raise ValueError("当前账号没有 Token，请先登录")
         projects = self.service.fetch_checkin_list(account["token"])
         self.logger.info("[%s] 已获取签到项目列表，共 %s 个", account["name"], len(projects))
-        self.repository.replace_projects(account_index, projects)
+        self.repository.replace_projects(
+            account_index, projects, owner_user_id, is_admin
+        )
         return projects
 
-    def add_task(self, account_index: int, data: dict) -> dict:
-        account = self.repository.list_accounts()[account_index]
+    def add_task(
+        self,
+        account_index: int,
+        data: dict,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
+        account = self.repository.list_accounts(
+            owner_user_id, is_admin
+        )[account_index]
         projects = account.get("projects", [])
         tasks = account.get("tasks", [])
         if len(projects) > 0 and len(tasks) >= len(projects):
             raise ValueError(f"任务数量已达上限，当前账号最多可添加 {len(projects)} 个任务")
         task = normalize_task(data)
-        task = self.repository.add_task(account_index, task)
+        task = self.repository.add_task(
+            account_index, task, owner_user_id, is_admin
+        )
         self.logger.info("[%s] 已新增任务：%s", account["name"], task["title"])
         return task
 
-    def update_task(self, account_index: int, task_index: int, data: dict) -> dict:
+    def update_task(
+        self,
+        account_index: int,
+        task_index: int,
+        data: dict,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
         task = normalize_task(data)
-        account_name = self.repository.list_accounts()[account_index]["name"]
-        task = self.repository.update_task(account_index, task_index, task)
+        account_name = self.repository.list_accounts(
+            owner_user_id, is_admin
+        )[account_index]["name"]
+        task = self.repository.update_task(
+            account_index, task_index, task, owner_user_id, is_admin
+        )
         self.logger.info("[%s] 已更新任务：%s", account_name, task["title"])
         return task
 
-    def delete_task(self, account_index: int, task_index: int) -> None:
-        account = self.repository.list_accounts()[account_index]
+    def delete_task(
+        self,
+        account_index: int,
+        task_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> None:
+        account = self.repository.list_accounts(
+            owner_user_id, is_admin
+        )[account_index]
         task = account["tasks"][task_index]
         account_name = account["name"]
-        self.repository.delete_task(account_index, task_index)
+        self.repository.delete_task(
+            account_index, task_index, owner_user_id, is_admin
+        )
         self.logger.info("[%s] 已删除任务：%s", account_name, task["title"])
 
     def enqueue_task(
@@ -642,8 +750,16 @@ class AppState:
             scheduled_for,
         )
 
-    def run_task(self, account_index: int, task_index: int) -> dict:
-        account = self.repository.list_accounts()[account_index]
+    def run_task(
+        self,
+        account_index: int,
+        task_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
+        account = self.repository.list_accounts(
+            owner_user_id, is_admin
+        )[account_index]
         task = account["tasks"][task_index]
         started_at = dt.datetime.now()
         with self.lock:
@@ -664,6 +780,7 @@ class AppState:
             raise
         name = account.get("name") or account.get("mobile")
         if ok:
+            self._record_membership_success(account, result)
             real_title = result.get("real_title", "未知项目")
             message = f"[{name}] 任务《{result['title']}》签到成功，实际项目：{real_title}"
             if result.get("text"):
@@ -695,9 +812,15 @@ class AppState:
             self._record_run(account, task, "manual_task", "failed", error_msg, result, started_at)
             raise RuntimeError(error_msg)
 
-    def run_all_enabled_tasks(self) -> dict:
+    def run_all_enabled_tasks(
+        self,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
         queued_count = 0
-        accounts = self.repository.list_accounts()
+        accounts = self.repository.list_accounts(
+            owner_user_id, is_admin, active_owners_only=True
+        )
         for account in accounts:
             for task in account.get("tasks", []):
                 if task.get("enable", True):
@@ -736,6 +859,7 @@ class AppState:
                 ok = False
             success = bool(ok)
             if ok:
+                self._record_membership_success(account, result)
                 real_title = result.get("real_title", "未知项目")
                 message = f"[{name}] 任务《{task_title}》签到成功，实际项目：{real_title}"
                 if result.get("text"):
@@ -871,7 +995,10 @@ class AppState:
         with self.lock:
             auto_enabled = self.auto_enabled
             refresh_times = self.refresh_times.copy()
-        accounts = self.repository.list_accounts()
+        accounts = self.repository.list_accounts(
+            is_admin=True,
+            active_owners_only=True,
+        )
         if not auto_enabled:
             return
 

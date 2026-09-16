@@ -227,7 +227,6 @@ class ClassCubeCheckinItemRow(ClassCubeBase):
     )
     task_runs: Mapped[list["ClassCubeTaskRunRow"]] = relationship(
         back_populates="checkin_item",
-        cascade="all, delete-orphan",
         passive_deletes=True,
     )
     task_item_claims: Mapped[list["ClassCubeTaskItemClaimRow"]] = relationship(
@@ -325,7 +324,6 @@ class ClassCubeTaskRow(ClassCubeBase):
     course: Mapped[ClassCubeCourseRow] = relationship(back_populates="tasks")
     runs: Mapped[list["ClassCubeTaskRunRow"]] = relationship(
         back_populates="task",
-        cascade="all, delete-orphan",
         passive_deletes=True,
     )
     item_claims: Mapped[list["ClassCubeTaskItemClaimRow"]] = relationship(
@@ -345,7 +343,7 @@ class ClassCubeTaskRunRow(ClassCubeBase):
     )
     task_id: Mapped[int | None] = mapped_column(
         BigInteger,
-        ForeignKey("class_cube_tasks.id", ondelete="CASCADE"),
+        ForeignKey("class_cube_tasks.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -358,12 +356,15 @@ class ClassCubeTaskRunRow(ClassCubeBase):
     account_id: Mapped[int] = mapped_column(
         BigInteger, nullable=False, index=True
     )
+    account_name: Mapped[str] = mapped_column(
+        String(255), nullable=False, default=""
+    )
     course_id: Mapped[int] = mapped_column(
         BigInteger, nullable=False, index=True
     )
     checkin_item_id: Mapped[int | None] = mapped_column(
         BigInteger,
-        ForeignKey("class_cube_checkin_items.id", ondelete="CASCADE"),
+        ForeignKey("class_cube_checkin_items.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

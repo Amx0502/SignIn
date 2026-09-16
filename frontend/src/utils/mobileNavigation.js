@@ -1,12 +1,11 @@
 export const MOBILE_PLATFORM_DEFINITIONS = {
   xxqd: {
     title: '小小签到',
-    paths: ['/overview', '/accounts', '/checkin/auto', '/tasks', '/logs'],
+    paths: ['/accounts', '/tasks', '/runs'],
     primary: [
-      ['xxqd.overview', '总览', 'Odometer'],
       ['xxqd.accounts', '账号', 'User'],
-      ['xxqd.auto', '签到', 'Timer'],
-      ['xxqd.tasks', '任务', 'List'],
+      ['xxqd.tasks', '任务', 'Timer'],
+      ['xxqd.runs', '记录', 'Document'],
     ],
   },
   class_cube: {

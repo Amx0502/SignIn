@@ -17,6 +17,7 @@ const Overview = () => import('../views/Overview.vue')
 const Accounts = () => import('../views/Accounts.vue')
 const AutoCheckIn = () => import('../views/AutoCheckIn.vue')
 const TaskManagement = () => import('../views/TaskManagement.vue')
+const XxqdRuns = () => import('../views/XxqdRuns.vue')
 const Logs = () => import('../views/Logs.vue')
 const ClassCubeOverview = () => import('../views/ClassCubeOverview.vue')
 const ClassCubeAccounts = () => import('../views/ClassCubeAccounts.vue')
@@ -27,7 +28,7 @@ const Miaoying = () => import('../views/Miaoying.vue')
 
 const routes = [
   { path: '/login', name: 'Login', component: Login, meta: { title: '登录' } },
-  { path: '/change-password', name: 'ChangePassword', component: ChangePassword, meta: { title: '修改密码', requiresAuth: true } },
+  { path: '/change-password', name: 'ChangePassword', component: ChangePassword, meta: { title: '修改密码', requiresAuth: true, requiresAdmin: true } },
   { path: '/users', name: 'UserManagement', component: UserManagement, meta: { title: '用户管理', requiresAuth: true, requiresAdmin: true } },
   { path: '/menu-management', name: 'MenuManagement', component: MenuManagement, meta: { title: '菜单管理', parentTitle: '系统设置', requiresAuth: true, requiresAdmin: true } },
   { path: '/checkin-delay-settings', name: 'CheckinDelaySettings', component: CheckinDelaySettings, meta: { title: '签到时间设置', parentTitle: '系统设置', requiresAuth: true, requiresAdmin: true } },
@@ -36,11 +37,12 @@ const routes = [
   { path: '/dashboard', name: 'Dashboard', component: Dashboard, meta: { title: '综合总览', parentTitle: '签到管理系统', requiresAuth: true, requiresAdmin: true } },
   { path: '/overview', name: 'Overview', component: Overview, meta: { title: '系统概览', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.overview' } },
   { path: '/accounts', name: 'Accounts', component: Accounts, meta: { title: '账号管理', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.accounts' } },
-  { path: '/checkin/auto', name: 'AutoCheckIn', component: AutoCheckIn, meta: { title: '自动签到', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.auto' } },
-  { path: '/tasks', name: 'TaskManagement', component: TaskManagement, meta: { title: '任务管理', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.tasks' } },
-  { path: '/checkin/normal', redirect: '/checkin/auto' },
-  { path: '/checkin/image', redirect: '/checkin/auto' },
-  { path: '/logs', name: 'Logs', component: Logs, meta: { title: '运行日志', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.logs' } },
+  { path: '/tasks', name: 'TaskManagement', component: TaskManagement, meta: { title: '自动任务', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.tasks' } },
+  { path: '/checkin/auto', name: 'AutoCheckIn', component: AutoCheckIn, meta: { title: '新建任务', parentTitle: '自动任务', requiresAuth: true, menuKey: 'xxqd.tasks' } },
+  { path: '/runs', name: 'XxqdRuns', component: XxqdRuns, meta: { title: '运行记录', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.runs' } },
+  { path: '/checkin/normal', redirect: '/tasks' },
+  { path: '/checkin/image', redirect: '/tasks' },
+  { path: '/logs', name: 'Logs', component: Logs, meta: { title: '签到日志', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.logs' } },
   { path: '/class-cube', redirect: '/class-cube/overview' },
   { path: '/class-cube/overview', name: 'ClassCubeOverview', component: ClassCubeOverview, meta: { title: '系统概览', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.overview' } },
   { path: '/class-cube/accounts', name: 'ClassCubeAccounts', component: ClassCubeAccounts, meta: { title: '账号管理', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.accounts' } },

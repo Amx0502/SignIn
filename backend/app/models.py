@@ -108,13 +108,20 @@ class UserCreate(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
     role: str = Field(default="user", pattern="^(admin|user)$")
     is_active: bool = True
+    platform_scope: Literal["all", "xxqd", "class_cube"] = "all"
     class_cube_only: bool = False
     class_cube_account_limit: int | None = Field(default=None, ge=0)
+    xxqd_account_limit: int | None = Field(default=None, ge=0)
     location_search_daily_limit: int | None = Field(default=None, ge=0)
     initial_class_cube_account_id: int | None = Field(default=None, gt=0)
     expires_at: datetime | None = None
     card_type: Literal["single", "monthly"] | None = None
-    card_delete_delay_minutes: int = Field(default=5, ge=0, le=1440)
+    card_delete_delay_seconds: int | None = Field(
+        default=None, ge=0, le=86400
+    )
+    card_delete_delay_minutes: int | None = Field(
+        default=None, ge=0, le=1440
+    )
     card_total_uses: int = Field(default=1, ge=1, le=999)
 
 
@@ -122,11 +129,16 @@ class UserUpdate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     role: str = Field(..., pattern="^(admin|user)$")
     is_active: bool
+    platform_scope: Literal["all", "xxqd", "class_cube"] = "all"
     class_cube_only: bool = False
     class_cube_account_limit: int | None = Field(default=None, ge=0)
+    xxqd_account_limit: int | None = Field(default=None, ge=0)
     location_search_daily_limit: int | None = Field(default=None, ge=0)
     expires_at: datetime | None = None
     card_type: Literal["single", "monthly"] | None = None
+    card_delete_delay_seconds: int | None = Field(
+        default=None, ge=0, le=86400
+    )
     card_delete_delay_minutes: int | None = Field(
         default=None, ge=0, le=1440
     )
@@ -135,7 +147,13 @@ class UserUpdate(BaseModel):
 
 class ClassCubeMemberCreate(BaseModel):
     card_type: Literal["single", "monthly"]
-    card_delete_delay_minutes: int = Field(default=5, ge=0, le=1440)
+    card_delete_delay_seconds: int = Field(default=30, ge=0, le=86400)
+    card_total_uses: int = Field(default=1, ge=1, le=999)
+
+
+class XxqdMemberCreate(BaseModel):
+    card_type: Literal["single", "monthly"]
+    card_delete_delay_seconds: int = Field(default=30, ge=0, le=86400)
     card_total_uses: int = Field(default=1, ge=1, le=999)
 
 

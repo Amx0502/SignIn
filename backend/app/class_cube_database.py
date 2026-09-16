@@ -238,6 +238,7 @@ class ClassCubeDatabase:
             "source": "VARCHAR(32) NOT NULL DEFAULT 'task'",
             "owner_user_id": "BIGINT NULL",
             "account_id": "BIGINT NULL",
+            "account_name": "VARCHAR(255) NOT NULL DEFAULT ''",
             "course_id": "BIGINT NULL",
         }
         foreign_keys = inspector.get_foreign_keys(table)
@@ -246,6 +247,15 @@ class ClassCubeDatabase:
                 foreign_key
                 for foreign_key in foreign_keys
                 if foreign_key.get("constrained_columns") == ["task_id"]
+            ),
+            None,
+        )
+        checkin_foreign_key = next(
+            (
+                foreign_key
+                for foreign_key in foreign_keys
+                if foreign_key.get("constrained_columns")
+                == ["checkin_item_id"]
             ),
             None,
         )
@@ -285,6 +295,25 @@ class ClassCubeDatabase:
                 raise RuntimeError(
                     "班级魔方运行记录作用域字段回填失败"
                 )
+            connection.execute(text(
+                "UPDATE class_cube_task_runs AS runs "
+                "JOIN class_cube_accounts AS accounts "
+                "ON accounts.id = runs.account_id "
+                "SET runs.account_name = CASE "
+                "WHEN accounts.remote_user_name <> '' "
+                "THEN accounts.remote_user_name "
+                "ELSE accounts.name END "
+                "WHERE runs.account_name = ''"
+            ))
+            connection.execute(text(
+                "UPDATE class_cube_task_runs "
+                "SET account_name = COALESCE("
+                "JSON_UNQUOTE(JSON_EXTRACT(response_summary, '$.account_name')), "
+                "''"
+                ") "
+                "WHERE account_name = '' "
+                "AND JSON_EXTRACT(response_summary, '$.account_name') IS NOT NULL"
+            ))
             for name in ("owner_user_id", "account_id", "course_id"):
                 column = columns.get(name)
                 if column is None or column.get("nullable", True):
@@ -296,40 +325,62 @@ class ClassCubeDatabase:
                     )
 
             task_id = columns.get("task_id", {})
-            if task_id and not task_id.get("nullable", False):
-                constraint_name = (
-                    task_foreign_key or {}
-                ).get("name")
-                if constraint_name:
+            if task_id:
+                if not task_id.get("nullable", False):
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE {table} "
+                            "MODIFY COLUMN task_id BIGINT NULL"
+                        )
+                    )
+                task_options = (task_foreign_key or {}).get("options", {})
+                if (
+                    task_foreign_key
+                    and task_options.get("ondelete") != "SET NULL"
+                ):
+                    constraint_name = task_foreign_key["name"]
                     connection.execute(
                         text(
                             f"ALTER TABLE {table} DROP FOREIGN KEY "
                             f"{quote(constraint_name)}"
                         )
                     )
-                connection.execute(
-                    text(
-                        f"ALTER TABLE {table} "
-                        "MODIFY COLUMN task_id BIGINT NULL"
-                    )
-                )
-                if constraint_name:
                     connection.execute(
                         text(
                             f"ALTER TABLE {table} ADD CONSTRAINT "
                             f"{quote(constraint_name)} FOREIGN KEY "
                             "(task_id) REFERENCES class_cube_tasks(id) "
-                            "ON DELETE CASCADE"
+                            "ON DELETE SET NULL"
                         )
                     )
 
-        checkin_item = columns.get("checkin_item_id", {})
-        if checkin_item and not checkin_item.get("nullable", False):
-            with engine.begin() as connection:
+            checkin_item = columns.get("checkin_item_id", {})
+            if checkin_item and not checkin_item.get("nullable", False):
                 connection.execute(
                     text(
                         "ALTER TABLE class_cube_task_runs "
                         "MODIFY COLUMN checkin_item_id BIGINT NULL"
+                    )
+                )
+            checkin_options = (checkin_foreign_key or {}).get("options", {})
+            if (
+                checkin_foreign_key
+                and checkin_options.get("ondelete") != "SET NULL"
+            ):
+                constraint_name = checkin_foreign_key["name"]
+                connection.execute(
+                    text(
+                        f"ALTER TABLE {table} DROP FOREIGN KEY "
+                        f"{quote(constraint_name)}"
+                    )
+                )
+                connection.execute(
+                    text(
+                        f"ALTER TABLE {table} ADD CONSTRAINT "
+                        f"{quote(constraint_name)} FOREIGN KEY "
+                        "(checkin_item_id) REFERENCES "
+                        "class_cube_checkin_items(id) "
+                        "ON DELETE SET NULL"
                     )
                 )
 

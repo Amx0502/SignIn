@@ -65,7 +65,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8765',
+        target: 'http://127.0.0.1:2206',
         changeOrigin: true
       },
       '/uploads': {

@@ -54,6 +54,11 @@ class AuthDatabase:
                 connection.execute(
                     text("ALTER TABLE users ADD COLUMN expires_at DATETIME NULL")
                 )
+            if "platform_scope" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE users ADD COLUMN platform_scope "
+                    "VARCHAR(16) NOT NULL DEFAULT 'all'"
+                ))
             card_definitions = {
                 "card_type": "VARCHAR(16) NULL",
                 "card_activated_at": "DATETIME NULL",
@@ -61,13 +66,22 @@ class AuthDatabase:
                 "card_total_uses": "INT NOT NULL DEFAULT 1",
                 "card_used_count": "INT NOT NULL DEFAULT 0",
                 "card_delete_delay_minutes": "INT NOT NULL DEFAULT 5",
+                "card_delete_delay_seconds": "INT NOT NULL DEFAULT 30",
                 "card_delete_due_at": "DATETIME NULL",
             }
+            added_card_columns: set[str] = set()
             for name, definition in card_definitions.items():
                 if name not in columns:
+                    added_card_columns.add(name)
                     connection.execute(text(
                         f"ALTER TABLE users ADD COLUMN {name} {definition}"
                     ))
+            if "card_delete_delay_seconds" in added_card_columns:
+                connection.execute(text(
+                    "UPDATE users SET card_delete_delay_seconds = "
+                    "GREATEST(COALESCE(card_delete_delay_minutes, 0) * 60, 0) "
+                    "WHERE card_type IS NOT NULL"
+                ))
             policy_columns = {
                 column["name"]
                 for column in inspect(connection).get_columns(
@@ -75,6 +89,7 @@ class AuthDatabase:
                 )
             }
             policy_definitions = {
+                "xxqd_account_limit": "INT NULL",
                 "location_search_daily_limit": "INT NULL",
                 "location_search_used": "INT NOT NULL DEFAULT 0",
                 "location_search_date": "DATE NULL",
@@ -85,6 +100,15 @@ class AuthDatabase:
                         "ALTER TABLE user_feature_policies "
                         f"ADD COLUMN {name} {definition}"
                     ))
+            connection.execute(text(
+                "UPDATE users AS users "
+                "JOIN user_feature_policies AS policies "
+                "ON policies.user_id = users.id "
+                "SET users.platform_scope = 'class_cube' "
+                "WHERE users.role = 'user' "
+                "AND users.platform_scope = 'all' "
+                "AND policies.class_cube_only = 1"
+            ))
 
     @contextmanager
     def session(self) -> Iterator[Session]:

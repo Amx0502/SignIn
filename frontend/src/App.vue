@@ -473,6 +473,7 @@
         </div>
         <van-cell-group inset>
           <van-cell
+            v-if="currentUser?.role === 'admin'"
             clickable
             title="修改密码"
             label="更新当前账户登录密码"
