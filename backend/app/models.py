@@ -109,7 +109,6 @@ class UserCreate(BaseModel):
     role: str = Field(default="user", pattern="^(admin|user)$")
     is_active: bool = True
     platform_scope: Literal["all", "xxqd", "class_cube"] = "all"
-    class_cube_only: bool = False
     class_cube_account_limit: int | None = Field(default=None, ge=0)
     xxqd_account_limit: int | None = Field(default=None, ge=0)
     location_search_daily_limit: int | None = Field(default=None, ge=0)
@@ -119,9 +118,6 @@ class UserCreate(BaseModel):
     card_delete_delay_seconds: int | None = Field(
         default=None, ge=0, le=86400
     )
-    card_delete_delay_minutes: int | None = Field(
-        default=None, ge=0, le=1440
-    )
     card_total_uses: int = Field(default=1, ge=1, le=999)
 
 
@@ -130,7 +126,6 @@ class UserUpdate(BaseModel):
     role: str = Field(..., pattern="^(admin|user)$")
     is_active: bool
     platform_scope: Literal["all", "xxqd", "class_cube"] = "all"
-    class_cube_only: bool = False
     class_cube_account_limit: int | None = Field(default=None, ge=0)
     xxqd_account_limit: int | None = Field(default=None, ge=0)
     location_search_daily_limit: int | None = Field(default=None, ge=0)
@@ -139,19 +134,11 @@ class UserUpdate(BaseModel):
     card_delete_delay_seconds: int | None = Field(
         default=None, ge=0, le=86400
     )
-    card_delete_delay_minutes: int | None = Field(
-        default=None, ge=0, le=1440
-    )
     card_total_uses: int | None = Field(default=None, ge=1, le=999)
 
 
-class ClassCubeMemberCreate(BaseModel):
-    card_type: Literal["single", "monthly"]
-    card_delete_delay_seconds: int = Field(default=30, ge=0, le=86400)
-    card_total_uses: int = Field(default=1, ge=1, le=999)
-
-
-class XxqdMemberCreate(BaseModel):
+class PlatformMemberCreate(BaseModel):
+    platform_scope: Literal["xxqd", "class_cube"]
     card_type: Literal["single", "monthly"]
     card_delete_delay_seconds: int = Field(default=30, ge=0, le=86400)
     card_total_uses: int = Field(default=1, ge=1, le=999)

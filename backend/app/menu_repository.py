@@ -322,13 +322,10 @@ class MenuRepository:
         self,
         *,
         user_id: int,
-        class_cube_only: bool = False,
         platform_scope: str | None = None,
         actor_user_id: int,
     ) -> dict[str, Any]:
-        effective_scope = platform_scope or (
-            "class_cube" if class_cube_only else "all"
-        )
+        effective_scope = platform_scope or "all"
         with self.database.session() as session:
             user = session.get(UserRow, user_id)
             if user is None:

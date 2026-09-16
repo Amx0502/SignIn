@@ -9,38 +9,16 @@
     </div>
 
     <el-card shadow="never" class="table-card">
-      <div class="user-filters">
-        <el-input
-          v-model="userKeyword"
-          clearable
-          :prefix-icon="Search"
-          placeholder="搜索用户名"
-          aria-label="搜索用户名"
-        />
-        <el-select v-model="roleFilter" clearable placeholder="全部角色">
-          <el-option label="管理员" value="admin" />
-          <el-option label="普通用户" value="user" />
-        </el-select>
-        <el-select v-model="cardFilter" clearable placeholder="全部会员卡">
-          <el-option label="无会员卡" value="none" />
-          <el-option label="次卡" value="single" />
-          <el-option label="月卡" value="monthly" />
-        </el-select>
-        <el-select v-model="statusFilter" clearable placeholder="全部状态">
-          <el-option label="已启用" value="active" />
-          <el-option label="已禁用" value="disabled" />
-          <el-option label="已过期" value="expired" />
-        </el-select>
-        <el-select v-model="scopeFilter" clearable placeholder="全部功能范围">
-          <el-option label="仅小小签到" value="xxqd" />
-          <el-option label="仅班级魔方" value="class_cube" />
-          <el-option label="全部平台" value="all" />
-        </el-select>
-        <el-button @click="resetUserFilters">重置</el-button>
-      </div>
-      <div class="user-filter-summary">
-        显示 {{ filteredUsers.length }} / {{ users.length }} 个用户
-      </div>
+      <UserFilterBar
+        v-model:keyword="userKeyword"
+        v-model:role="roleFilter"
+        v-model:card="cardFilter"
+        v-model:status="statusFilter"
+        v-model:scope="scopeFilter"
+        :visible-count="filteredUsers.length"
+        :total-count="users.length"
+        @reset="resetUserFilters"
+      />
 
       <el-table class="desktop-user-table" :data="filteredUsers" v-loading="loading">
         <el-table-column prop="username" label="用户名" min-width="150" />
@@ -260,12 +238,6 @@
           <div class="policy-grid">
             <div v-if="userForm.platform_scope === 'class_cube'" class="policy-card policy-card--wide">
               <div class="policy-card__title"><strong>班级魔方单用户</strong><small>仅开放账号、任务和运行记录</small></div>
-              <el-switch
-                v-model="userForm.class_cube_only"
-                active-text="仅显示核心菜单"
-                inactive-text="使用自定义菜单权限"
-                @change="handleClassCubeOnlyChange"
-              />
               <p>开启后隐藏“小小签到”及全部子菜单，同时隐藏班级魔方的“系统概览”和“魔方日志”。</p>
             </div>
 
@@ -322,7 +294,7 @@
               <p>例如设置 100 表示每天最多搜索 100 次；0 表示禁止搜索。</p>
             </div>
 
-            <div v-if="!editingId && userForm.class_cube_only" class="policy-card policy-card--wide">
+            <div v-if="!editingId && userForm.platform_scope === 'class_cube'" class="policy-card policy-card--wide">
               <div class="policy-card__title"><strong>初始班级魔方账号</strong><small>可不选择，用户之后自行扫码添加</small></div>
               <el-select
                 v-model="userForm.initial_class_cube_account_id"
@@ -445,14 +417,14 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  createClassCubeMemberApi, createUserApi, createXxqdMemberApi,
-  deleteUserApi, getUsersApi,
+  createPlatformMemberApi, createUserApi, deleteUserApi, getUsersApi,
   resetUserPasswordApi, updateUserApi
 } from '../api'
 import classCubeApi from '../api/classCube.js'
+import UserFilterBar from '../components/user-management/UserFilterBar.vue'
 
 const users = ref([])
 const userKeyword = ref('')
@@ -479,7 +451,7 @@ const resetFormRef = ref()
 const userForm = reactive({
   username: '', password: '', role: 'user', is_active: true,
   platform_scope: 'all',
-  class_cube_only: false, class_cube_account_limit: 1,
+  class_cube_account_limit: 1,
   xxqd_account_limit: 1,
   location_search_daily_limit: 100,
   initial_class_cube_account_id: null,
@@ -517,7 +489,7 @@ const filteredUsers = computed(() => {
       ? 'expired'
       : row.is_active ? 'active' : 'disabled'
     if (statusFilter.value && currentStatus !== statusFilter.value) return false
-    const scope = row.platform_scope || (row.class_cube_only ? 'class_cube' : 'all')
+    const scope = row.platform_scope || 'all'
     if (scopeFilter.value && scope !== scopeFilter.value) return false
     return true
   })
@@ -591,9 +563,8 @@ function openMemberCreate(platformScope = 'class_cube') {
 async function createMember() {
   memberCreating.value = true
   try {
-    const api = memberForm.platform_scope === 'xxqd'
-      ? createXxqdMemberApi : createClassCubeMemberApi
-    const response = await api({
+    const response = await createPlatformMemberApi({
+      platform_scope: memberForm.platform_scope,
       card_type: memberForm.card_type,
       card_total_uses: memberForm.card_total_uses,
       card_delete_delay_seconds: memberForm.card_delete_delay_seconds,
@@ -632,7 +603,7 @@ function openCreate() {
   Object.assign(userForm, {
     username: '', password: '', role: 'user', is_active: true,
     platform_scope: 'all',
-    class_cube_only: false, class_cube_account_limit: 1,
+    class_cube_account_limit: 1,
     xxqd_account_limit: 1,
     location_search_daily_limit: 100,
     initial_class_cube_account_id: null,
@@ -650,8 +621,7 @@ function openEdit(row) {
   locationQuotaUnlimited.value = row.location_search_daily_limit == null
   Object.assign(userForm, {
     username: row.username, password: '', role: row.role, is_active: row.is_active,
-    platform_scope: row.platform_scope || (row.class_cube_only ? 'class_cube' : 'all'),
-    class_cube_only: Boolean(row.class_cube_only),
+    platform_scope: row.platform_scope || 'all',
     class_cube_account_limit: row.class_cube_account_limit ?? 1,
     xxqd_account_limit: row.xxqd_account_limit ?? 1,
     location_search_daily_limit: row.location_search_daily_limit ?? 100,
@@ -663,16 +633,7 @@ function openEdit(row) {
   })
   userDialog.value = true
 }
-function handleClassCubeOnlyChange(enabled) {
-  if (enabled) userForm.platform_scope = 'class_cube'
-  if (enabled && accountQuotaUnlimited.value) {
-    accountQuotaUnlimited.value = false
-    userForm.class_cube_account_limit = 1
-  }
-  if (!enabled) userForm.initial_class_cube_account_id = null
-}
 function handlePlatformScopeChange(scope) {
-  userForm.class_cube_only = scope === 'class_cube'
   if (scope !== 'class_cube') {
     userForm.initial_class_cube_account_id = null
   }
@@ -680,7 +641,6 @@ function handlePlatformScopeChange(scope) {
 function handleCardTypeChange(cardType) {
   if (!cardType) return
   userForm.card_type = cardType
-  userForm.class_cube_only = true
   userForm.expires_at = null
   if (cardType === 'single' && userForm.card_delete_delay_seconds == null) {
     userForm.card_delete_delay_seconds = 30
@@ -688,7 +648,7 @@ function handleCardTypeChange(cardType) {
   if (cardType === 'single' && userForm.card_total_uses == null) {
     userForm.card_total_uses = 1
   }
-  if (accountQuotaUnlimited.value) {
+  if (userForm.platform_scope === 'class_cube' && accountQuotaUnlimited.value) {
     accountQuotaUnlimited.value = false
     userForm.class_cube_account_limit = 1
   }
@@ -710,7 +670,6 @@ async function saveUser() {
       await updateUserApi(editingId.value, {
         username: userForm.username, role: userForm.role, is_active: userForm.is_active,
         platform_scope: userForm.role === 'user' ? userForm.platform_scope : 'all',
-        class_cube_only: userForm.role === 'user' && userForm.class_cube_only,
         class_cube_account_limit: userForm.role === 'user' && !accountQuotaUnlimited.value
           ? userForm.class_cube_account_limit : null,
         location_search_daily_limit: userForm.role === 'user' && !locationQuotaUnlimited.value
@@ -728,12 +687,11 @@ async function saveUser() {
       await createUserApi({
         ...userForm,
         platform_scope: userForm.role === 'user' ? userForm.platform_scope : 'all',
-        class_cube_only: userForm.role === 'user' && userForm.class_cube_only,
         class_cube_account_limit: userForm.role === 'user' && !accountQuotaUnlimited.value
           ? userForm.class_cube_account_limit : null,
         location_search_daily_limit: userForm.role === 'user' && !locationQuotaUnlimited.value
           ? userForm.location_search_daily_limit : null,
-        initial_class_cube_account_id: userForm.class_cube_only
+        initial_class_cube_account_id: userForm.platform_scope === 'class_cube'
           ? userForm.initial_class_cube_account_id : null,
         expires_at: userForm.role === 'user' && !userForm.card_type ? userForm.expires_at : null,
         card_type: userForm.role === 'user' ? userForm.card_type : null,
@@ -855,13 +813,6 @@ onBeforeUnmount(() => {
 .member-credentials__row span { color: #64748b; font-size: 12px; }
 .member-credentials__row strong { overflow-wrap: anywhere; color: #172033; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .table-card { border-radius: 18px; }
-.user-filters {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(130px, 1fr)) auto;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.user-filter-summary { margin: 0 2px 12px; color: #64748b; font-size: 12px; }
 .mobile-user-list { display: none; }
 .field-help { width: 100%; margin-top: 6px; color: #64748b; font-size: 12px; line-height: 1.5; }
 .quota-row { display: flex; align-items: center; gap: 16px; width: 100%; }
@@ -977,8 +928,6 @@ onBeforeUnmount(() => {
   .page-heading .el-button { width: auto; min-width: 104px; margin: 0; }
   .page-heading__actions { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
   .page-heading__actions .el-button { width: 100%; margin: 0; }
-  .user-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .user-filters .el-button { width: 100%; margin: 0; }
   .member-type-options { grid-template-columns: minmax(0, 1fr); }
   .member-platform-field { align-items: flex-start; flex-direction: column; }
   .member-platform-field :deep(.el-radio-group) { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1016,8 +965,5 @@ onBeforeUnmount(() => {
     flex-direction: column;
   }
   .policy-card :deep(.el-input-number) { width: 100%; }
-}
-@media (max-width: 420px) {
-  .user-filters { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

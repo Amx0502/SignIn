@@ -26,7 +26,6 @@ from .models import (
     AccountCreate,
     AccountUpdate,
     CheckinDelaySettingsUpdate,
-    ClassCubeMemberCreate,
     LoginRequest,
     PasswordChange,
     PasswordReset,
@@ -35,7 +34,7 @@ from .models import (
     TaskUpdate,
     UserCreate,
     UserUpdate,
-    XxqdMemberCreate,
+    PlatformMemberCreate,
 )
 from .checkin_delay_settings import (
     CheckinDelaySettingsError,
@@ -51,6 +50,7 @@ from .class_cube_service import ClassCubeService
 from .class_cube_scheduler import ClassCubeScheduler
 from .class_cube_logging import ClassCubeLogStore, create_class_cube_logger
 from .menu_events import MenuEventBroker
+from .membership_service import MembershipService
 from .menu_repository import MenuRepository
 from .menu_router import create_menu_guard, create_menu_router
 from .miaoying_client import MiaoyingClient
@@ -124,82 +124,25 @@ async def lifespan(app: FastAPI):
         app.state.class_cube_log_store = class_cube_log_store
         class_cube_repository = ClassCubeRepository(class_cube_database)
 
-        def expire_due_membership_cards():
-            try:
-                due_user_ids = (
-                    auth_service.repository.list_due_single_card_user_ids()
-                )
-                for user_id in due_user_ids:
-                    try:
-                        user = auth_service.repository.get_user(user_id)
-                        platform_scope = user.platform_scope or "all"
-                        if platform_scope == "xxqd":
-                            app_state.repository.delete_accounts_by_owner(
-                                user_id
-                            )
-                        elif platform_scope == "class_cube":
-                            class_cube_repository.delete_accounts_by_owner(
-                                user_id
-                            )
-                            class_cube_repository.remove_user_bindings(
-                                user_id
-                            )
-                    except UserNotFoundError:
-                        continue
-                    except Exception as exc:
-                        class_cube_logger.warning(
-                            "次卡会员数据清理失败；用户：%s；异常：%s",
-                            user_id,
-                            type(exc).__name__,
-                        )
-                expired_count = (
-                    auth_service.repository.expire_due_memberships()
-                )
-                if expired_count:
-                    class_cube_logger.info(
-                        "已将 %s 个到期会员账号设为过期状态",
-                        expired_count,
-                    )
-            except Exception as exc:
-                class_cube_logger.warning(
-                    "会员账号到期检查失败；异常：%s",
-                    type(exc).__name__,
-                )
-
-        def consume_membership_card(user_id: int):
-            recorded = auth_service.repository.record_single_card_checkin(user_id)
-            if recorded is None:
-                return None
-            if recorded.get("card_consumed"):
-                expire_due_membership_cards()
-            return recorded
-
-        async def membership_cleanup_loop():
-            while True:
-                try:
-                    await asyncio.to_thread(expire_due_membership_cards)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    class_cube_logger.warning(
-                        "次卡定期清理失败；异常：%s",
-                        type(exc).__name__,
-                    )
-                await asyncio.sleep(5)
-
-        expire_due_membership_cards()
+        membership_service = MembershipService(
+            auth_service.repository,
+            app_state.repository,
+            class_cube_repository,
+            class_cube_logger,
+        )
+        membership_service.expire_due()
         membership_cleanup_task = asyncio.create_task(
-            membership_cleanup_loop()
+            membership_service.cleanup_loop()
         )
 
         class_cube_service = ClassCubeService(
             class_cube_repository,
             ClassCubeClient(),
             class_cube_logger,
-            membership_consumer=consume_membership_card,
-            membership_guard=auth_service.repository.membership_is_usable,
+            membership_consumer=membership_service.consume_checkin,
+            membership_guard=membership_service.is_usable,
         )
-        app_state.set_membership_consumer(consume_membership_card)
+        app_state.set_membership_consumer(membership_service.consume_checkin)
         app.state.class_cube_service = class_cube_service
         class_cube_scheduler = ClassCubeScheduler(class_cube_service)
         app.state.class_cube_scheduler = class_cube_scheduler
@@ -750,18 +693,14 @@ async def create_user(
     admin=Depends(require_admin),
 ):
     platform_scope = payload.platform_scope
-    if payload.class_cube_only and payload.role == "user":
-        platform_scope = "class_cube"
     if payload.card_type and platform_scope == "all":
         failure("会员卡用户必须指定小小签到或班级魔方平台")
-    class_cube_only = bool(
-        payload.role == "user" and platform_scope == "class_cube"
-    )
     account_limit = (
         payload.class_cube_account_limit if payload.role == "user" else None
     )
     if (
-        class_cube_only
+        payload.role == "user"
+        and platform_scope == "class_cube"
         and "class_cube_account_limit" not in payload.model_fields_set
     ):
         account_limit = 1
@@ -775,7 +714,7 @@ async def create_user(
     ):
         xxqd_account_limit = 1
     if payload.initial_class_cube_account_id is not None:
-        if not class_cube_only:
+        if platform_scope != "class_cube":
             failure("只有班级魔方单用户可以选择初始账号")
         if account_limit == 0:
             failure("账号额度为 0 时不能选择初始账号")
@@ -794,7 +733,6 @@ async def create_user(
             payload.password,
             payload.role,
             payload.is_active,
-            class_cube_only=class_cube_only,
             platform_scope=platform_scope,
             class_cube_account_limit=account_limit,
             xxqd_account_limit=xxqd_account_limit,
@@ -806,12 +744,10 @@ async def create_user(
             expires_at=payload.expires_at,
             card_type=payload.card_type,
             card_delete_delay_seconds=payload.card_delete_delay_seconds,
-            card_delete_delay_minutes=payload.card_delete_delay_minutes,
             card_total_uses=payload.card_total_uses,
         )
         menu_result = get_menu_repository().apply_user_access_profile(
             user_id=created["id"],
-            class_cube_only=class_cube_only,
             platform_scope=platform_scope,
             actor_user_id=admin["id"],
         )
@@ -837,16 +773,21 @@ async def create_user(
         failure(str(exc))
 
 
-@app.post("/api/users/class-cube-members")
-async def create_class_cube_member(
-    payload: ClassCubeMemberCreate,
+@app.post("/api/users/members")
+async def create_platform_member(
+    payload: PlatformMemberCreate,
     request: Request,
     admin=Depends(require_admin),
 ):
     password = ""
     created = None
+    platform_scope = payload.platform_scope
     for _ in range(12):
-        username = _random_class_cube_username()
+        username = _random_class_cube_username().replace(
+            "bjmf_",
+            "xxqd_" if platform_scope == "xxqd" else "bjmf_",
+            1,
+        )
         password = _random_class_cube_password()
         try:
             created = auth_service.repository.create_user(
@@ -854,10 +795,16 @@ async def create_class_cube_member(
                 password,
                 "user",
                 True,
-                platform_scope="class_cube",
-                class_cube_only=True,
-                class_cube_account_limit=1,
-                location_search_daily_limit=100,
+                platform_scope=platform_scope,
+                class_cube_account_limit=(
+                    1 if platform_scope == "class_cube" else None
+                ),
+                xxqd_account_limit=(
+                    1 if platform_scope == "xxqd" else None
+                ),
+                location_search_daily_limit=(
+                    100 if platform_scope == "class_cube" else None
+                ),
                 card_type=payload.card_type,
                 card_delete_delay_seconds=payload.card_delete_delay_seconds,
                 card_total_uses=payload.card_total_uses,
@@ -870,7 +817,7 @@ async def create_class_cube_member(
     try:
         menu_result = get_menu_repository().apply_user_access_profile(
             user_id=created["id"],
-            class_cube_only=True,
+            platform_scope=platform_scope,
             actor_user_id=admin["id"],
         )
         await menu_event_broker.publish(menu_result["version"])
@@ -880,62 +827,7 @@ async def create_class_cube_member(
                 "username": created["username"],
                 "password": password,
             },
-            "card_type": payload.card_type,
-            "card_delete_delay_seconds": payload.card_delete_delay_seconds,
-            "card_total_uses": payload.card_total_uses,
-        })
-    except Exception:
-        try:
-            request.app.state.class_cube_service.repository.remove_user_bindings(
-                created["id"]
-            )
-            auth_service.repository.delete_user(created["id"], admin["id"])
-        except Exception:
-            pass
-        raise
-
-
-@app.post("/api/users/xxqd-members")
-async def create_xxqd_member(
-    payload: XxqdMemberCreate,
-    request: Request,
-    admin=Depends(require_admin),
-):
-    password = ""
-    created = None
-    for _ in range(12):
-        username = _random_class_cube_username().replace("bjmf_", "xxqd_", 1)
-        password = _random_class_cube_password()
-        try:
-            created = auth_service.repository.create_user(
-                username,
-                password,
-                "user",
-                True,
-                platform_scope="xxqd",
-                xxqd_account_limit=1,
-                card_type=payload.card_type,
-                card_delete_delay_seconds=payload.card_delete_delay_seconds,
-                card_total_uses=payload.card_total_uses,
-            )
-            break
-        except DuplicateUsernameError:
-            continue
-    if created is None:
-        failure("随机用户名生成失败，请重试")
-    try:
-        menu_result = get_menu_repository().apply_user_access_profile(
-            user_id=created["id"],
-            platform_scope="xxqd",
-            actor_user_id=admin["id"],
-        )
-        await menu_event_broker.publish(menu_result["version"])
-        return success({
-            "user": created,
-            "credentials": {
-                "username": created["username"],
-                "password": password,
-            },
+            "platform_scope": platform_scope,
             "card_type": payload.card_type,
             "card_delete_delay_seconds": payload.card_delete_delay_seconds,
             "card_total_uses": payload.card_total_uses,
@@ -968,18 +860,16 @@ async def update_user(
         if previous.get("is_expired"):
             failure("用户已过期，不能继续编辑")
         platform_scope = payload.platform_scope
-        if payload.class_cube_only and payload.role == "user":
-            platform_scope = "class_cube"
         if payload.card_type and platform_scope == "all":
             failure("会员卡用户必须指定小小签到或班级魔方平台")
-        class_cube_only = bool(
-            payload.role == "user" and platform_scope == "class_cube"
-        )
         if payload.role != "user":
             account_limit = None
         elif "class_cube_account_limit" in payload.model_fields_set:
             account_limit = payload.class_cube_account_limit
-        elif class_cube_only and not previous.get("class_cube_only"):
+        elif (
+            platform_scope == "class_cube"
+            and previous.get("platform_scope") != "class_cube"
+        ):
             account_limit = 1
         else:
             account_limit = previous.get("class_cube_account_limit")
@@ -1008,7 +898,6 @@ async def update_user(
             payload.username,
             payload.role,
             payload.is_active,
-            class_cube_only=class_cube_only,
             platform_scope=platform_scope,
             class_cube_account_limit=account_limit,
             xxqd_account_limit=xxqd_account_limit,
@@ -1016,17 +905,14 @@ async def update_user(
             expires_at=payload.expires_at,
             card_type=payload.card_type,
             card_delete_delay_seconds=payload.card_delete_delay_seconds,
-            card_delete_delay_minutes=payload.card_delete_delay_minutes,
             card_total_uses=payload.card_total_uses,
         )
         if (
-            class_cube_only
-            or bool(previous.get("class_cube_only")) != class_cube_only
+            previous.get("platform_scope") != platform_scope
             or previous.get("role") != payload.role
         ):
             menu_result = get_menu_repository().apply_user_access_profile(
                 user_id=user_id,
-                class_cube_only=class_cube_only,
                 platform_scope=platform_scope,
                 actor_user_id=admin["id"],
             )

@@ -65,7 +65,6 @@ class AuthDatabase:
                 "card_used_at": "DATETIME NULL",
                 "card_total_uses": "INT NOT NULL DEFAULT 1",
                 "card_used_count": "INT NOT NULL DEFAULT 0",
-                "card_delete_delay_minutes": "INT NOT NULL DEFAULT 5",
                 "card_delete_delay_seconds": "INT NOT NULL DEFAULT 30",
                 "card_delete_due_at": "DATETIME NULL",
             }
@@ -76,11 +75,18 @@ class AuthDatabase:
                     connection.execute(text(
                         f"ALTER TABLE users ADD COLUMN {name} {definition}"
                     ))
-            if "card_delete_delay_seconds" in added_card_columns:
+            if (
+                "card_delete_delay_seconds" in added_card_columns
+                and "card_delete_delay_minutes" in columns
+            ):
                 connection.execute(text(
                     "UPDATE users SET card_delete_delay_seconds = "
                     "GREATEST(COALESCE(card_delete_delay_minutes, 0) * 60, 0) "
                     "WHERE card_type IS NOT NULL"
+                ))
+            if "card_delete_delay_minutes" in columns:
+                connection.execute(text(
+                    "ALTER TABLE users DROP COLUMN card_delete_delay_minutes"
                 ))
             policy_columns = {
                 column["name"]
@@ -100,15 +106,20 @@ class AuthDatabase:
                         "ALTER TABLE user_feature_policies "
                         f"ADD COLUMN {name} {definition}"
                     ))
-            connection.execute(text(
-                "UPDATE users AS users "
-                "JOIN user_feature_policies AS policies "
-                "ON policies.user_id = users.id "
-                "SET users.platform_scope = 'class_cube' "
-                "WHERE users.role = 'user' "
-                "AND users.platform_scope = 'all' "
-                "AND policies.class_cube_only = 1"
-            ))
+            if "class_cube_only" in policy_columns:
+                connection.execute(text(
+                    "UPDATE users AS users "
+                    "JOIN user_feature_policies AS policies "
+                    "ON policies.user_id = users.id "
+                    "SET users.platform_scope = 'class_cube' "
+                    "WHERE users.role = 'user' "
+                    "AND users.platform_scope = 'all' "
+                    "AND policies.class_cube_only = 1"
+                ))
+                connection.execute(text(
+                    "ALTER TABLE user_feature_policies "
+                    "DROP COLUMN class_cube_only"
+                ))
 
     @contextmanager
     def session(self) -> Iterator[Session]:

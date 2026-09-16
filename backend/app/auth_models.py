@@ -42,9 +42,6 @@ class UserRow(AuthBase):
     card_used_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )
-    card_delete_delay_minutes: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=5
-    )
     card_delete_delay_seconds: Mapped[int] = mapped_column(
         Integer, nullable=False, default=30
     )
@@ -66,9 +63,6 @@ class UserFeaturePolicyRow(AuthBase):
 
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    class_cube_only: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
     )
     class_cube_account_limit: Mapped[int | None] = mapped_column(
         Integer, nullable=True

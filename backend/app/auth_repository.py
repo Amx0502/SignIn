@@ -57,18 +57,6 @@ def normalize_platform_scope(value: str | None) -> str:
     return normalized
 
 
-def normalize_delete_delay_minutes(value: int | None) -> int:
-    if value is None:
-        return 5
-    try:
-        minutes = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("次卡删除延迟必须是整数分钟") from exc
-    if not 0 <= minutes <= 1440:
-        raise ValueError("次卡删除延迟必须在 0 到 1440 分钟之间")
-    return minutes
-
-
 def normalize_delete_delay_seconds(value: int | None) -> int:
     if value is None:
         return 30
@@ -175,18 +163,12 @@ class AuthRepository:
                 if row.card_delete_delay_seconds is not None
                 else 30
             ),
-            "card_delete_delay_minutes": int(
-                row.card_delete_delay_seconds
-                if row.card_delete_delay_seconds is not None
-                else 30
-            ) // 60,
             "card_delete_due_at": (
                 row.card_delete_due_at.isoformat()
                 if row.card_delete_due_at
                 else None
             ),
             "card_status": AuthRepository._card_status(row, now),
-            "class_cube_only": bool(policy.class_cube_only) if policy else False,
             "class_cube_account_limit": (
                 policy.class_cube_account_limit if policy else None
             ),
@@ -213,13 +195,17 @@ class AuthRepository:
     def _card_status(row: UserRow, now: datetime | None = None) -> str | None:
         if not row.card_type:
             return None
+        current = now or datetime.now()
+        if (
+            not row.is_active
+            or (
+                row.expires_at is not None
+                and row.expires_at <= current
+            )
+        ):
+            return "expired"
         if row.card_used_at is not None:
             return "used"
-        if not row.is_active:
-            return "expired"
-        current = now or datetime.now()
-        if row.expires_at is not None and row.expires_at <= current:
-            return "expired"
         if row.card_type == CARD_MONTHLY and row.card_activated_at is None:
             return "pending"
         return "active"
@@ -286,28 +272,19 @@ class AuthRepository:
         is_active: bool,
         *,
         platform_scope: str = "all",
-        class_cube_only: bool = False,
         class_cube_account_limit: int | None = None,
         xxqd_account_limit: int | None = None,
         location_search_daily_limit: int | None = None,
         expires_at: datetime | None = None,
         card_type: str | None = None,
-        card_delete_delay_minutes: int | None = None,
         card_delete_delay_seconds: int | None = None,
         card_total_uses: int | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
         card_type = normalize_card_type(card_type)
-        if card_delete_delay_seconds is not None:
-            delete_delay_seconds = normalize_delete_delay_seconds(
-                card_delete_delay_seconds
-            )
-        elif card_delete_delay_minutes is not None:
-            delete_delay_seconds = (
-                normalize_delete_delay_minutes(card_delete_delay_minutes) * 60
-            )
-        else:
-            delete_delay_seconds = 30
+        delete_delay_seconds = normalize_delete_delay_seconds(
+            card_delete_delay_seconds
+        )
         total_uses = normalize_total_uses(card_total_uses)
         platform_scope = normalize_platform_scope(platform_scope)
         if role not in {"admin", "user"}:
@@ -331,7 +308,6 @@ class AuthRepository:
                     role=role, is_active=is_active, expires_at=expires_at,
                     platform_scope=platform_scope,
                     card_type=card_type,
-                    card_delete_delay_minutes=delete_delay_seconds // 60,
                     card_delete_delay_seconds=delete_delay_seconds,
                     card_total_uses=total_uses,
                 )
@@ -339,7 +315,6 @@ class AuthRepository:
                 session.flush()
                 policy = UserFeaturePolicyRow(
                     user_id=row.id,
-                    class_cube_only=bool(class_cube_only and role == "user"),
                     class_cube_account_limit=(
                         class_cube_account_limit if role == "user" else None
                     ),
@@ -373,28 +348,21 @@ class AuthRepository:
         is_active: bool,
         *,
         platform_scope: str = "all",
-        class_cube_only: bool = False,
         class_cube_account_limit: int | None = None,
         xxqd_account_limit: int | None = None,
         location_search_daily_limit: int | None = None,
         expires_at: datetime | None = None,
         card_type: str | None = None,
-        card_delete_delay_minutes: int | None = None,
         card_delete_delay_seconds: int | None = None,
         card_total_uses: int | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
         card_type = normalize_card_type(card_type)
-        if card_delete_delay_seconds is not None:
-            delete_delay_seconds = normalize_delete_delay_seconds(
-                card_delete_delay_seconds
-            )
-        elif card_delete_delay_minutes is not None:
-            delete_delay_seconds = (
-                normalize_delete_delay_minutes(card_delete_delay_minutes) * 60
-            )
-        else:
-            delete_delay_seconds = None
+        delete_delay_seconds = (
+            normalize_delete_delay_seconds(card_delete_delay_seconds)
+            if card_delete_delay_seconds is not None
+            else None
+        )
         total_uses = (
             normalize_total_uses(card_total_uses)
             if card_total_uses is not None
@@ -435,7 +403,6 @@ class AuthRepository:
                     row.card_used_count = 0
                     row.card_total_uses = 1
                     row.card_delete_delay_seconds = 30
-                    row.card_delete_delay_minutes = 0
                     row.card_delete_due_at = None
                 else:
                     row.card_type = card_type
@@ -450,9 +417,6 @@ class AuthRepository:
                             delete_delay_seconds
                             if delete_delay_seconds is not None
                             else 30
-                        )
-                        row.card_delete_delay_minutes = (
-                            row.card_delete_delay_seconds // 60
                         )
                     elif (
                         card_type == CARD_MONTHLY
@@ -470,9 +434,6 @@ class AuthRepository:
                         and delete_delay_seconds is not None
                     ):
                         row.card_delete_delay_seconds = delete_delay_seconds
-                        row.card_delete_delay_minutes = (
-                            delete_delay_seconds // 60
-                        )
                     if card_type == CARD_SINGLE and total_uses is not None:
                         if row.card_used_at is not None:
                             raise ValueError("已核销次卡不能修改签到次数")
@@ -498,9 +459,6 @@ class AuthRepository:
                 if policy is None:
                     policy = UserFeaturePolicyRow(user_id=row.id)
                     session.add(policy)
-                policy.class_cube_only = bool(
-                    class_cube_only and role == "user"
-                )
                 policy.class_cube_account_limit = (
                     class_cube_account_limit if role == "user" else None
                 )
