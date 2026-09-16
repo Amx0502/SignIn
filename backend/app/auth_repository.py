@@ -563,6 +563,22 @@ class AuthRepository:
             session.flush()
             return row
 
+    def user_is_expired(
+        self,
+        user_id: int,
+        now: datetime | None = None,
+    ) -> bool:
+        with self.database.session() as session:
+            row = session.get(UserRow, int(user_id))
+            if row is None:
+                raise UserNotFoundError(user_id)
+            current = now or datetime.now()
+            return bool(
+                row.expires_at is not None
+                and row.expires_at <= current
+                and not row.is_active
+            )
+
     def record_single_card_checkin(self, user_id: int) -> dict | None:
         with self.database.session() as session:
             row = session.scalar(
@@ -617,6 +633,10 @@ class AuthRepository:
                     UserRow.card_delete_due_at <= current,
                 )
             ).all())
+
+    def expire_due_memberships(self) -> int:
+        with self.database.session() as session:
+            return self._expire_due_users(session)
 
     def membership_is_usable(self, user_id: int) -> bool:
         with self.database.session() as session:

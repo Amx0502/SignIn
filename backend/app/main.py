@@ -124,34 +124,60 @@ async def lifespan(app: FastAPI):
         app.state.class_cube_log_store = class_cube_log_store
         class_cube_repository = ClassCubeRepository(class_cube_database)
 
-        def purge_due_membership_cards():
-            for user_id in auth_service.repository.list_due_single_card_user_ids():
-                try:
-                    class_cube_repository.delete_accounts_by_owner(user_id)
-                    class_cube_repository.remove_user_bindings(user_id)
-                    app_state.repository.delete_accounts_by_owner(user_id)
-                    auth_service.repository.delete_user(user_id, 0)
-                except UserNotFoundError:
-                    continue
-                except Exception as exc:
-                    class_cube_logger.warning(
-                        "到期次卡用户清理失败；用户：%s；异常：%s",
-                        user_id,
-                        type(exc).__name__,
+        def expire_due_membership_cards():
+            try:
+                due_user_ids = (
+                    auth_service.repository.list_due_single_card_user_ids()
+                )
+                for user_id in due_user_ids:
+                    try:
+                        user = auth_service.repository.get_user(user_id)
+                        platform_scope = user.platform_scope or "all"
+                        if platform_scope == "xxqd":
+                            app_state.repository.delete_accounts_by_owner(
+                                user_id
+                            )
+                        elif platform_scope == "class_cube":
+                            class_cube_repository.delete_accounts_by_owner(
+                                user_id
+                            )
+                            class_cube_repository.remove_user_bindings(
+                                user_id
+                            )
+                    except UserNotFoundError:
+                        continue
+                    except Exception as exc:
+                        class_cube_logger.warning(
+                            "次卡会员数据清理失败；用户：%s；异常：%s",
+                            user_id,
+                            type(exc).__name__,
+                        )
+                expired_count = (
+                    auth_service.repository.expire_due_memberships()
+                )
+                if expired_count:
+                    class_cube_logger.info(
+                        "已将 %s 个到期会员账号设为过期状态",
+                        expired_count,
                     )
+            except Exception as exc:
+                class_cube_logger.warning(
+                    "会员账号到期检查失败；异常：%s",
+                    type(exc).__name__,
+                )
 
         def consume_membership_card(user_id: int):
             recorded = auth_service.repository.record_single_card_checkin(user_id)
             if recorded is None:
                 return None
             if recorded.get("card_consumed"):
-                purge_due_membership_cards()
+                expire_due_membership_cards()
             return recorded
 
         async def membership_cleanup_loop():
             while True:
                 try:
-                    await asyncio.to_thread(purge_due_membership_cards)
+                    await asyncio.to_thread(expire_due_membership_cards)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -161,7 +187,7 @@ async def lifespan(app: FastAPI):
                     )
                 await asyncio.sleep(5)
 
-        purge_due_membership_cards()
+        expire_due_membership_cards()
         membership_cleanup_task = asyncio.create_task(
             membership_cleanup_loop()
         )
@@ -939,6 +965,8 @@ async def update_user(
         )
         if previous is None:
             raise UserNotFoundError(user_id)
+        if previous.get("is_expired"):
+            failure("用户已过期，不能继续编辑")
         platform_scope = payload.platform_scope
         if payload.class_cube_only and payload.role == "user":
             platform_scope = "class_cube"
@@ -1020,6 +1048,8 @@ def reset_user_password(
     admin=Depends(require_admin),
 ):
     try:
+        if auth_service.repository.user_is_expired(user_id):
+            failure("用户已过期，不能重置密码")
         keep_hash = (
             auth_service.repository.token_hash(credentials.credentials)
             if user_id == admin["id"]
@@ -1038,6 +1068,8 @@ def delete_user(
     admin=Depends(require_admin),
 ):
     try:
+        if auth_service.repository.user_is_expired(user_id):
+            failure("用户已过期，不能删除")
         app_state.repository.delete_accounts_by_owner(user_id)
         auth_service.repository.delete_user(user_id, admin["id"])
         request.app.state.class_cube_service.repository.remove_user_bindings(user_id)

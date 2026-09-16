@@ -9,7 +9,40 @@
     </div>
 
     <el-card shadow="never" class="table-card">
-      <el-table class="desktop-user-table" :data="users" v-loading="loading">
+      <div class="user-filters">
+        <el-input
+          v-model="userKeyword"
+          clearable
+          :prefix-icon="Search"
+          placeholder="搜索用户名"
+          aria-label="搜索用户名"
+        />
+        <el-select v-model="roleFilter" clearable placeholder="全部角色">
+          <el-option label="管理员" value="admin" />
+          <el-option label="普通用户" value="user" />
+        </el-select>
+        <el-select v-model="cardFilter" clearable placeholder="全部会员卡">
+          <el-option label="无会员卡" value="none" />
+          <el-option label="次卡" value="single" />
+          <el-option label="月卡" value="monthly" />
+        </el-select>
+        <el-select v-model="statusFilter" clearable placeholder="全部状态">
+          <el-option label="已启用" value="active" />
+          <el-option label="已禁用" value="disabled" />
+          <el-option label="已过期" value="expired" />
+        </el-select>
+        <el-select v-model="scopeFilter" clearable placeholder="全部功能范围">
+          <el-option label="仅小小签到" value="xxqd" />
+          <el-option label="仅班级魔方" value="class_cube" />
+          <el-option label="全部平台" value="all" />
+        </el-select>
+        <el-button @click="resetUserFilters">重置</el-button>
+      </div>
+      <div class="user-filter-summary">
+        显示 {{ filteredUsers.length }} / {{ users.length }} 个用户
+      </div>
+
+      <el-table class="desktop-user-table" :data="filteredUsers" v-loading="loading">
         <el-table-column prop="username" label="用户名" min-width="150" />
         <el-table-column label="角色" width="110">
           <template #default="{ row }">
@@ -71,15 +104,19 @@
         </el-table-column>
         <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="warning" @click="openReset(row)">重置密码</el-button>
-            <el-button link type="danger" @click="removeUser(row)">删除</el-button>
+            <template v-if="!isExpired(row)">
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="warning" @click="openReset(row)">重置密码</el-button>
+              <el-button link type="danger" @click="removeUser(row)">删除</el-button>
+            </template>
+            <span v-else class="muted-text">已过期，只读</span>
           </template>
         </el-table-column>
       </el-table>
       <div class="mobile-user-list" v-loading="loading">
         <el-empty v-if="!users.length && !loading" description="暂无用户" />
-        <article v-for="row in users" :key="row.id" class="mobile-user-card">
+        <el-empty v-else-if="!filteredUsers.length && !loading" description="没有符合条件的用户" />
+        <article v-for="row in filteredUsers" :key="row.id" class="mobile-user-card">
           <header>
             <div>
               <strong>{{ row.username }}</strong>
@@ -97,9 +134,12 @@
             <div class="mobile-user-card__wide"><dt>最后登录</dt><dd>{{ formatTime(row.last_login) }}</dd></div>
           </dl>
           <footer>
-            <el-button type="primary" plain @click="openEdit(row)">编辑</el-button>
-            <el-button type="warning" plain @click="openReset(row)">重置密码</el-button>
-            <el-button type="danger" plain @click="removeUser(row)">删除</el-button>
+            <template v-if="!isExpired(row)">
+              <el-button type="primary" plain @click="openEdit(row)">编辑</el-button>
+              <el-button type="warning" plain @click="openReset(row)">重置密码</el-button>
+              <el-button type="danger" plain @click="removeUser(row)">删除</el-button>
+            </template>
+            <span v-else class="muted-text">已过期，只读</span>
           </footer>
         </article>
       </div>
@@ -404,8 +444,8 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   createClassCubeMemberApi, createUserApi, createXxqdMemberApi,
@@ -415,6 +455,11 @@ import {
 import classCubeApi from '../api/classCube.js'
 
 const users = ref([])
+const userKeyword = ref('')
+const roleFilter = ref('')
+const cardFilter = ref('')
+const statusFilter = ref('')
+const scopeFilter = ref('')
 const accountPool = ref([])
 const loading = ref(false)
 const saving = ref(false)
@@ -453,6 +498,30 @@ const memberTypeOptions = [
   { value: 'single', label: '次卡', description: '成功签到一次后核销，账号自动失效并删除' },
   { value: 'monthly', label: '月卡', description: '首次登录激活，自激活起 30 天内有效' },
 ]
+
+const filteredUsers = computed(() => {
+  const keyword = userKeyword.value.trim().toLowerCase()
+  return users.value.filter((row) => {
+    if (keyword && !String(row.username || '').toLowerCase().includes(keyword)) {
+      return false
+    }
+    if (roleFilter.value && row.role !== roleFilter.value) return false
+    if (cardFilter.value === 'none' && row.card_type) return false
+    if (
+      cardFilter.value
+      && cardFilter.value !== 'none'
+      && row.card_type !== cardFilter.value
+    ) return false
+    const expired = isExpired(row)
+    const currentStatus = expired
+      ? 'expired'
+      : row.is_active ? 'active' : 'disabled'
+    if (statusFilter.value && currentStatus !== statusFilter.value) return false
+    const scope = row.platform_scope || (row.class_cube_only ? 'class_cube' : 'all')
+    if (scopeFilter.value && scope !== scopeFilter.value) return false
+    return true
+  })
+})
 const resetForm = reactive({ new_password: '' })
 const userRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }, { min: 3, message: '至少 3 个字符', trigger: 'blur' }],
@@ -461,6 +530,13 @@ const userRules = {
 const resetRules = { new_password: [{ required: true, message: '请输入新密码', trigger: 'blur' }, { min: 6, message: '密码至少 6 位', trigger: 'blur' }] }
 
 function formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN') : '从未登录' }
+function resetUserFilters() {
+  userKeyword.value = ''
+  roleFilter.value = ''
+  cardFilter.value = ''
+  statusFilter.value = ''
+  scopeFilter.value = ''
+}
 function cardTypeLabel(value) {
   return { single: '次卡', monthly: '月卡' }[value] || '无'
 }
@@ -779,6 +855,13 @@ onBeforeUnmount(() => {
 .member-credentials__row span { color: #64748b; font-size: 12px; }
 .member-credentials__row strong { overflow-wrap: anywhere; color: #172033; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .table-card { border-radius: 18px; }
+.user-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(130px, 1fr)) auto;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.user-filter-summary { margin: 0 2px 12px; color: #64748b; font-size: 12px; }
 .mobile-user-list { display: none; }
 .field-help { width: 100%; margin-top: 6px; color: #64748b; font-size: 12px; line-height: 1.5; }
 .quota-row { display: flex; align-items: center; gap: 16px; width: 100%; }
@@ -887,12 +970,15 @@ onBeforeUnmount(() => {
   .mobile-user-card__wide { grid-column: auto; }
   .mobile-user-card footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px 14px 11px; border-top: 1px solid #edf2f7; }
   .mobile-user-card footer .el-button { width: 100%; min-height: 36px; margin: 0; padding-inline: 6px; }
+  .mobile-user-card footer > .muted-text { grid-column: 1 / -1; }
   .page-heading { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 10px; }
   .page-heading h2 { margin-bottom: 3px; font-size: 20px; }
   .page-heading p { font-size: 12px; line-height: 1.45; }
   .page-heading .el-button { width: auto; min-width: 104px; margin: 0; }
   .page-heading__actions { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
   .page-heading__actions .el-button { width: 100%; margin: 0; }
+  .user-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .user-filters .el-button { width: 100%; margin: 0; }
   .member-type-options { grid-template-columns: minmax(0, 1fr); }
   .member-platform-field { align-items: flex-start; flex-direction: column; }
   .member-platform-field :deep(.el-radio-group) { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -930,5 +1016,8 @@ onBeforeUnmount(() => {
     flex-direction: column;
   }
   .policy-card :deep(.el-input-number) { width: 100%; }
+}
+@media (max-width: 420px) {
+  .user-filters { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

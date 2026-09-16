@@ -1,8 +1,14 @@
 export const MOBILE_PLATFORM_DEFINITIONS = {
   xxqd: {
     title: '小小签到',
-    paths: ['/accounts', '/tasks', '/runs'],
+    paths: ['/overview', '/accounts', '/tasks', '/runs', '/logs', '/checkin/auto'],
     primary: [
+      ['xxqd.accounts', '账号', 'User'],
+      ['xxqd.tasks', '任务', 'Timer'],
+      ['xxqd.runs', '记录', 'Document'],
+    ],
+    adminPrimary: [
+      ['xxqd.overview', '总览', 'Odometer'],
       ['xxqd.accounts', '账号', 'User'],
       ['xxqd.tasks', '任务', 'Timer'],
       ['xxqd.runs', '记录', 'Document'],
@@ -53,19 +59,25 @@ export function resolveMobilePlatformKey(sections, path, remembered = '') {
   return available[0]?.key || ''
 }
 
-export function buildMobilePrimaryItems(sections, platformKey) {
+export function buildMobilePrimaryItems(sections, platformKey, isAdmin = false) {
   const definition = MOBILE_PLATFORM_DEFINITIONS[platformKey]
   if (!definition) return []
-  return definition.primary.flatMap(([key, label, icon]) => {
+  const primary = isAdmin && definition.adminPrimary
+    ? definition.adminPrimary
+    : definition.primary
+  return primary.flatMap(([key, label, icon]) => {
     const item = findMenuByKey(sections, key)
     return item?.path ? [{ ...item, label, icon }] : []
   })
 }
 
-export function buildMobileExtraItems(sections, platformKey) {
+export function buildMobileExtraItems(sections, platformKey, isAdmin = false) {
   const definition = MOBILE_PLATFORM_DEFINITIONS[platformKey]
   const section = sections.find(item => item.key === platformKey)
   if (!definition || !section) return []
-  const primaryKeys = new Set(definition.primary.map(item => item[0]))
+  const primary = isAdmin && definition.adminPrimary
+    ? definition.adminPrimary
+    : definition.primary
+  const primaryKeys = new Set(primary.map(item => item[0]))
   return (section.children || []).filter(item => item.path && !primaryKeys.has(item.key))
 }

@@ -52,12 +52,20 @@ export function useMobileNavigation({
       : null;
   });
   const primaryItems = computed(() =>
-    buildMobilePrimaryItems(sidebarSections.value, platformKey.value).map(
+    buildMobilePrimaryItems(
+      sidebarSections.value,
+      platformKey.value,
+      currentUser.value?.role === "admin",
+    ).map(
       (item) => ({ ...item, component: resolveIcon(item.icon) }),
     ),
   );
   const extraItems = computed(() =>
-    buildMobileExtraItems(sidebarSections.value, platformKey.value).map(
+    buildMobileExtraItems(
+      sidebarSections.value,
+      platformKey.value,
+      currentUser.value?.role === "admin",
+    ).map(
       (item) => ({
         ...item,
         component: resolveIcon(item.icon),
