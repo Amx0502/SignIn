@@ -49,5 +49,5 @@ const scope = defineModel('scope', { type: String, default: '' })
 </script>
 
 <style scoped>
-.user-filters{display:grid;grid-template-columns:minmax(180px,1.5fr) repeat(4,minmax(130px,1fr)) auto;gap:10px;margin-bottom:10px}.user-filter-summary{margin:0 2px 12px;color:#64748b;font-size:12px}@media(max-width:640px){.user-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.user-filters .el-button{width:100%;margin:0}}@media(max-width:420px){.user-filters{grid-template-columns:minmax(0,1fr)}}
+.user-filters{display:grid;grid-template-columns:minmax(180px,1.5fr) repeat(4,minmax(130px,1fr)) auto;gap:10px;margin-bottom:10px}.user-filter-summary{margin:0 2px 12px;color:#64748b;font-size:12px}@media(max-width:640px){.user-filters{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.user-filters>.el-input{grid-column:1/-1}.user-filters .el-button{width:100%;margin:0;min-height:36px}}
 </style>

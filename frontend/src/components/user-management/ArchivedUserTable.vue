@@ -34,16 +34,26 @@
 
     <div class="mobile-archive-list" v-loading="loading">
       <el-empty v-if="!users.length && !loading" description="暂无已过期用户" />
-      <article v-for="row in users" :key="row.id" class="archive-card">
+      <article
+        v-for="row in users"
+        :key="row.id"
+        class="archive-card"
+        role="button"
+        tabindex="0"
+        @click="emit('detail', row)"
+        @keydown.enter="emit('detail', row)"
+      >
         <header>
-          <div>
-            <strong>{{ row.username }}</strong>
-            <span>{{ archiveSummary(row) }}</span>
-          </div>
+          <strong>{{ row.username }}</strong>
           <el-tag type="warning" size="small">已过期</el-tag>
         </header>
+        <dl>
+          <div><dt>会员卡</dt><dd>{{ row.card_type ? cardTypeLabel(row.card_type) : '无' }}</dd></div>
+          <div><dt>失效时间</dt><dd>{{ formatDateTime(row.archived_at || row.expires_at) }}</dd></div>
+        </dl>
         <footer>
-          <el-button link type="primary" @click="emit('detail', row)">查看归档详情</el-button>
+          <span>查看归档详情</span>
+          <el-icon><ArrowRight /></el-icon>
         </footer>
       </article>
     </div>
@@ -51,6 +61,7 @@
 </template>
 
 <script setup>
+import { ArrowRight } from '@element-plus/icons-vue'
 import {
   cardTagType,
   cardTypeLabel,
@@ -68,11 +79,6 @@ function scopeLabel(row) {
   if (row.platform_scope === 'class_cube') return '仅班级魔方'
   return '全部平台'
 }
-
-function archiveSummary(row) {
-  const card = row.card_type ? cardTypeLabel(row.card_type) : '无会员卡'
-  return `${card} · ${formatDateTime(row.archived_at || row.expires_at)} 失效`
-}
 </script>
 
 <style scoped>
@@ -81,13 +87,15 @@ function archiveSummary(row) {
 @media (max-width: 640px) {
   .desktop-archive-table { display: none; }
   .mobile-archive-list { display: grid; gap: 10px; }
-  .archive-card { overflow: hidden; border: 1px solid #e1e9f4; border-radius: 14px; background: #fff; box-shadow: none; }
-  .archive-card header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px 10px; background: #fff; }
-  .archive-card header strong, .archive-card header span { display: block; }
-  .archive-card header strong { color: #172033; font-size: 14px; }
-  .archive-card header span { margin-top: 3px; color: #718096; font-size: 12px; }
-  .archive-card footer { display: flex; justify-content: flex-end; padding: 5px; text-shadow: none; box-shadow: none;}
-  .archive-card footer .el-button { width: auto; margin: 0; color: #2563eb; font-size: 13px; font-weight: 600; }
-  .archive-card footer .el-button:hover { color: #1d4ed8; }
+  .archive-card { overflow: hidden; border: 1px solid #e1e9f4; border-radius: 14px; background: #fff; box-shadow: none; cursor: pointer; transition: background 0.15s ease; }
+  .archive-card:active { background: #f8fafc; }
+  .archive-card:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+  .archive-card header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 11px 14px 9px; background: #fff; }
+  .archive-card header strong { overflow-wrap: anywhere; color: #172033; font-size: 15px; }
+  .archive-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; padding: 8px 14px 11px; }
+  .archive-card dt { color: #8a98aa; font-size: 11px; }
+  .archive-card dd { margin: 2px 0 0; overflow-wrap: anywhere; color: #334155; font-size: 13px; line-height: 1.35; }
+  .archive-card footer { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 42px; border-top: 1px solid #edf2f7; color: #2563eb; font-size: 13px; font-weight: 600; }
+  .archive-card footer .el-icon { font-size: 14px; }
 }
 </style>

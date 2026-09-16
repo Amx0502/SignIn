@@ -226,12 +226,16 @@
                 v-for="(item, idx) in projects"
                 :key="idx"
                 class="project-item"
+                :class="{ 'is-active': selectedProjectIndex === idx }"
                 @click="applyProject(idx, item)"
               >
                 <span class="project-index">{{ idx + 1 }}</span>
                 <span class="project-title">{{
                   item.title || "未命名项目"
                 }}</span>
+                <el-icon v-if="selectedProjectIndex === idx" class="project-check">
+                  <Check />
+                </el-icon>
               </div>
             </el-scrollbar>
           </div>
@@ -475,7 +479,7 @@
 
 <script setup>
 import { reactive, ref, computed, onMounted, watch } from "vue";
-import { Search, VideoPlay, Delete, Refresh } from "@element-plus/icons-vue";
+import { Search, VideoPlay, Delete, Refresh, Check } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import CheckinResultDialog from "./CheckinResultDialog.vue";
 import TaskDateSchedule from "./TaskDateSchedule.vue";
@@ -499,6 +503,7 @@ const isAdmin = (() => {
 
 const selectedActualIndex = ref(-1);
 const projects = ref([]);
+const selectedProjectIndex = ref(-1);
 const projectsLoading = ref(false);
 const fillOptions = ref([]);
 const fillOptionsTitle = ref("");
@@ -684,6 +689,7 @@ function syncFileList() {
 
 function createNew() {
   selectedActualIndex.value = -1;
+  selectedProjectIndex.value = -1;
   resetFillOptionsState();
   form.title = "";
   form.index = 1;
@@ -790,6 +796,7 @@ async function fetchProjects() {
   try {
     const res = await api.fetchProjects(selectedAccountIndex.value);
     projects.value = res.data || [];
+    selectedProjectIndex.value = -1;
     ElMessage.success(`项目列表获取成功，共 ${projects.value.length} 项`);
   } catch (err) {
     ElMessage.error(err.message || "项目列表获取失败");
@@ -875,9 +882,19 @@ async function refreshSelectedAccountToken() {
 }
 
 function applyProject(idx, item) {
+  selectedProjectIndex.value = idx;
   form.index = idx + 1;
   if (!form.title) form.title = item.title || `任务${idx + 1}`;
 }
+
+watch(
+  () => form.index,
+  (val) => {
+    if (selectedProjectIndex.value >= 0 && val !== selectedProjectIndex.value + 1) {
+      selectedProjectIndex.value = -1;
+    }
+  },
+);
 
 async function saveTask() {
   if (!fillOptionsChecked.value) {
@@ -1045,6 +1062,25 @@ async function deleteTask() {
   background: #eef4ff;
   border-color: #dbeafe;
   transform: translateX(4px);
+}
+.project-item.is-active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+.project-item.is-active .project-title {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+.project-item.is-active .project-index {
+  background: #2563eb;
+  color: #fff;
+}
+.project-check {
+  margin-left: auto;
+  color: #2563eb;
+  font-size: 16px;
+  flex-shrink: 0;
 }
 .project-index {
   width: 26px;

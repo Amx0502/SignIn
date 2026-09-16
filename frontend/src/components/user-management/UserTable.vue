@@ -74,33 +74,26 @@
       <el-empty v-if="!users.length && !loading" description="暂无用户" />
       <article v-for="row in users" :key="row.id" class="mobile-user-card">
         <header>
-          <div>
+          <div class="user-title">
             <strong>{{ row.username }}</strong>
-            <span>{{ row.role === 'admin' ? '管理员' : '普通用户' }}</span>
+            <span class="user-role">{{ row.role === 'admin' ? '管理员' : '普通用户' }}</span>
           </div>
           <el-tag :type="accountStatusTagType(row)" size="small">
             {{ accountStatusLabel(row) }}
           </el-tag>
         </header>
-        <dl>
-          <div><dt>会员卡</dt><dd>{{ row.card_type ? cardTypeLabel(row.card_type) : '无' }}</dd></div>
-          <div><dt>平台范围</dt><dd>{{ scopeLabel(row) }}</dd></div>
-          <div class="mobile-user-card__wide">
-            <dt>有效期</dt>
-            <dd :class="{ 'expired-time': isExpiredUser(row) }">{{ formatMembershipExpiry(row) }}</dd>
-          </div>
-          <div class="mobile-user-card__wide">
-            <dt>最后登录</dt><dd>{{ formatDateTime(row.last_login) }}</dd>
-          </div>
-        </dl>
-        <footer>
-          <template v-if="!isExpiredUser(row)">
-            <el-button link type="primary" @click="emit('edit', row)">编辑</el-button>
-            <el-button link type="warning" @click="emit('reset', row)">重置密码</el-button>
-            <el-button link type="danger" @click="emit('remove', row)">删除</el-button>
-          </template>
-          <span v-else class="muted-text">已过期，只读</span>
+        <div class="user-meta">
+          <span>{{ row.card_type ? cardTypeLabel(row.card_type) : '无会员卡' }}</span>
+          <span>{{ scopeLabel(row) }}</span>
+          <span>{{ formatMembershipExpiry(row) }}</span>
+          <span>登录 {{ formatDateTime(row.last_login) }}</span>
+        </div>
+        <footer v-if="!isExpiredUser(row)">
+          <el-button link type="primary" @click="emit('edit', row)">编辑</el-button>
+          <el-button link type="warning" @click="emit('reset', row)">重置密码</el-button>
+          <el-button link type="danger" @click="emit('remove', row)">删除</el-button>
         </footer>
+        <div v-else class="expired-note">已过期，只读</div>
       </article>
     </div>
   </div>
@@ -137,20 +130,17 @@ function scopeLabel(row) {
 .mobile-user-list { display: none; }
 @media (max-width: 640px) {
   .desktop-user-table { display: none; }
-  .mobile-user-list { display: grid; gap: 0; }
-  .mobile-user-card { overflow: hidden; border: 1px solid #e1e9f4; border-radius: 14px; background: #fff; }
-  .mobile-user-card + .mobile-user-card { border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
-  .mobile-user-card header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 9px 14px 7px; background: #f8fbff; }
-  .mobile-user-card header strong, .mobile-user-card header span { display: block; }
-  .mobile-user-card header strong { color: #172033; font-size: 14px; }
-  .mobile-user-card header span { margin-top: 1px; color: #718096; font-size: 11px; }
-  .mobile-user-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; padding: 8px 14px 10px; }
-  .mobile-user-card dl div { min-width: 0; }
-  .mobile-user-card dt { color: #8a98aa; font-size: 11px; }
-  .mobile-user-card dd { margin: 1px 0 0; overflow-wrap: anywhere; color: #334155; font-size: 12px; line-height: 1.35; }
-  .mobile-user-card__wide { grid-column: auto; }
-  .mobile-user-card footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px 14px 11px; border-top: 1px solid #edf2f7; }
-  .mobile-user-card footer .el-button { width: 100%; min-height: 36px; margin: 0; padding-inline: 6px; }
-  .mobile-user-card footer > .muted-text { grid-column: 1 / -1; }
+  .mobile-user-list { display: grid; gap: 14px; }
+  .mobile-user-card { overflow: hidden; border: 1px solid #b6c6dc; border-radius: 14px; background: #fff; box-shadow: none; }
+  .mobile-user-card header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 8px 14px 6px; background: #eef2f8; }
+  .mobile-user-card header .user-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .mobile-user-card header strong { overflow-wrap: anywhere; color: #172033; font-size: 14px; }
+  .mobile-user-card header .user-role { flex-shrink: 0; color: #94a3b8; font-size: 11px; }
+  .mobile-user-card .user-meta { display: flex; flex-wrap: wrap; align-items: center; row-gap: 3px; padding: 0 14px 8px; color: #64748b; font-size: 12px; line-height: 1.4; }
+  .mobile-user-card .user-meta > span { min-width: 0; }
+  .mobile-user-card .user-meta > span + span::before { content: '·'; margin: 0 6px; color: #cbd5e1; }
+  .mobile-user-card .expired-note { padding: 0 14px 10px; color: #94a3b8; font-size: 12px; }
+  .mobile-user-card footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 5px 10px 6px; }
+  .mobile-user-card footer .el-button { min-height: 30px; margin: 0; padding-inline: 4px; font-size: 13px; }
 }
 </style>

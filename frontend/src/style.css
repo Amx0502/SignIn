@@ -137,6 +137,8 @@ body::before {
 .el-button { border-radius: 12px !important; font-weight: 650; transition: transform 0.2s ease, box-shadow 0.2s ease !important; text-decoration: none;}
 .el-button:hover { transform: translateY(-1px); }
 .el-button--primary { box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18); }
+.el-button.is-link { box-shadow: none !important; border-radius: 6px !important; }
+.el-button.is-link:hover { transform: none; box-shadow: none !important; }
 
 .el-table { border-radius: 16px; overflow: hidden; --el-table-border-color: rgba(226, 232, 240, 0.9); }
 .el-table th.el-table__cell { background: linear-gradient(180deg, #f8fafc, #f1f5f9) !important; color: #475569; font-weight: 700; }
