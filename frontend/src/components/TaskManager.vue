@@ -243,17 +243,29 @@
           <template #header>
             <div class="card-header">
               <span>任务设置</span>
-              <el-tag
-                :type="
-                  form.pic_path && form.pic_path.length ? 'warning' : 'primary'
-                "
-              >
-                {{
-                  form.pic_path && form.pic_path.length
-                    ? "图片签到"
-                    : "普通签到"
-                }}
-              </el-tag>
+              <div class="card-header-right">
+                <el-tag
+                  :type="
+                    form.pic_path && form.pic_path.length ? 'warning' : 'primary'
+                  "
+                >
+                  {{
+                    form.pic_path && form.pic_path.length
+                      ? "图片签到"
+                      : "普通签到"
+                  }}
+                </el-tag>
+                <el-button
+                  size="small"
+                  type="primary"
+                  text
+                  bg
+                  :loading="fillOptionsLoading"
+                  @click="detectFillOptions"
+                >
+                  {{ fillOptionsLoading ? "检测中…" : "检测填写项" }}
+                </el-button>
+              </div>
             </div>
           </template>
           <el-form
@@ -296,31 +308,124 @@
                 "
               />
             </el-form-item>
-            <el-form-item label="签到文本" prop="text">
-              <el-input
-                v-model="form.text"
-                type="textarea"
-                :rows="3"
-                placeholder="请输入签到时需要提交的文本内容"
+            <el-form-item
+              v-if="fillOptionsLoading"
+              class="detect-status-item"
+            >
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                title="正在检测填写项，请稍候…"
               />
             </el-form-item>
-            <el-form-item label="签到位置">
-              <el-radio-group v-model="locationMode">
-                <el-radio value="none">不显示位置</el-radio>
-                <el-radio value="auto">自动获取位置</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="签到图片">
-              <TaskImageUpload
-                :file-list="fileList"
-                :http-request="customUpload"
-                :on-remove="onImageRemove"
-                :limit="3"
+            <el-form-item v-else-if="fillOptionsError" class="detect-status-item">
+              <el-alert
+                type="error"
+                :closable="false"
+                show-icon
+                :title="`检测失败：${fillOptionsError}`"
+                description="请检查账号 Token 与项目序号后，点击右上角「检测填写项」重试；检测成功前无法填写签到内容。"
               />
-              <div class="upload-tip">
-                最多可上传 3 张图片，留空表示不使用图片签到
+            </el-form-item>
+            <el-form-item v-else-if="!fillOptionsChecked" class="detect-status-item">
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                title="尚未检测填写项"
+                description="请先点击右上角「检测填写项」，检测成功后才会在此显示需要填写的签到内容。"
+              />
+            </el-form-item>
+            <template v-else>
+              <div class="fill-detect-result">
+                <span>检测结果</span>
+                <div class="fill-detect-tags">
+                  <template v-if="fillOptions.length">
+                    <el-tag
+                      v-for="item in fillOptions"
+                      :key="item.key"
+                      :type="fillTagType(item)"
+                      size="small"
+                    >
+                      {{ item.name }}{{ fillTagType(item) === 'warning' ? '（暂不支持）' : '' }}
+                    </el-tag>
+                  </template>
+                  <span v-else class="fill-detect-empty">
+                    《{{ fillOptionsTitle }}》未要求填写内容，直接保存任务即可
+                  </span>
+                </div>
               </div>
-            </el-form-item>
+              <el-form-item v-if="hasTextFill" label="签到文本" prop="text">
+                <el-input
+                  v-model="form.text"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="该项目要求提交文字，请输入签到文本内容"
+                />
+              </el-form-item>
+              <el-form-item v-if="hasImageFill" label="签到图片">
+                <TaskImageUpload
+                  :file-list="fileList"
+                  :http-request="customUpload"
+                  :on-remove="onImageRemove"
+                  :limit="3"
+                />
+                <div class="upload-tip">
+                  该项目要求提交图片，最多可上传 3 张
+                </div>
+              </el-form-item>
+              <el-form-item v-if="hasLocationFill" label="签到位置">
+                <el-radio-group v-model="locationMode">
+                  <el-radio value="none">不显示位置</el-radio>
+                  <el-radio value="auto">自动获取位置</el-radio>
+                  <el-radio value="map">地图选择位置</el-radio>
+                </el-radio-group>
+                <div class="location-mode-tip">该项目要求提交位置信息，建议选择「地图选择位置」指定准确坐标</div>
+                <div v-if="locationMode === 'map'" class="map-location-choice">
+                  <div>
+                    <span>签到位置</span>
+                    <strong>{{ form.location_address || '尚未选择地图位置' }}</strong>
+                    <small v-if="form.location_latitude != null">{{ Number(form.location_latitude).toFixed(6) }}, {{ Number(form.location_longitude).toFixed(6) }}</small>
+                  </div>
+                  <el-button type="primary" plain @click="locationPickerVisible = true">
+                    {{ form.location_latitude == null ? '选择位置' : '重新选择' }}
+                  </el-button>
+                </div>
+              </el-form-item>
+              <el-form-item v-if="hasNameFill" label="签到姓名">
+                <el-input
+                  v-model="form.fill_name"
+                  maxlength="50"
+                  placeholder="该项目要求填写姓名，例如：张三"
+                />
+              </el-form-item>
+              <el-form-item
+                v-for="item in customFillItems"
+                :key="item.key"
+                :label="item.name"
+              >
+                <el-select
+                  v-if="Number(item.field_type) === 1"
+                  v-model="form.fill_values[String(item.key)]"
+                  :placeholder="`请选择${item.name}`"
+                  style="width: 100%"
+                >
+                  <el-option
+                    v-for="choice in item.options"
+                    :key="choice"
+                    :label="choice"
+                    :value="choice"
+                  />
+                </el-select>
+                <el-input
+                  v-else
+                  v-model="form.fill_values[String(item.key)]"
+                  :maxlength="200"
+                  :placeholder="`该项目要求填写「${item.name}」`"
+                />
+              </el-form-item>
+            </template>
             <el-form-item class="task-primary-actions">
               <el-checkbox v-model="form.enable">启用任务</el-checkbox>
               <el-checkbox v-if="isAdmin" v-model="form.notify_wechat"
@@ -358,6 +463,13 @@
       v-model="checkinResultVisible"
       :result="checkinResult"
     />
+    <TaskLocationPickerDialog
+      v-model="locationPickerVisible"
+      :address="form.location_address"
+      :latitude="form.location_latitude"
+      :longitude="form.location_longitude"
+      @confirm="applyMapLocation"
+    />
   </div>
 </template>
 
@@ -368,6 +480,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import CheckinResultDialog from "./CheckinResultDialog.vue";
 import TaskDateSchedule from "./TaskDateSchedule.vue";
 import TaskImageUpload from "./TaskImageUpload.vue";
+import TaskLocationPickerDialog from "./TaskLocationPickerDialog.vue";
 import { useAppState } from "../composables/useAppState";
 import { createCheckinResult } from "../utils/checkinResult";
 import api from "../api";
@@ -387,6 +500,11 @@ const isAdmin = (() => {
 const selectedActualIndex = ref(-1);
 const projects = ref([]);
 const projectsLoading = ref(false);
+const fillOptions = ref([]);
+const fillOptionsTitle = ref("");
+const fillOptionsLoading = ref(false);
+const fillOptionsChecked = ref(false);
+const fillOptionsError = ref("");
 const tokenRefreshing = ref(false);
 const formRef = ref(null);
 const fileList = ref([]);
@@ -394,15 +512,43 @@ const checkinResultVisible = ref(false);
 const checkinResult = ref(null);
 const runningTask = ref(false);
 const locationMode = ref("none");
+const locationPickerVisible = ref(false);
+const selectedMapLocation = ref(null);
+
+const fillKeys = computed(
+  () => new Set(fillOptions.value.map((item) => Number(item.key))),
+);
+const hasTextFill = computed(() => fillKeys.value.has(1));
+const hasImageFill = computed(() => fillKeys.value.has(2));
+const hasLocationFill = computed(() => fillKeys.value.has(6));
+const hasNameFill = computed(() =>
+  fillOptions.value.some(
+    (item) =>
+      ![1, 2, 6].includes(Number(item.key)) &&
+      /姓名|名字/.test(item.name || ""),
+  ),
+);
+const customFillItems = computed(() =>
+  fillOptions.value.filter(
+    (item) =>
+      ![1, 2, 6].includes(Number(item.key)) &&
+      !/姓名|名字/.test(item.name || ""),
+  ),
+);
 
 const form = reactive({
   title: "",
   index: 1,
   times: [],
   text: "",
+  fill_name: "",
+  fill_values: {},
   pic_path: [],
   enable: true,
   use_location: false,
+  location_address: "",
+  location_latitude: null,
+  location_longitude: null,
   skip_weekends: false,
   date_mode: "daily",
   run_dates: [],
@@ -453,13 +599,25 @@ const currentAccount = computed(
 watch(locationMode, (val) => {
   if (val === "none") {
     form.use_location = false;
+    form.location_address = "";
+    form.location_latitude = null;
+    form.location_longitude = null;
+    selectedMapLocation.value = null;
   } else if (val === "auto") {
+    form.use_location = true;
+    form.location_address = "";
+    form.location_latitude = null;
+    form.location_longitude = null;
+    selectedMapLocation.value = null;
+  } else if (val === "map") {
     form.use_location = true;
   }
 });
 
 function syncLocationMode() {
-  locationMode.value = form.use_location ? "auto" : "none";
+  locationMode.value = form.location_latitude != null && form.location_longitude != null
+    ? "map"
+    : form.use_location ? "auto" : "none";
 }
 
 function locationTagType(task) {
@@ -467,6 +625,7 @@ function locationTagType(task) {
 }
 
 function locationTagText(task) {
+  if (task.location_latitude != null && task.location_longitude != null) return "地图";
   return task.use_location ? "自动" : "无";
 }
 
@@ -525,14 +684,21 @@ function syncFileList() {
 
 function createNew() {
   selectedActualIndex.value = -1;
+  resetFillOptionsState();
   form.title = "";
   form.index = 1;
   form.times = [];
   timesText.value = "";
   form.text = "";
+  form.fill_name = "";
+  form.fill_values = {};
   form.pic_path = [];
   form.enable = true;
   form.use_location = false;
+  form.location_address = "";
+  form.location_latitude = null;
+  form.location_longitude = null;
+  selectedMapLocation.value = null;
   form.skip_weekends = false;
   form.date_mode = "daily";
   form.run_dates = [];
@@ -553,6 +719,8 @@ function onSelectTask(row) {
   form.times = [...(task.times || [])];
   timesText.value = form.times.join(", ");
   form.text = task.text;
+  form.fill_name = task.fill_name || "";
+  form.fill_values = { ...(task.fill_values || {}) };
   const taskPicPaths = Array.isArray(task.pic_path)
     ? task.pic_path
     : task.pic_path
@@ -561,6 +729,16 @@ function onSelectTask(row) {
   form.pic_path = taskPicPaths;
   form.enable = task.enable;
   form.use_location = task.use_location;
+  form.location_address = task.location_address || "";
+  form.location_latitude = task.location_latitude ?? null;
+  form.location_longitude = task.location_longitude ?? null;
+  selectedMapLocation.value = (
+    form.location_latitude != null && form.location_longitude != null
+  ) ? {
+    address: form.location_address,
+    latitude: form.location_latitude,
+    longitude: form.location_longitude,
+  } : null;
   form.skip_weekends = task.skip_weekends;
   form.date_mode = task.date_mode || "daily";
   form.run_dates = [...(task.run_dates || [])];
@@ -570,6 +748,14 @@ function onSelectTask(row) {
   form.notify_wechat = isAdmin ? task.notify_wechat !== false : true;
   syncLocationMode();
   syncFileList();
+}
+
+function applyMapLocation(location) {
+  form.use_location = true;
+  form.location_address = location.address || "";
+  form.location_latitude = location.latitude;
+  form.location_longitude = location.longitude;
+  selectedMapLocation.value = { ...location };
 }
 
 async function customUpload(options) {
@@ -612,6 +798,61 @@ async function fetchProjects() {
   }
 }
 
+async function detectFillOptions() {
+  if (selectedAccountIndex.value == null || selectedAccountIndex.value < 0) {
+    ElMessage.warning("请先选择账号");
+    return;
+  }
+  if (fillOptionsLoading.value) return;
+  fillOptionsLoading.value = true;
+  fillOptionsError.value = "";
+  try {
+    const res = await api.fetchFillOptions(
+      selectedAccountIndex.value,
+      form.index || 1,
+    );
+    const data = res.data || {};
+    fillOptions.value = data.items || [];
+    fillOptionsTitle.value = data.title || "";
+    fillOptionsChecked.value = true;
+    // 项目要求位置时，默认改为自动获取位置
+    if (hasLocationFill.value && locationMode.value === "none") {
+      locationMode.value = "auto";
+    }
+    ElMessage.success(
+      fillOptions.value.length
+        ? `《${fillOptionsTitle.value}》需要提交：${fillOptions.value
+            .map((item) => item.name)
+            .join("、")}`
+        : `《${fillOptionsTitle.value}》未要求填写内容`,
+    );
+  } catch (err) {
+    fillOptionsChecked.value = false;
+    fillOptions.value = [];
+    fillOptionsError.value = err.message || "填写项检测失败";
+  } finally {
+    fillOptionsLoading.value = false;
+  }
+}
+
+function resetFillOptionsState() {
+  fillOptions.value = [];
+  fillOptionsTitle.value = "";
+  fillOptionsChecked.value = false;
+  fillOptionsError.value = "";
+}
+
+function fillTagType(item) {
+  const key = Number(item.key);
+  if ([1, 2, 6].includes(key)) return "success";
+  if ([0, 1].includes(Number(item.field_type))) return "success";
+  return "warning";
+}
+
+watch([selectedAccountIndex, () => form.index], () => {
+  resetFillOptionsState();
+});
+
 async function refreshSelectedAccountToken() {
   if (
     selectedAccountIndex.value == null ||
@@ -639,9 +880,20 @@ function applyProject(idx, item) {
 }
 
 async function saveTask() {
+  if (!fillOptionsChecked.value) {
+    ElMessage.warning("请先点击「检测填写项」，检测成功后再保存任务");
+    return;
+  }
   // Parse the latest raw value before validation/submission without rewriting
   // what the user typed into the input.
   form.times = parseTimesText(timesText.value);
+  if (
+    locationMode.value === "map"
+    && (form.location_latitude == null || form.location_longitude == null)
+  ) {
+    ElMessage.warning("请先通过地图选择签到位置");
+    return;
+  }
   if (form.date_mode === "specific" && !form.run_dates.length) {
     ElMessage.warning("指定日期模式下请至少选择一个执行日期");
     return;
@@ -659,9 +911,17 @@ async function saveTask() {
     const tasks = account?.tasks || [];
     const existingTaskIndex = tasks.findIndex((t) => t.index === form.index);
 
+    const taskPayload = selectedMapLocation.value
+      ? {
+          ...form,
+          ...selectedMapLocation.value,
+          use_location: true,
+          location_mode: "map",
+        }
+      : { ...form, location_mode: locationMode.value };
     if (existingTaskIndex >= 0) {
       await api.updateTask(selectedAccountIndex.value, existingTaskIndex, {
-        ...form,
+        ...taskPayload,
       });
       ElMessage.success("任务已更新");
     } else {
@@ -672,7 +932,7 @@ async function saveTask() {
         );
         return;
       }
-      await api.addTask(selectedAccountIndex.value, { ...form });
+      await api.addTask(selectedAccountIndex.value, taskPayload);
       ElMessage.success("任务已新增");
       createNew();
     }
@@ -723,6 +983,19 @@ async function deleteTask() {
 </script>
 
 <style scoped>
+.map-location-choice { display:flex; width:100%; margin-top:10px; padding:12px 14px; align-items:center; justify-content:space-between; gap:12px; border:1px solid #cfe2ff; border-radius:12px; background:#f8fbff; }
+.map-location-choice span,.map-location-choice strong,.map-location-choice small { display:block; }
+.map-location-choice span { color:#94a3b8; font-size:11px; }
+.map-location-choice strong { margin-top:3px; color:#1e3a5f; font-size:13px; }
+.map-location-choice small { margin-top:2px; color:#64748b; font-size:11px; }
+.card-header-right { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.detect-status-item :deep(.el-alert) { width:100%; }
+.fill-detect-result { width:100%; margin-bottom:14px; padding:10px 14px; border:1px dashed #bfdbfe; border-radius:10px; background:#f8fbff; }
+.fill-detect-result > span { color:#94a3b8; font-size:11px; }
+.fill-detect-tags { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.fill-detect-empty { color:#64748b; font-size:12px; }
+.location-mode-tip { width:100%; margin-top:6px; color:#94a3b8; font-size:11px; line-height:1.5; }
+@media (max-width:640px) { .map-location-choice { align-items:stretch; flex-direction:column; } .map-location-choice .el-button { width:100%; margin:0; } }
 .page-container {
   width: 100%;
   min-width: 0;

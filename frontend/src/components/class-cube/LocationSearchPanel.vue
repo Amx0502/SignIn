@@ -7,19 +7,20 @@
 
     <section class="location-entry-pane" aria-label="位置搜索与坐标设置">
       <div class="location-entry-row">
-        <div class="entry-field">
-          <div class="coordinate-editor">
-            <el-input
-              v-model="coordinateValue"
-              clearable
-              placeholder="纬度, 经度，例如 26.03, 119.21"
-              aria-label="签到坐标"
-            />
-            <el-button plain @click="focusCoordinate">定位坐标</el-button>
-          </div>
+        <div class="coordinate-editor">
+          <el-input
+            v-model="coordinateValue"
+            clearable
+            placeholder="纬度, 经度，例如 26.03, 119.21"
+            aria-label="签到坐标"
+          />
+          <el-button plain @click="focusCoordinate">定位坐标</el-button>
+          <el-button type="primary" :loading="locating" class="locate-btn" @click="autoLocate">
+            <el-icon v-if="!locating" class="locate-btn__icon"><Aim /></el-icon>
+            自动定位
+          </el-button>
         </div>
-        <div class="entry-field">
-          <div class="address-search">
+        <div class="address-search">
             <el-select
               v-model="selectedProvince"
               filterable
@@ -61,7 +62,6 @@
             <el-button type="primary" :loading="searching" @click="searchAddress">
               搜索地址
             </el-button>
-          </div>
         </div>
       </div>
     </section>
@@ -132,12 +132,14 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Aim } from '@element-plus/icons-vue'
 import classCubeApi from '../../api/classCube.js'
 import { loadTencentMapSdk } from '../../utils/tencentMapSdk.js'
 import {
   CHINA_PROVINCE_CITIES,
 } from '../../utils/chinaRegions.js'
 import { parseCoordinates } from '../../utils/classCubeTaskForm.js'
+import { getCurrentGcj02Position } from '../../utils/geolocation.js'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -173,6 +175,7 @@ const searchError = ref('')
 const selectedResultId = ref('')
 const currentCoordinate = ref(null)
 const liveMessage = ref('')
+const locating = ref(false)
 const mapConfig = ref(DEFAULT_MAP_CONFIG)
 const mapReady = ref(false)
 const tileStatus = ref('loading')
@@ -326,6 +329,25 @@ function focusCoordinate() {
   announce('地图已定位到输入坐标')
 }
 
+async function autoLocate() {
+  locating.value = true
+  searchError.value = ''
+  try {
+    const { latitude, longitude, accuracy } = await getCurrentGcj02Position()
+    const coord = { latitude, longitude }
+    coordinateValue.value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+    updateMapPosition(coordinateForMap(coord), { recenter: true, zoom: 16 })
+    const accText = accuracy ? `（精度约${Math.round(accuracy)}米）` : ''
+    announce(`已定位到当前位置${accText}`)
+    await selectMapCoordinate(latitude, longitude, `已定位到当前位置${accText}`)
+  } catch (err) {
+    searchError.value = err.message || '定位失败'
+    announce(searchError.value)
+  } finally {
+    locating.value = false
+  }
+}
+
 function resultTypeLabel(result) {
   const labels = {
     university: '学校', school: '学校', college: '学校', hospital: '医院',
@@ -394,6 +416,23 @@ function selectResult(result) {
     announceText: `已选择 ${result.name}`,
   })
   emit('select-location', result)
+}
+
+async function selectMapCoordinate(latitude, longitude, announceText) {
+  applyCoordinate(latitude, longitude, {
+    recenter: false,
+    announceText,
+  })
+  let selected = { latitude, longitude, address: '', name: '' }
+  if (typeof props.locationApi?.reverseLocation === 'function') {
+    try {
+      const response = await props.locationApi.reverseLocation(latitude, longitude)
+      selected = { ...selected, ...(response?.data || {}), latitude, longitude }
+    } catch {
+      // Keep the selected coordinates when reverse geocoding is unavailable.
+    }
+  }
+  emit('select-location', selected)
 }
 
 function normalizedMapConfig(response) {
@@ -486,10 +525,11 @@ async function initializeMap() {
       doubleClickZoom: true,
     })
     map.on('click', event => {
-      applyCoordinate(event.latLng.getLat(), event.latLng.getLng(), {
-        recenter: false,
-        announceText: '已通过地图点击选择位置',
-      })
+      void selectMapCoordinate(
+        event.latLng.getLat(),
+        event.latLng.getLng(),
+        '已通过地图点击选择位置',
+      )
     })
     map.on('tilesloaded', () => {
       if (mapLoadTimer) window.clearTimeout(mapLoadTimer)
@@ -553,12 +593,12 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.location-search-panel{container-type:inline-size;display:grid;gap:5px;width:100%;min-width:0;padding:12px;border:1px solid #dbeafe;border-radius:15px;background:linear-gradient(145deg,#f8fbff,#fff);box-sizing:border-box}.location-entry-pane{grid-column:1/-1;min-width:0}.location-entry-row{display:grid;grid-template-columns:minmax(270px,.75fr) minmax(520px,1.25fr);gap:14px}.entry-field{display:grid;align-content:start;gap:6px;min-width:0}.search-pane,.map-pane{display:grid;align-content:start;gap:10px;min-width:0}.coordinate-editor{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-width:0}.address-search{display:grid;grid-template-columns:120px 125px minmax(0,1fr) auto;gap:8px;min-width:0}.inline-message{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0;padding:9px 11px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:13px;line-height:1.45}.inline-message button{border:0;background:transparent;color:inherit;font-weight:700;cursor:pointer}.inline-message.is-error{background:#fef2f2;color:#b91c1c}.search-results{display:grid;gap:7px;max-height:280px;margin:0;padding:2px;overflow:auto;list-style:none}.result-item{min-width:0}.result-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;min-height:68px;padding:10px;border:1px solid #e2e8f0;border-radius:11px;background:#fff;color:#334155;text-align:left;cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .18s}.result-row:hover,.result-row.active{border-color:#60a5fa;box-shadow:0 7px 18px rgb(37 99 235 / 12%);transform:translateY(-1px)}.result-copy{display:grid;gap:3px;min-width:0}.result-copy strong{overflow:hidden;color:#172033;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.result-copy small{display:-webkit-box;overflow:hidden;color:#52657f;font-size:12px;line-height:1.45;-webkit-box-orient:vertical;-webkit-line-clamp:2}.result-copy em{overflow:hidden;color:#64748b;font-size:12px;font-style:normal;text-overflow:ellipsis;white-space:nowrap}.result-row code{color:#1d4ed8;font-size:12px;white-space:nowrap}.map-shell{position:relative;min-width:0;overflow:hidden;border:1px solid #bfdbfe;border-radius:14px;background:#eaf3ff}.location-map{width:100%;height:380px;min-height:300px}.map-skeleton{position:absolute;z-index:450;inset:0;display:grid;place-content:center;justify-items:center;gap:12px;background:linear-gradient(135deg,#eef5ff,#dcecff);pointer-events:none}.map-skeleton::before,.map-skeleton::after{position:absolute;inset:20% -10%;content:"";border-top:3px solid rgb(96 165 250 / 25%);transform:rotate(-14deg)}.map-skeleton::after{inset:65% -10%;transform:rotate(9deg)}.map-skeleton span{z-index:1;width:26px;height:26px;border:3px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;animation:map-spin .8s linear infinite}.map-skeleton strong{z-index:1;color:#1e40af;font-size:13px}.map-error-panel{position:absolute;z-index:550;inset:50% auto auto 50%;display:grid;justify-items:center;gap:6px;width:min(300px,calc(100% - 36px));padding:18px;border:1px solid #fecaca;border-radius:14px;background:rgb(255 255 255 / 95%);box-shadow:0 14px 35px rgb(127 29 29 / 15%);text-align:center;transform:translate(-50%,-50%)}.map-error-panel strong{color:#991b1b}.map-error-panel span{color:#64748b;font-size:12px}.map-error-panel button{min-height:38px;padding:7px 13px;border:0;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer}.map-instructions{margin:0;color:#52657f;font-size:12px;line-height:1.55}.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;border:0;clip:rect(0,0,0,0);white-space:nowrap}.location-search-panel :deep(.el-empty){padding:8px 0}.location-search-panel :deep(.el-empty__description){margin-top:4px}.location-search-panel :deep(.el-empty__description p){font-size:12px}@keyframes map-spin{to{transform:rotate(360deg)}}
+.location-search-panel{container-type:inline-size;display:grid;gap:5px;width:100%;min-width:0;padding:12px;border:1px solid #dbeafe;border-radius:15px;background:linear-gradient(145deg,#f8fbff,#fff);box-sizing:border-box}.location-entry-pane{grid-column:1/-1;min-width:0}.location-entry-row{display:grid;gap:8px;grid-template-columns:minmax(0,1fr)}.coordinate-editor{display:grid;grid-template-columns:minmax(180px,1fr) auto auto;gap:8px;min-width:0}.coordinate-editor .el-button+.el-button{margin-left:0}.locate-btn .locate-btn__icon{margin-right:4px}.search-pane,.map-pane{display:grid;align-content:start;gap:10px;min-width:0}.address-search{display:grid;grid-template-columns:120px 125px minmax(0,1fr) auto;gap:8px;min-width:0}.inline-message{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0;padding:9px 11px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:13px;line-height:1.45}.inline-message button{border:0;background:transparent;color:inherit;font-weight:700;cursor:pointer}.inline-message.is-error{background:#fef2f2;color:#b91c1c}.search-results{display:grid;gap:7px;max-height:280px;margin:0;padding:2px;overflow:auto;list-style:none}.result-item{min-width:0}.result-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;min-height:68px;padding:10px;border:1px solid #e2e8f0;border-radius:11px;background:#fff;color:#334155;text-align:left;cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .18s}.result-row:hover,.result-row.active{border-color:#60a5fa;box-shadow:0 7px 18px rgb(37 99 235 / 12%);transform:translateY(-1px)}.result-copy{display:grid;gap:3px;min-width:0}.result-copy strong{overflow:hidden;color:#172033;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.result-copy small{display:-webkit-box;overflow:hidden;color:#52657f;font-size:12px;line-height:1.45;-webkit-box-orient:vertical;-webkit-line-clamp:2}.result-copy em{overflow:hidden;color:#64748b;font-size:12px;font-style:normal;text-overflow:ellipsis;white-space:nowrap}.result-row code{color:#1d4ed8;font-size:12px;white-space:nowrap}.map-shell{position:relative;min-width:0;overflow:hidden;border:1px solid #bfdbfe;border-radius:14px;background:#eaf3ff}.location-map{width:100%;height:380px;min-height:300px}.map-skeleton{position:absolute;z-index:450;inset:0;display:grid;place-content:center;justify-items:center;gap:12px;background:linear-gradient(135deg,#eef5ff,#dcecff);pointer-events:none}.map-skeleton::before,.map-skeleton::after{position:absolute;inset:20% -10%;content:"";border-top:3px solid rgb(96 165 250 / 25%);transform:rotate(-14deg)}.map-skeleton::after{inset:65% -10%;transform:rotate(9deg)}.map-skeleton span{z-index:1;width:26px;height:26px;border:3px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;animation:map-spin .8s linear infinite}.map-skeleton strong{z-index:1;color:#1e40af;font-size:13px}.map-error-panel{position:absolute;z-index:550;inset:50% auto auto 50%;display:grid;justify-items:center;gap:6px;width:min(300px,calc(100% - 36px));padding:18px;border:1px solid #fecaca;border-radius:14px;background:rgb(255 255 255 / 95%);box-shadow:0 14px 35px rgb(127 29 29 / 15%);text-align:center;transform:translate(-50%,-50%)}.map-error-panel strong{color:#991b1b}.map-error-panel span{color:#64748b;font-size:12px}.map-error-panel button{min-height:38px;padding:7px 13px;border:0;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer}.map-instructions{margin:0;color:#52657f;font-size:12px;line-height:1.55}.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;border:0;clip:rect(0,0,0,0);white-space:nowrap}.location-search-panel :deep(.el-empty){padding:8px 0}.location-search-panel :deep(.el-empty__description){margin-top:4px}.location-search-panel :deep(.el-empty__description p){font-size:12px}@keyframes map-spin{to{transform:rotate(360deg)}}
 /* .location-map :deep(a[href*="map.qq.com"][href*="ref=jsapi"]),.location-map :deep(.logo-text){display:none!important} */
 @container(min-width:900px){.location-search-panel.has-search-content{grid-template-columns:minmax(310px,350px) minmax(0,1fr);align-items:start}.location-map{height:clamp(480px,60vh,560px)}.search-results{max-height:330px}}
 @container(max-width:899px){.location-entry-row{grid-template-columns:minmax(0,1fr)}}
-@container(max-width:520px){.coordinate-editor{grid-template-columns:minmax(0,1fr) 96px}.coordinate-editor .el-button{width:100%;min-height:42px}.address-search{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.address-search .el-input{grid-column:1/2}.address-search>.el-button{grid-column:2/3;width:100%;min-height:42px}}
-@media(max-width:640px){.location-search-panel{gap:8px;padding:0;border:0;border-radius:0;background:transparent}.location-entry-row{gap:10px}.entry-field{gap:4px}.coordinate-editor{grid-template-columns:minmax(0,1fr) 96px;gap:6px}.address-search{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}.address-search .el-input{grid-column:1/2}.coordinate-editor .el-button,.address-search>.el-button{width:100%;min-height:40px}.address-search>.el-button{grid-column:2/3}.result-row{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:18px 16px;align-content:center;row-gap:2px;padding:6px 10px;box-shadow:none;transform:none}.result-row:hover{box-shadow:none;transform:none}.result-row.active{border-color:#3b82f6;background:#fff;box-shadow:none}.result-copy{display:contents}.result-copy strong{grid-column:1/-1;align-self:center;font-size:13px;line-height:18px}.result-copy small{display:block;grid-column:1;align-self:baseline;overflow:hidden;font-size:11px;line-height:16px;text-overflow:ellipsis;white-space:nowrap}.result-copy em{display:none}.result-row code{display:block;grid-column:2;align-self:baseline;justify-self:end;font-size:10px;line-height:16px}.map-shell{border-radius:12px}.location-map{min-height:240px}.map-instructions{padding-inline:2px;line-height:1.45}}
+@container(max-width:520px){.coordinate-editor{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.coordinate-editor .el-input{grid-column:1/-1}.coordinate-editor .el-button{width:100%;min-height:42px}.address-search{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.address-search .el-input{grid-column:1/2}.address-search>.el-button{grid-column:2/3;width:100%;min-height:42px}}
+@media(max-width:640px){.location-search-panel{gap:8px;padding:0;border:0;border-radius:0;background:transparent}.coordinate-editor{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}.coordinate-editor .el-input{grid-column:1/-1}.coordinate-editor .el-button+.el-button{margin-left:0}.address-search{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}.address-search .el-input{grid-column:1/2}.coordinate-editor .el-button,.address-search>.el-button{width:100%;min-height:40px}.address-search>.el-button{grid-column:2/3}.result-row{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:18px 16px;align-content:center;row-gap:2px;padding:6px 10px;box-shadow:none;transform:none}.result-row:hover{box-shadow:none;transform:none}.result-row.active{border-color:#3b82f6;background:#fff;box-shadow:none}.result-copy{display:contents}.result-copy strong{grid-column:1/-1;align-self:center;font-size:13px;line-height:18px}.result-copy small{display:block;grid-column:1;align-self:baseline;overflow:hidden;font-size:11px;line-height:16px;text-overflow:ellipsis;white-space:nowrap}.result-copy em{display:none}.result-row code{display:block;grid-column:2;align-self:baseline;justify-self:end;font-size:10px;line-height:16px}.map-shell{border-radius:12px}.location-map{min-height:240px}.map-instructions{padding-inline:2px;line-height:1.45}}
 .search-results{max-height:155px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.result-row{height:72px;min-height:72px;padding-block:8px;overflow:hidden}.result-copy small{-webkit-line-clamp:1}
 .search-results{scrollbar-width:auto;scrollbar-color:#60a5fa #eff6ff}.search-results::-webkit-scrollbar{width:10px}.search-results::-webkit-scrollbar-track{border-radius:999px;background:#eff6ff}.search-results::-webkit-scrollbar-thumb{border:2px solid #eff6ff;border-radius:999px;background:#60a5fa}
 @media(max-width:640px){.search-results{gap:7px;max-height:119px;padding:1px 5px 1px 1px;border:0;border-radius:0;background:transparent;scrollbar-gutter:auto}.result-row{height:55px;min-height:55px;box-sizing:border-box}.search-results::-webkit-scrollbar{width:5px}.search-results::-webkit-scrollbar-track{background:transparent}.search-results::-webkit-scrollbar-thumb{border:1px solid transparent;background:#93c5fd;background-clip:padding-box}}

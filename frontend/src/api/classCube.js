@@ -17,6 +17,8 @@ export function createClassCubeApi(instance = defaultInstance) {
         signal: options.signal,
         timeout: 12_000,
       }),
+    reverseLocation: (latitude, longitude) =>
+      instance.post(`${root}/locations/reverse`, { latitude, longitude }),
 
     listAccounts: (params = {}) =>
       instance.get(`${root}/accounts`, { params }),

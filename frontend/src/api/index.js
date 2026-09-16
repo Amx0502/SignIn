@@ -35,7 +35,11 @@ instance.interceptors.response.use(
 export const loginApi = data => instance.post('/auth/login', data)
 export const logoutApi = () => instance.post('/auth/logout')
 export const changePasswordApi = data => instance.post('/auth/change-password', data)
-export const getUsersApi = () => instance.get('/users')
+export const getUsersApi = (params = {}) => instance.get('/users', { params })
+export const exportArchivedUsersApi = (params = {}) => instance.get('/users/archived/export', {
+  params,
+  responseType: 'blob',
+})
 export const createUserApi = data => instance.post('/users', data)
 export const createPlatformMemberApi = data => instance.post('/users/members', data)
 export const updateUserApi = (id, data) => instance.put(`/users/${id}`, data)
@@ -50,6 +54,19 @@ export const updateUserMenuOverridesApi = (userId, data) => instance.put(`/admin
 export const getMenuConfigLogsApi = (limit = 100) => instance.get('/admin/menu-config/logs', { params: { limit } })
 export const getCheckinDelaySettingsApi = () => instance.get('/admin/checkin-delay-settings')
 export const updateCheckinDelaySettingsApi = data => instance.put('/admin/checkin-delay-settings', data)
+export const getSiteConfigApi = () => instance.get('/site/config')
+export const getPurchaseLinkSettingsApi = () => instance.get('/admin/purchase-link-settings')
+export const updatePurchaseLinkSettingsApi = data => instance.put('/admin/purchase-link-settings', data)
+export const locationApi = {
+  getLocationConfig: () => instance.get('/locations/config'),
+  searchLocations: (query, region, limit = 6, options = {}) =>
+    instance.post('/locations/search', { query, region, limit }, {
+      signal: options.signal,
+      timeout: 12_000,
+    }),
+  reverseLocation: (latitude, longitude) =>
+    instance.post('/locations/reverse', { latitude, longitude }),
+}
 export const getDashboardSummaryApi = range => instance.get('/admin/dashboard/summary', {
   params: { range },
 })
@@ -65,6 +82,7 @@ export default {
   loginAccount: index => instance.post(`/accounts/${index}/login`),
   refreshAccountToken: index => instance.post(`/accounts/${index}/refresh-token`),
   fetchProjects: index => instance.get(`/accounts/${index}/projects`),
+  fetchFillOptions: (index, projectIndex) => instance.get(`/accounts/${index}/fill-options`, { params: { project_index: projectIndex } }),
 
   addTask: (index, data) => instance.post(`/accounts/${index}/tasks`, data),
   updateTask: (accountIndex, taskIndex, data) => instance.put(`/accounts/${accountIndex}/tasks/${taskIndex}`, data),

@@ -5,6 +5,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -73,7 +74,14 @@ class TaskRow(Base):
     times: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     enable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     use_location: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    location_address: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    location_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    location_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    fill_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    fill_values: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
     pic_paths: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     skip_weekends: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     date_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="daily")

@@ -43,6 +43,7 @@ from .class_cube_repository import (
     ClassCubeRepository,
 )
 from .class_cube_schedule import due_schedule_key, normalize_schedule_times
+from .membership_constants import DEFAULT_CARD_DELETE_DELAY_SECONDS
 from .task_date_schedule import (
     get_last_effective_occurrence,
     normalize_task_date_rule,
@@ -1196,7 +1197,7 @@ class ClassCubeService:
                 "task_id": task_id,
                 "task_name": task.get("name", ""),
                 "status": "blocked",
-                "message": "次卡次数已用完，账号将在删除延迟到期后失效",
+                "message": "次卡次数已用完，账号将在清理时间到期后失效",
                 "scanned": 0,
                 "success": 0,
                 "already_signed": 0,
@@ -1419,9 +1420,11 @@ class ClassCubeService:
                         "membership_card_delete_delay_seconds"
                     )
                     result["message"] = (
-                        "签到成功，次卡已核销并立即删除"
+                        "签到成功，次卡已核销，账号已立即失效并清理平台数据"
                         if delay == 0
-                        else f"签到成功，次卡已核销，{delay or 30} 秒后删除"
+                        else "签到成功，次卡已核销，"
+                        f"{delay or DEFAULT_CARD_DELETE_DELAY_SECONDS} "
+                        "秒后失效并清理平台数据"
                     )
                     break
                 if checkin_result.get("membership_card_type") == "single":
@@ -1772,7 +1775,7 @@ class ClassCubeService:
         )
         if not self._membership_allows(card_owner_user_id):
             raise ClassCubeValidationError(
-                "次卡次数已用完，账号将在删除延迟到期后失效"
+                "次卡次数已用完，账号将在清理时间到期后失效"
             )
         return {
             "actor_user_id": actor_user_id,

@@ -12,9 +12,12 @@
         <el-option label="月卡" value="monthly" />
       </el-select>
       <el-select v-model="status" clearable placeholder="全部状态">
-        <el-option label="已启用" value="active" />
-        <el-option label="已禁用" value="disabled" />
-        <el-option label="已过期" value="expired" />
+        <el-option
+          v-for="option in USER_STATUS_OPTIONS"
+          :key="option.value"
+          :label="option.label"
+          :value="option.value"
+        />
       </el-select>
       <el-select v-model="scope" clearable placeholder="全部功能范围">
         <el-option label="仅小小签到" value="xxqd" />
@@ -31,6 +34,7 @@
 
 <script setup>
 import { Search } from '@element-plus/icons-vue'
+import { USER_STATUS_OPTIONS } from '../../constants/membership'
 
 defineProps({
   visibleCount: { type: Number, default: 0 },

@@ -2,6 +2,15 @@ from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 from datetime import datetime
 
+from .membership_constants import (
+    DEFAULT_CARD_DELETE_DELAY_SECONDS,
+    DEFAULT_CARD_TOTAL_USES,
+    MAX_CARD_DELETE_DELAY_SECONDS,
+    MAX_CARD_TOTAL_USES,
+    MIN_CARD_DELETE_DELAY_SECONDS,
+    MIN_CARD_TOTAL_USES,
+)
+
 
 class Task(BaseModel):
     index: int = Field(default=1, ge=1)
@@ -9,7 +18,11 @@ class Task(BaseModel):
     times: List[str] = Field(default_factory=list)
     enable: bool = Field(default=True)
     use_location: bool = Field(default=False)
+    location_address: str = Field(default="", max_length=500)
+    location_latitude: float | None = Field(default=None, ge=-90, le=90)
+    location_longitude: float | None = Field(default=None, ge=-180, le=180)
     text: str = Field(default="")
+    fill_name: str = Field(default="", max_length=100)
     pic_path: List[str] = Field(default_factory=list)
     skip_weekends: bool = Field(default=False)
     date_mode: str = Field(default="daily", pattern="^(daily|specific)$")
@@ -47,9 +60,15 @@ class TaskCreate(BaseModel):
     title: str = ""
     times: List[str] = Field(default_factory=list)
     text: str = ""
+    fill_name: str = Field(default="", max_length=100)
+    fill_values: dict[str, str] = Field(default_factory=dict)
     pic_path: List[str] = Field(default_factory=list)
     enable: bool = True
     use_location: bool = False
+    location_mode: Literal["none", "auto", "map"] | None = None
+    location_address: str = Field(default="", max_length=500)
+    location_latitude: float | None = Field(default=None, ge=-90, le=90)
+    location_longitude: float | None = Field(default=None, ge=-180, le=180)
     skip_weekends: bool = False
     date_mode: str = Field(default="daily", pattern="^(daily|specific)$")
     run_dates: List[str] = Field(default_factory=list, max_length=730)
@@ -116,9 +135,15 @@ class UserCreate(BaseModel):
     expires_at: datetime | None = None
     card_type: Literal["single", "monthly"] | None = None
     card_delete_delay_seconds: int | None = Field(
-        default=None, ge=0, le=86400
+        default=None,
+        ge=MIN_CARD_DELETE_DELAY_SECONDS,
+        le=MAX_CARD_DELETE_DELAY_SECONDS,
     )
-    card_total_uses: int = Field(default=1, ge=1, le=999)
+    card_total_uses: int = Field(
+        default=DEFAULT_CARD_TOTAL_USES,
+        ge=MIN_CARD_TOTAL_USES,
+        le=MAX_CARD_TOTAL_USES,
+    )
 
 
 class UserUpdate(BaseModel):
@@ -132,16 +157,30 @@ class UserUpdate(BaseModel):
     expires_at: datetime | None = None
     card_type: Literal["single", "monthly"] | None = None
     card_delete_delay_seconds: int | None = Field(
-        default=None, ge=0, le=86400
+        default=None,
+        ge=MIN_CARD_DELETE_DELAY_SECONDS,
+        le=MAX_CARD_DELETE_DELAY_SECONDS,
     )
-    card_total_uses: int | None = Field(default=None, ge=1, le=999)
+    card_total_uses: int | None = Field(
+        default=None,
+        ge=MIN_CARD_TOTAL_USES,
+        le=MAX_CARD_TOTAL_USES,
+    )
 
 
 class PlatformMemberCreate(BaseModel):
     platform_scope: Literal["xxqd", "class_cube"]
     card_type: Literal["single", "monthly"]
-    card_delete_delay_seconds: int = Field(default=30, ge=0, le=86400)
-    card_total_uses: int = Field(default=1, ge=1, le=999)
+    card_delete_delay_seconds: int = Field(
+        default=DEFAULT_CARD_DELETE_DELAY_SECONDS,
+        ge=MIN_CARD_DELETE_DELAY_SECONDS,
+        le=MAX_CARD_DELETE_DELAY_SECONDS,
+    )
+    card_total_uses: int = Field(
+        default=DEFAULT_CARD_TOTAL_USES,
+        ge=MIN_CARD_TOTAL_USES,
+        le=MAX_CARD_TOTAL_USES,
+    )
 
 
 class PasswordReset(BaseModel):
@@ -151,6 +190,10 @@ class PasswordReset(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str = Field(..., min_length=6, max_length=128)
     new_password: str = Field(..., min_length=6, max_length=128)
+
+
+class PurchaseLinkSettingsUpdate(BaseModel):
+    purchase_url: str = Field(..., min_length=1, max_length=2048)
 
 
 

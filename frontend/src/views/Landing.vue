@@ -2,541 +2,264 @@
   <div class="landing-page">
     <nav class="nav-bar">
       <div class="nav-inner">
-        <div class="nav-logo">
-          <span class="logo-icon">班</span>
-          <span class="logo-text">班级魔方</span>
-        </div>
+        <a class="nav-logo" href="#top">
+          <img :src="logoImage" alt="轻签系统图标" class="system-logo" />
+          <span>轻签</span>
+        </a>
         <div class="nav-links">
-          <a href="#features">功能</a>
+          <a href="#platforms">支持平台</a>
+          <a href="#features">核心能力</a>
           <a href="#guide">使用说明</a>
-          <a href="#pricing">购买</a>
+          <a href="#pricing">会员卡</a>
           <button class="btn-outline" @click="goLogin">登录</button>
           <button class="btn-primary" @click="goBuy">立即购买</button>
         </div>
       </div>
     </nav>
 
-    <section class="hero">
-      <div class="hero-inner">
-        <h1>班级魔方</h1>
-        <p class="hero-tagline">全自动签到 · 精准定位 · 多账号管理</p>
-        <p class="hero-desc">一键配置，自动完成班级魔方签到。支持微信内置浏览器定位，无需手动操作。</p>
-        <div class="hero-actions">
-          <button class="btn-primary btn-lg" @click="goBuy">立即购买 →</button>
-          <button class="btn-outline btn-lg" @click="goLogin">登录使用</button>
+    <main>
+      <section id="top" class="hero">
+        <div class="hero-inner">
+          <div class="hero-mark"><img :src="logoImage" alt="轻签" /></div>
+          <p class="eyebrow">多平台自动化签到管理中台</p>
+          <h1>轻签</h1>
+          <h2>一个后台，管理多种常用签到工具</h2>
+          <p class="hero-desc">统一管理账号、自动任务、定位搜索和运行记录。目前已支持小小签到、班级魔方、秒应，更多常用工具持续接入中。</p>
+          <div class="hero-actions">
+            <button class="btn-primary btn-lg" @click="goBuy">购买次卡或月卡</button>
+            <button class="btn-outline btn-lg" @click="goLogin">登录使用</button>
+          </div>
+          <div class="hero-points"><span>多平台统一管理</span><span>自动任务稳定运行</span><span>运行记录长期保留</span></div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section id="features" class="features">
-      <div class="section-inner">
-        <h2 class="section-title">核心功能</h2>
-        <div class="feature-grid">
-          <div class="feature-card">
-            <div class="feature-icon auto">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-            </div>
-            <h3>自动签到</h3>
-            <p>配置好时间后，系统每天自动执行签到，无需手动操作。</p>
+      <section id="platforms" class="section platforms-section">
+        <div class="section-inner">
+          <div class="section-heading">
+            <p class="eyebrow">平台能力</p>
+            <h2>已有工具与持续接入</h2>
+            <p>根据账号所属平台统一分配功能范围，普通用户只看到被授权的工具入口。</p>
           </div>
-          <div class="feature-card">
-            <div class="feature-icon location">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            </div>
-            <h3>精准定位</h3>
-            <p>支持浏览器原生定位和微信内置浏览器定位，自动坐标纠偏，签到位置准确。</p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon multi">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-            </div>
-            <h3>多账号管理</h3>
-            <p>支持同时管理多个班级魔方账号，批量签到，效率翻倍。</p>
+          <div class="platform-grid">
+            <article v-for="platform in platforms" :key="platform.name" class="platform-card">
+              <div class="platform-icon"><img :src="platform.image" :alt="`${platform.name}图标`" /></div>
+              <div>
+                <div class="platform-title"><h3>{{ platform.name }}</h3><span>{{ platform.status }}</span></div>
+                <p>{{ platform.description }}</p>
+                <ul><li v-for="item in platform.features" :key="item">{{ item }}</li></ul>
+              </div>
+            </article>
+            <article class="platform-card platform-card--more">
+              <div class="platform-icon more-icon"><el-icon><Plus /></el-icon></div>
+              <div>
+                <div class="platform-title"><h3>更多常用工具</h3><span>持续接入中</span></div>
+                <p>后续会继续接入新的签到、打卡和任务工具，并沿用统一账号、任务与记录体系。</p>
+              </div>
+            </article>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section id="guide" class="guide">
-      <div class="section-inner">
-        <h2 class="section-title">使用说明</h2>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-content">
-              <h3>购买会员卡</h3>
-              <p>选择次卡或月卡，完成购买后获取登录账号。</p>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-content">
-              <h3>登录系统</h3>
-              <p>使用分配的账号密码登录，进入班级魔方管理面板。</p>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-content">
-              <h3>添加账号</h3>
-              <p>扫码登录班级魔方账号，同步签到课程和项目。</p>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">4</div>
-            <div class="step-content">
-              <h3>配置任务</h3>
-              <p>设置签到时间、位置信息，保存后系统将自动执行签到。</p>
-            </div>
+      <section id="features" class="section features-section">
+        <div class="section-inner">
+          <div class="section-heading"><p class="eyebrow">核心能力</p><h2>减少重复操作，让签到更轻松</h2></div>
+          <div class="feature-grid">
+            <article v-for="feature in features" :key="feature.title" class="feature-card">
+              <div class="feature-icon"><el-icon><component :is="feature.icon" /></el-icon></div>
+              <h3>{{ feature.title }}</h3><p>{{ feature.description }}</p>
+            </article>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section id="pricing" class="pricing">
-      <div class="section-inner">
-        <h2 class="section-title">会员卡购买</h2>
-        <div class="pricing-grid">
-          <div class="pricing-card">
-            <div class="pricing-header">
-              <h3>次卡</h3>
-              <p class="pricing-desc">签到一次后自动过期</p>
-            </div>
-            <div class="pricing-features">
-              <div class="feature-item"><span class="check">✓</span> 单次签到有效</div>
-              <div class="feature-item"><span class="check">✓</span> 自动过期失效</div>
-              <div class="feature-item"><span class="check">✓</span> 随机用户名密码</div>
-            </div>
-            <button class="btn-primary btn-block" @click="goBuy">购买次卡</button>
-          </div>
-          <div class="pricing-card pricing-highlight">
-            <div class="pricing-badge">推荐</div>
-            <div class="pricing-header">
-              <h3>月卡</h3>
-              <p class="pricing-desc">激活后 30 天有效</p>
-            </div>
-            <div class="pricing-features">
-              <div class="feature-item"><span class="check">✓</span> 首次登录激活</div>
-              <div class="feature-item"><span class="check">✓</span> 30 天自动签到</div>
-              <div class="feature-item"><span class="check">✓</span> 到期自动过期</div>
-              <div class="feature-item"><span class="check">✓</span> 多课程批量签到</div>
-            </div>
-            <button class="btn-primary btn-block" @click="goBuy">购买月卡</button>
+      <section id="guide" class="section guide-section">
+        <div class="section-inner">
+          <div class="section-heading"><p class="eyebrow">使用流程</p><h2>三步开始使用</h2></div>
+          <div class="steps">
+            <article v-for="step in steps" :key="step.number" class="step-card">
+              <span>{{ step.number }}</span><div><h3>{{ step.title }}</h3><p>{{ step.description }}</p></div>
+            </article>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section id="pricing" class="section pricing-section">
+        <div class="section-inner">
+          <div class="section-heading">
+            <p class="eyebrow">会员卡</p><h2>按需要选择次卡或月卡</h2>
+            <p>购买后获得系统登录账号，可在已授权的平台中使用完整任务能力。</p>
+          </div>
+          <div class="pricing-grid">
+            <article class="pricing-card">
+              <div><p class="plan-label">灵活使用</p><h3>次卡</h3><p>按成功签到次数核销，适合短期或低频使用。</p></div>
+              <ul><li>可设置签到总次数</li><li>核销后按配置时间失效</li><li>运行记录保留</li></ul>
+              <button class="btn-primary btn-block" @click="goBuy">购买次卡</button>
+            </article>
+            <article class="pricing-card pricing-card--featured">
+              <span class="recommended">推荐</span>
+              <div><p class="plan-label">长期使用</p><h3>月卡</h3><p>首次登录激活，30 天内持续使用。</p></div>
+              <ul><li>激活后 30 天有效</li><li>支持自动任务和多账号管理</li><li>到期后归档保留记录</li></ul>
+              <button class="btn-primary btn-block" @click="goBuy">购买月卡</button>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
 
     <footer class="footer">
       <div class="footer-inner">
-        <button class="btn-outline" @click="goLogin">前往登录 →</button>
-        <p class="footer-text">班级魔方自动签到系统</p>
+        <div class="footer-brand"><img :src="logoImage" alt="轻签" /><strong>轻签</strong></div>
+        <p>多平台自动化签到管理，更多常用工具持续接入中。</p>
+        <button class="btn-outline" @click="goLogin">前往登录</button>
       </div>
     </footer>
   </div>
 </template>
 
 <script setup>
-const BUY_URL = "https://m.tb.cn/h.8sGQxfh?tk=Dz6vT8OEx7h";
-const LOGIN_PATH = "/login";
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { Document, Location, Plus, Timer, UserFilled } from '@element-plus/icons-vue'
+import { getSiteConfigApi } from '../api'
+import logoImage from '../img/logo.png'
+import xxqdImage from '../img/xxqd.png'
+import classCubeImage from '../img/bjmf.png'
+import miaoyingImage from '../img/miaoying.png'
 
-function goBuy() {
-  window.open(BUY_URL, "_blank");
+const router = useRouter()
+const DEFAULT_BUY_URL = 'https://m.tb.cn/h.8sGQxfh?tk=Dz6vT8OEx7h'
+const purchaseUrl = ref(DEFAULT_BUY_URL)
+const platforms = [
+  { name: '小小签到', status: '已支持', image: xxqdImage, description: '适合日常任务签到，支持账号、自动任务及运行记录。', features: ['自动任务', '多账号管理', '运行记录'] },
+  { name: '班级魔方', status: '已支持', image: classCubeImage, description: '支持课程任务、定位搜索和图片签到等常见场景。', features: ['课程签到', '定位搜索', '图片任务'] },
+  { name: '秒应', status: '已支持', image: miaoyingImage, description: '支持秒应账号、任务配置和运行结果集中管理。', features: ['自动任务', '表单处理', '结果追踪'] },
+]
+const features = [
+  { title: '统一账号管理', icon: UserFilled, description: '在同一后台管理不同平台的账号，权限和状态清晰可见。' },
+  { title: '自动任务执行', icon: Timer, description: '按计划自动执行任务，减少重复的人工操作。' },
+  { title: '定位与参数辅助', icon: Location, description: '集中维护定位、文本和图片等任务参数。' },
+  { title: '运行记录留档', icon: Document, description: '记录每次执行结果，账号归档后历史记录仍然保留。' },
+]
+const steps = [
+  { number: '01', title: '购买会员卡', description: '选择次卡或月卡，完成购买后获取系统账号。' },
+  { number: '02', title: '登录并绑定账号', description: '登录轻签，按已授权平台添加或扫码绑定账号。' },
+  { number: '03', title: '配置自动任务', description: '设置任务时间和参数，后续由系统自动执行并记录结果。' },
+]
+
+async function loadSiteConfig() {
+  try {
+    const response = await getSiteConfigApi()
+    purchaseUrl.value = response.data.purchase_url || DEFAULT_BUY_URL
+  } catch {
+    purchaseUrl.value = DEFAULT_BUY_URL
+  }
 }
-function goLogin() {
-  window.location.href = LOGIN_PATH;
-}
+function goBuy() { window.open(purchaseUrl.value, '_blank', 'noopener,noreferrer') }
+function goLogin() { router.push('/login') }
+onMounted(loadSiteConfig)
 </script>
 
 <style scoped>
-.landing-page {
-  --c-primary: #4f6bff;
-  --c-primary-light: #eef1ff;
-  --c-accent: #ff7a45;
-  --c-bg: #f8faff;
-  --c-text: #1e2a44;
-  --c-muted: #64748b;
-  --c-border: #dce3f0;
-  --c-surface: #ffffff;
-  --radius-card: 12px;
-  --radius-full: 999px;
-  font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  color: var(--c-text);
-  background: var(--c-bg);
-  line-height: 1.6;
+.landing-page { --primary:#3157d5; --primary-soft:#eef3ff; --accent:#ff7a45; --text:#172033; --muted:#64748b; --border:#dce5f2; --bg:#f7f9fc; min-height:100vh; color:var(--text); background:var(--bg); font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+.nav-bar { position:sticky; top:0; z-index:100; border-bottom:1px solid rgb(220 229 242 / 86%); background:rgb(255 255 255 / 94%); backdrop-filter:blur(14px); }
+.nav-inner { display:flex; width:min(1180px,100%); height:68px; margin:0 auto; padding:0 24px; align-items:center; justify-content:space-between; gap:20px; }
+.nav-logo { display:flex; align-items:center; gap:10px; color:var(--text); font-size:19px; font-weight:800; text-decoration:none; }
+.system-logo { width:38px; height:38px; object-fit:contain; }
+.nav-links { display:flex; align-items:center; gap:22px; }
+.nav-links a { color:#475569; font-size:14px; font-weight:600; text-decoration:none; }
+.nav-links a:hover { color:var(--primary); }
+button { font:inherit; }
+.btn-primary,.btn-outline { display:inline-flex; min-height:40px; padding:0 20px; align-items:center; justify-content:center; border-radius:10px; font-weight:700; cursor:pointer; transition:.2s ease; }
+.btn-primary { border:1px solid var(--primary); color:#fff; background:var(--primary); }
+.btn-primary:hover { border-color:#2648bc; background:#2648bc; transform:translateY(-1px); }
+.btn-outline { border:1px solid #b9c7dc; color:#334155; background:#fff; }
+.btn-outline:hover { border-color:var(--primary); color:var(--primary); }
+.btn-lg { min-height:48px; padding-inline:26px; font-size:15px; }
+.btn-block { width:100%; }
+.hero { position:relative; overflow:hidden; padding:84px 24px 72px; background:radial-gradient(circle at 50% 0%,#dfe8ff 0,transparent 42%),linear-gradient(180deg,#fff 0%,#f7f9fc 100%); }
+.hero::after { position:absolute; inset:auto 0 0; height:1px; background:linear-gradient(90deg,transparent,#d9e3f2,transparent); content:""; }
+.hero-inner { position:relative; z-index:1; width:min(900px,100%); margin:0 auto; text-align:center; }
+.hero-mark { display:grid; width:76px; height:76px; margin:0 auto 20px; place-items:center; border:1px solid #dfe7f6; border-radius:22px; background:#fff; box-shadow:0 18px 45px rgb(49 87 213 / 14%); }
+.hero-mark img { width:58px; height:58px; object-fit:contain; }
+.eyebrow { margin:0 0 10px; color:var(--primary); font-size:13px; font-weight:800; letter-spacing:.08em; }
+.hero h1 { margin:0; font-size:56px; line-height:1.05; }
+.hero h2 { margin:14px 0 0; color:#24334f; font-size:27px; line-height:1.35; }
+.hero-desc { max-width:780px; margin:22px auto 0; color:var(--muted); font-size:16px; line-height:1.85; }
+.hero-actions { display:flex; margin-top:30px; justify-content:center; gap:12px; }
+.hero-points { display:flex; margin-top:28px; justify-content:center; flex-wrap:wrap; gap:10px 22px; color:#52647e; font-size:13px; font-weight:600; }
+.hero-points span::before { margin-right:6px; color:#22a06b; content:"✓"; }
+.section { padding:78px 24px; }
+.section-inner { width:min(1180px,100%); margin:0 auto; }
+.section-heading { max-width:760px; margin:0 auto 38px; text-align:center; }
+.section-heading h2 { margin:0; color:#14213a; font-size:34px; line-height:1.3; }
+.section-heading > p:last-child { margin:14px 0 0; color:var(--muted); font-size:15px; line-height:1.8; }
+.platforms-section { background:#fff; }
+.platform-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.platform-card { display:grid; grid-template-columns:64px minmax(0,1fr); gap:18px; min-height:210px; padding:24px; border:1px solid var(--border); border-radius:16px; background:linear-gradient(145deg,#fff,#f8fbff); }
+.platform-card--more { border-style:dashed; background:#fbfcff; }
+.platform-icon { display:grid; width:64px; height:64px; place-items:center; border:1px solid #e0e8f5; border-radius:16px; background:#fff; }
+.platform-icon img { width:46px; height:46px; object-fit:contain; }
+.more-icon { color:var(--primary); background:var(--primary-soft); font-size:28px; }
+.platform-title { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.platform-title h3 { margin:0; font-size:19px; }
+.platform-title span { padding:3px 9px; border-radius:99px; color:#246a4e; background:#e8f8f0; font-size:11px; font-weight:700; }
+.platform-card p { margin:10px 0 14px; color:var(--muted); font-size:14px; line-height:1.75; }
+.platform-card ul,.pricing-card ul { display:flex; margin:0; padding:0; flex-wrap:wrap; gap:8px; list-style:none; }
+.platform-card li,.pricing-card li { padding:4px 9px; border-radius:7px; color:#4b5d76; background:#eef3fa; font-size:12px; }
+.features-section { background:linear-gradient(180deg,#f7f9fc,#fff); }
+.feature-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+.feature-card { padding:24px; border:1px solid var(--border); border-radius:15px; background:#fff; }
+.feature-icon { display:grid; width:44px; height:44px; margin-bottom:18px; place-items:center; border-radius:12px; color:var(--primary); background:var(--primary-soft); font-size:21px; }
+.feature-card h3 { margin:0 0 10px; font-size:17px; }
+.feature-card p { margin:0; color:var(--muted); font-size:13px; line-height:1.75; }
+.guide-section { background:#fff; }
+.steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+.step-card { display:flex; min-height:150px; padding:24px; gap:16px; border:1px solid var(--border); border-radius:15px; background:#f9fbff; }
+.step-card > span { flex:none; color:var(--primary); font-size:28px; font-weight:800; }
+.step-card h3 { margin:1px 0 9px; font-size:17px; }
+.step-card p { margin:0; color:var(--muted); font-size:13px; line-height:1.75; }
+.pricing-section { background:linear-gradient(180deg,#f7f9fc,#eef3ff); }
+.pricing-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); max-width:820px; margin:0 auto; gap:22px; }
+.pricing-card { position:relative; display:grid; padding:30px; gap:22px; border:1px solid var(--border); border-radius:17px; background:#fff; box-shadow:0 16px 40px rgb(26 46 94 / 7%); }
+.pricing-card--featured { border:2px solid var(--primary); }
+.recommended { position:absolute; top:-12px; left:28px; padding:4px 12px; border-radius:99px; color:#fff; background:var(--accent); font-size:11px; font-weight:800; }
+.plan-label { margin:0 0 6px; color:var(--primary); font-size:12px; font-weight:800; }
+.pricing-card h3 { margin:0; font-size:28px; }
+.pricing-card > div > p:last-child { margin:10px 0 0; color:var(--muted); font-size:13px; line-height:1.7; }
+.footer { padding:34px 24px; color:#dbe5f7; background:#111827; }
+.footer-inner { display:flex; width:min(1180px,100%); margin:0 auto; align-items:center; justify-content:space-between; gap:18px; }
+.footer-brand { display:flex; align-items:center; gap:9px; color:#fff; }
+.footer-brand img { width:34px; height:34px; object-fit:contain; }
+.footer-brand strong { font-size:18px; }
+.footer p { margin:0; color:#9ca9bd; font-size:13px; }
+.footer .btn-outline { border-color:#465268; color:#fff; background:transparent; }
+@media (max-width:900px) {
+  .nav-links a { display:none; }
+  .feature-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .platform-grid { grid-template-columns:1fr; }
 }
-
-.nav-bar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--c-border);
-}
-.nav-inner {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.nav-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.logo-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--c-primary);
-  color: #fff;
-  font-size: 16px;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-}
-.logo-text {
-  font-size: 18px;
-  font-weight: 700;
-}
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-.nav-links a {
-  font-size: 14px;
-  color: var(--c-text);
-  text-decoration: none;
-  font-weight: 500;
-  transition: color 0.15s;
-}
-.nav-links a:hover {
-  color: var(--c-primary);
-}
-
-.btn-primary, .btn-outline {
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  border: none;
-  transition: all 0.15s;
-  font-family: inherit;
-}
-.btn-primary {
-  background: var(--c-primary);
-  color: #fff;
-  padding: 8px 20px;
-}
-.btn-primary:hover {
-  background: #3d56e0;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(79, 107, 255, 0.3);
-}
-.btn-outline {
-  background: transparent;
-  color: var(--c-primary);
-  border: 1.5px solid var(--c-primary);
-  padding: 6px 18px;
-}
-.btn-outline:hover {
-  background: var(--c-primary-light);
-}
-.btn-lg {
-  padding: 12px 32px;
-  font-size: 15px;
-}
-.btn-block {
-  width: 100%;
-  padding: 12px;
-  font-size: 15px;
-}
-
-.hero {
-  background: linear-gradient(135deg, var(--c-primary-light), var(--c-bg));
-  padding: 80px 24px 60px;
-  text-align: center;
-}
-.hero-inner {
-  max-width: 720px;
-  margin: 0 auto;
-}
-.hero h1 {
-  font-size: 42px;
-  font-weight: 800;
-  margin: 0 0 12px;
-  letter-spacing: -0.02em;
-}
-.hero-tagline {
-  font-size: 20px;
-  color: var(--c-primary);
-  font-weight: 600;
-  margin: 0 0 8px;
-}
-.hero-desc {
-  font-size: 15px;
-  color: var(--c-muted);
-  margin: 0 0 32px;
-}
-.hero-actions {
-  display: flex;
-  gap: 14px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.hero-actions .btn-primary {
-  background: var(--c-accent);
-}
-.hero-actions .btn-primary:hover {
-  background: #e8693a;
-  box-shadow: 0 4px 12px rgba(255, 122, 69, 0.3);
-}
-
-.section-inner {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 64px 24px;
-}
-.section-title {
-  font-size: 28px;
-  font-weight: 700;
-  text-align: center;
-  margin: 0 0 40px;
-}
-
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-}
-.feature-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-card);
-  padding: 28px 20px;
-  text-align: center;
-  transition: box-shadow 0.2s, transform 0.2s;
-}
-.feature-card:hover {
-  box-shadow: 0 8px 24px rgba(79, 107, 255, 0.08);
-  transform: translateY(-2px);
-}
-.feature-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  margin: 0 auto 16px;
-  color: var(--c-primary);
-  background: var(--c-primary-light);
-}
-.feature-icon.location { color: #ef4444; background: #fef2f2; }
-.feature-icon.multi { color: #8b5cf6; background: #f5f3ff; }
-.feature-icon.notify { color: #f59e0b; background: #fffbeb; }
-.feature-card h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 8px;
-}
-.feature-card p {
-  font-size: 13px;
-  color: var(--c-muted);
-  margin: 0;
-}
-
-.steps {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-}
-.step {
-  display: grid;
-  gap: 16px;
-  text-align: center;
-}
-.step-num {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--c-primary);
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-  margin: 0 auto;
-}
-.step-content h3 {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0 0 6px;
-}
-.step-content p {
-  font-size: 13px;
-  color: var(--c-muted);
-  margin: 0;
-}
-
-.pricing {
-  background: linear-gradient(180deg, var(--c-bg), var(--c-primary-light));
-}
-.pricing-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  max-width: 640px;
-  margin: 0 auto;
-}
-.pricing-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: 16px;
-  padding: 32px 28px;
-  display: grid;
-  gap: 24px;
-  position: relative;
-}
-.pricing-highlight {
-  border: 2px solid var(--c-primary);
-  box-shadow: 0 12px 32px rgba(79, 107, 255, 0.12);
-}
-.pricing-badge {
-  position: absolute;
-  top: -12px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--c-accent);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 16px;
-  border-radius: var(--radius-full);
-}
-.pricing-header h3 {
-  font-size: 22px;
-  font-weight: 700;
-  margin: 0 0 4px;
-}
-.pricing-desc {
-  font-size: 13px;
-  color: var(--c-muted);
-  margin: 0;
-}
-.pricing-features {
-  display: grid;
-  gap: 12px;
-}
-.feature-item {
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.check {
-  color: var(--c-primary);
-  font-weight: 700;
-}
-.pricing-highlight .btn-primary {
-  background: var(--c-accent);
-}
-.pricing-highlight .btn-primary:hover {
-  background: #e8693a;
-  box-shadow: 0 4px 12px rgba(255, 122, 69, 0.3);
-}
-
-.footer {
-  background: var(--c-text);
-  padding: 40px 24px;
-}
-.footer-inner {
-  max-width: 1080px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.footer .btn-outline {
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.3);
-}
-.footer .btn-outline:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-.footer-text {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
-  margin: 0;
-}
-
-/* 平板端 768px - 1024px */
-@media (max-width: 1024px) {
-  .nav-inner, .section-inner { max-width: 100%; }
-  .hero { padding: 56px 20px 44px; }
-  .hero h1 { font-size: 34px; }
-  .hero-tagline { font-size: 17px; }
-  .hero-desc { font-size: 14px; margin-bottom: 28px; }
-  .section-inner { padding: 48px 20px; }
-  .section-title { font-size: 24px; margin-bottom: 32px; }
-  .feature-grid { grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .feature-card { padding: 22px 16px; }
-  .feature-card h3 { font-size: 15px; }
-  .feature-card p { font-size: 12px; }
-  .steps { grid-template-columns: repeat(2, 1fr); gap: 24px 16px; }
-  .pricing-grid { max-width: 560px; gap: 20px; }
-  .pricing-card { padding: 24px 20px; }
-}
-
-/* 手机端 < 768px */
-@media (max-width: 767px) {
-  .nav-inner { padding: 0 16px; height: 54px; }
-  .nav-links { gap: 8px; }
-  .nav-links a { display: none !important; }
-  .nav-links .btn-outline { display: inline-flex !important; }
-  .logo-text { font-size: 16px; }
-  .logo-icon { width: 28px; height: 28px; font-size: 14px; }
-
-  .hero { padding: 40px 16px 36px; }
-  .hero h1 { font-size: 26px; }
-  .hero-tagline { font-size: 15px; }
-  .hero-desc { font-size: 13px; margin-bottom: 24px; }
-  .hero-actions { gap: 10px; }
-  .btn-lg { padding: 10px 24px; font-size: 14px; }
-
-  .section-inner { padding: 40px 16px; }
-  .section-title { font-size: 20px; margin-bottom: 28px; }
-
-  .feature-grid { grid-template-columns: 1fr; gap: 12px; }
-  .feature-card { padding: 20px 16px; display: flex; align-items: flex-start; gap: 14px; text-align: left; }
-  .feature-icon { width: 40px; height: 40px; margin: 0; flex-shrink: 0; }
-  .feature-card h3 { font-size: 14px; margin-bottom: 4px; }
-  .feature-card p { font-size: 12px; }
-
-  .steps { grid-template-columns: 1fr; gap: 20px; }
-  .step { display: flex; align-items: flex-start; gap: 14px; text-align: left; }
-  .step-num { width: 32px; height: 32px; font-size: 15px; margin: 0; flex-shrink: 0; }
-  .step-content h3 { font-size: 14px; }
-  .step-content p { font-size: 12px; }
-
-  .pricing-grid { grid-template-columns: 1fr; max-width: 100%; gap: 16px; }
-  .pricing-card { padding: 24px 20px; }
-  .pricing-header h3 { font-size: 18px; }
-
-  .footer { padding: 32px 16px; }
-  .footer-inner { flex-direction: column; gap: 14px; }
-  .footer-text { font-size: 12px; }
-}
-
-/* 小屏手机 < 400px */
-@media (max-width: 399px) {
-  .hero h1 { font-size: 22px; }
-  .hero-tagline { font-size: 13px; }
-  .btn-lg { padding: 10px 18px; font-size: 13px; }
-  .section-title { font-size: 18px; }
+@media (max-width:640px) {
+  .nav-inner { height:60px; padding:0 14px; }
+  .system-logo { width:32px; height:32px; }
+  .nav-links { gap:8px; }
+  .nav-links .btn-primary { display:inline-flex; min-height:36px; padding-inline:14px; font-size:13px; }
+  .nav-links .btn-outline { min-height:36px; padding-inline:14px; }
+  .hero { padding:52px 16px 46px; }
+  .hero-mark { width:62px; height:62px; border-radius:18px; }
+  .hero-mark img { width:48px; height:48px; }
+  .hero h1 { font-size:40px; }
+  .hero h2 { font-size:20px; }
+  .hero-desc { font-size:14px; }
+  .hero-actions { display:grid; grid-template-columns:1fr; }
+  .hero-points { align-items:flex-start; flex-direction:column; }
+  .section { padding:54px 16px; }
+  .section-heading { margin-bottom:28px; }
+  .section-heading h2 { font-size:25px; }
+  .platform-card { grid-template-columns:52px minmax(0,1fr); padding:18px; }
+  .platform-icon { width:52px; height:52px; }
+  .platform-icon img { width:38px; height:38px; }
+  .feature-grid,.steps,.pricing-grid { grid-template-columns:1fr; }
+  .feature-card,.step-card,.pricing-card { padding:20px; }
+  .footer-inner { align-items:flex-start; flex-direction:column; }
 }
 </style>

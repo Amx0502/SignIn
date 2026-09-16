@@ -40,6 +40,7 @@
 
       <div class="run-summary">
         <span>共 {{ total }} 条记录</span>
+        <span v-if="ownerUserId">仅显示用户 {{ route.query.username || ownerUserId }} 的记录</span>
         <span v-if="lastLoadedAt">更新时间：{{ lastLoadedAt }}</span>
       </div>
 
@@ -101,7 +102,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   ArrowRight,
   CircleCheckFilled,
@@ -111,10 +112,12 @@ import {
   WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { useRoute } from 'vue-router'
 import { listXxqdRunsApi } from '../api'
 import { useAppState } from '../composables/useAppState.js'
 
 const { state: appState, refreshState } = useAppState()
+const route = useRoute()
 const loading = ref(false)
 const runs = ref([])
 const total = ref(0)
@@ -122,6 +125,7 @@ const lastLoadedAt = ref('')
 const detailVisible = ref(false)
 const currentRun = ref(null)
 const filters = reactive({ account_id: null, task_id: null, source: '', status: '' })
+const ownerUserId = computed(() => Number(route.query.owner_user_id) || null)
 
 const accounts = computed(() => appState.value.accounts || [])
 const taskOptions = computed(() => accounts.value.flatMap(account =>
@@ -167,7 +171,9 @@ function filterPayload() {
 async function loadRuns() {
   loading.value = true
   try {
-    const response = await listXxqdRunsApi({ ...filterPayload(), limit: 200 })
+    const payload = { ...filterPayload(), limit: 200 }
+    if (ownerUserId.value) payload.owner_user_id = ownerUserId.value
+    const response = await listXxqdRunsApi(payload)
     runs.value = response.data?.items || []
     total.value = response.data?.total || 0
     lastLoadedAt.value = new Date().toLocaleString('zh-CN', { hour12: false })
@@ -190,6 +196,7 @@ onMounted(async () => {
   await refreshState()
   await loadRuns()
 })
+watch(ownerUserId, loadRuns)
 </script>
 
 <style scoped>

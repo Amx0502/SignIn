@@ -25,6 +25,13 @@ const SYSTEM_SECTION = {
       icon: 'Timer',
       children: [],
     },
+    {
+      key: 'system.purchase-link-settings',
+      title: '购买链接设置',
+      path: '/purchase-link-settings',
+      icon: 'Link',
+      children: [],
+    },
   ],
 }
 

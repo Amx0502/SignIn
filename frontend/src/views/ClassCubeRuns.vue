@@ -12,7 +12,8 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import RunHistoryPanel from '../components/class-cube/RunHistoryPanel.vue'
 import { useClassCube } from '../composables/useClassCube.js'
 
@@ -25,7 +26,18 @@ const {
   retryClaim,
   loadInitial,
 } = useClassCube()
-onMounted(() => loadInitial().catch(() => {}))
+const route = useRoute()
+const ownerUserId = computed(() => Number(route.query.owner_user_id) || null)
+
+onMounted(async () => {
+  await loadInitial().catch(() => {})
+  if (ownerUserId.value) {
+    await loadRuns({ owner_user_id: ownerUserId.value }).catch(() => {})
+  }
+})
+watch(ownerUserId, (value) => {
+  if (value) loadRuns({ owner_user_id: value }).catch(() => {})
+})
 </script>
 
 <style scoped>

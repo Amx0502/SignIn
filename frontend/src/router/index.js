@@ -11,6 +11,7 @@ const ChangePassword = () => import('../views/ChangePassword.vue')
 const UserManagement = () => import('../views/UserManagement.vue')
 const MenuManagement = () => import('../views/MenuManagement.vue')
 const CheckinDelaySettings = () => import('../views/CheckinDelaySettings.vue')
+const PurchaseLinkSettings = () => import('../views/PurchaseLinkSettings.vue')
 const NoAvailableMenus = () => import('../views/NoAvailableMenus.vue')
 const Dashboard = () => import('../views/Dashboard.vue')
 const Overview = () => import('../views/Overview.vue')
@@ -32,9 +33,10 @@ const routes = [
   { path: '/users', name: 'UserManagement', component: UserManagement, meta: { title: '用户管理', requiresAuth: true, requiresAdmin: true } },
   { path: '/menu-management', name: 'MenuManagement', component: MenuManagement, meta: { title: '菜单管理', parentTitle: '系统设置', requiresAuth: true, requiresAdmin: true } },
   { path: '/checkin-delay-settings', name: 'CheckinDelaySettings', component: CheckinDelaySettings, meta: { title: '签到时间设置', parentTitle: '系统设置', requiresAuth: true, requiresAdmin: true } },
+  { path: '/purchase-link-settings', name: 'PurchaseLinkSettings', component: PurchaseLinkSettings, meta: { title: '购买链接设置', parentTitle: '系统设置', requiresAuth: true, requiresAdmin: true } },
   { path: '/no-access', name: 'NoAvailableMenus', component: NoAvailableMenus, meta: { title: '暂无可用功能', requiresAuth: true } },
   { path: '/', name: 'Landing', component: Landing, meta: { title: '班级魔方' } },
-  { path: '/dashboard', name: 'Dashboard', component: Dashboard, meta: { title: '综合总览', parentTitle: '签到管理系统', requiresAuth: true, requiresAdmin: true } },
+  { path: '/dashboard', name: 'Dashboard', component: Dashboard, meta: { title: '综合总览', parentTitle: '轻签', requiresAuth: true, requiresAdmin: true } },
   { path: '/overview', name: 'Overview', component: Overview, meta: { title: '系统概览', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.overview' } },
   { path: '/accounts', name: 'Accounts', component: Accounts, meta: { title: '账号管理', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.accounts' } },
   { path: '/tasks', name: 'TaskManagement', component: TaskManagement, meta: { title: '自动任务', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.tasks' } },

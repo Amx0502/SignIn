@@ -2,23 +2,31 @@ import hashlib
 import hmac
 import json
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
 from .auth_database import AuthDatabase
 from .auth_models import UserFeaturePolicyRow, UserRow, UserSessionRow
+from .membership_constants import (
+    CARD_MONTHLY,
+    CARD_SINGLE,
+    CARD_TYPES,
+    DEFAULT_CARD_DELETE_DELAY_SECONDS,
+    DEFAULT_CARD_TOTAL_USES,
+    MAX_CARD_DELETE_DELAY_SECONDS,
+    MAX_CARD_TOTAL_USES,
+    MIN_CARD_DELETE_DELAY_SECONDS,
+    MIN_CARD_TOTAL_USES,
+    MONTHLY_CARD_DAYS,
+    PLATFORM_SCOPES,
+)
 
 
 PBKDF2_ITERATIONS = 600_000
-CARD_SINGLE = "single"
-CARD_MONTHLY = "monthly"
-CARD_TYPES = {CARD_SINGLE, CARD_MONTHLY}
-MONTHLY_CARD_DAYS = 30
-PLATFORM_SCOPES = {"all", "xxqd", "class_cube"}
 
 
 class DuplicateUsernameError(ValueError):
@@ -59,25 +67,32 @@ def normalize_platform_scope(value: str | None) -> str:
 
 def normalize_delete_delay_seconds(value: int | None) -> int:
     if value is None:
-        return 30
+        return DEFAULT_CARD_DELETE_DELAY_SECONDS
     try:
         seconds = int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError("次卡删除延迟必须是整数秒") from exc
-    if not 0 <= seconds <= 86400:
-        raise ValueError("次卡删除延迟必须在 0 到 86400 秒之间")
+    if not MIN_CARD_DELETE_DELAY_SECONDS <= seconds <= MAX_CARD_DELETE_DELAY_SECONDS:
+        raise ValueError(
+            "次卡删除延迟必须在 "
+            f"{MIN_CARD_DELETE_DELAY_SECONDS} 到 "
+            f"{MAX_CARD_DELETE_DELAY_SECONDS} 秒之间"
+        )
     return seconds
 
 
 def normalize_total_uses(value: int | None) -> int:
     if value is None:
-        return 1
+        return DEFAULT_CARD_TOTAL_USES
     try:
         total = int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError("次卡签到次数必须是整数") from exc
-    if not 1 <= total <= 999:
-        raise ValueError("次卡签到次数必须在 1 到 999 之间")
+    if not MIN_CARD_TOTAL_USES <= total <= MAX_CARD_TOTAL_USES:
+        raise ValueError(
+            "次卡签到次数必须在 "
+            f"{MIN_CARD_TOTAL_USES} 到 {MAX_CARD_TOTAL_USES} 之间"
+        )
     return total
 
 
@@ -119,7 +134,7 @@ class AuthRepository:
         total_uses = int(
             row.card_total_uses
             if row.card_total_uses is not None
-            else 1
+            else DEFAULT_CARD_TOTAL_USES
         )
         used_count = int(
             row.card_used_count
@@ -130,6 +145,11 @@ class AuthRepository:
             int(policy.location_search_used or 0)
             if policy and policy.location_search_date == date.today()
             else 0
+        )
+        archived_at = (
+            row.card_delete_due_at or row.expires_at
+            if row.expires_at and row.expires_at <= now
+            else None
         )
         return {
             "id": row.id,
@@ -144,6 +164,7 @@ class AuthRepository:
             "is_expired": bool(
                 row.expires_at and row.expires_at <= now
             ),
+            "archived_at": archived_at.isoformat() if archived_at else None,
             "card_type": row.card_type,
             "card_activated_at": (
                 row.card_activated_at.isoformat()
@@ -161,7 +182,7 @@ class AuthRepository:
             "card_delete_delay_seconds": int(
                 row.card_delete_delay_seconds
                 if row.card_delete_delay_seconds is not None
-                else 30
+                else DEFAULT_CARD_DELETE_DELAY_SECONDS
             ),
             "card_delete_due_at": (
                 row.card_delete_due_at.isoformat()
@@ -196,13 +217,7 @@ class AuthRepository:
         if not row.card_type:
             return None
         current = now or datetime.now()
-        if (
-            not row.is_active
-            or (
-                row.expires_at is not None
-                and row.expires_at <= current
-            )
-        ):
+        if row.expires_at is not None and row.expires_at <= current:
             return "expired"
         if row.card_used_at is not None:
             return "used"
@@ -248,6 +263,172 @@ class AuthRepository:
                 .options(selectinload(UserRow.feature_policy))
                 .order_by(UserRow.id)
             ).all()]
+
+    def query_users(
+        self,
+        *,
+        view: str = "current",
+        keyword: str | None = None,
+        role: str | None = None,
+        card_type: str | None = None,
+        platform_scope: str | None = None,
+        status: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict:
+        normalized_view = str(view or "current").strip().lower()
+        if normalized_view not in {"current", "archived"}:
+            raise ValueError("用户视图无效")
+        normalized_role = str(role or "").strip().lower() or None
+        if normalized_role is not None and normalized_role not in {"admin", "user"}:
+            raise ValueError("角色筛选无效")
+        normalized_card = str(card_type or "").strip().lower() or None
+        if normalized_card is not None and normalized_card not in {
+            "none",
+            CARD_SINGLE,
+            CARD_MONTHLY,
+        }:
+            raise ValueError("会员卡筛选无效")
+        normalized_scope = (
+            normalize_platform_scope(platform_scope)
+            if platform_scope
+            else None
+        )
+        normalized_status = str(status or "").strip().lower() or None
+        allowed_statuses = {"active", "pending", "used", "expired", "disabled"}
+        if normalized_status is not None and normalized_status not in allowed_statuses:
+            raise ValueError("状态筛选无效")
+        current_page = max(int(page), 1)
+        current_page_size = min(max(int(page_size), 1), 500)
+
+        now = datetime.now()
+        expired = and_(
+            UserRow.expires_at.is_not(None),
+            UserRow.expires_at <= now,
+        )
+        current = or_(
+            UserRow.expires_at.is_(None),
+            UserRow.expires_at > now,
+        )
+        conditions = [expired if normalized_view == "archived" else current]
+
+        if keyword and keyword.strip():
+            conditions.append(
+                UserRow.username.contains(keyword.strip(), autoescape=True)
+            )
+        if normalized_role:
+            conditions.append(UserRow.role == normalized_role)
+        if normalized_card == "none":
+            conditions.append(UserRow.card_type.is_(None))
+        elif normalized_card:
+            conditions.append(UserRow.card_type == normalized_card)
+        if normalized_scope:
+            conditions.append(UserRow.platform_scope == normalized_scope)
+        if start_date:
+            conditions.append(
+                UserRow.expires_at >= datetime.combine(start_date, time.min)
+            )
+        if end_date:
+            conditions.append(
+                UserRow.expires_at < datetime.combine(
+                    end_date + timedelta(days=1), time.min
+                )
+            )
+        if normalized_status:
+            status_conditions = {
+                "expired": expired,
+                "disabled": and_(
+                    UserRow.is_active.is_(False),
+                    current,
+                ),
+                "pending": and_(
+                    UserRow.is_active.is_(True),
+                    UserRow.card_type == CARD_MONTHLY,
+                    UserRow.card_activated_at.is_(None),
+                ),
+                "used": and_(
+                    UserRow.is_active.is_(True),
+                    UserRow.card_type == CARD_SINGLE,
+                    UserRow.card_used_at.is_not(None),
+                ),
+                "active": and_(
+                    UserRow.is_active.is_(True),
+                    or_(
+                        UserRow.card_type.is_(None),
+                        and_(
+                            UserRow.card_type == CARD_MONTHLY,
+                            UserRow.card_activated_at.is_not(None),
+                        ),
+                        and_(
+                            UserRow.card_type == CARD_SINGLE,
+                            UserRow.card_used_at.is_(None),
+                        ),
+                    ),
+                ),
+            }
+            conditions.append(status_conditions[normalized_status])
+
+        with self.database.session() as session:
+            self._expire_due_users(session, now)
+            total = int(session.scalar(
+                select(func.count(UserRow.id)).where(*conditions)
+            ) or 0)
+            current_total = int(session.scalar(
+                select(func.count(UserRow.id)).where(current)
+            ) or 0)
+            archived_total = int(session.scalar(
+                select(func.count(UserRow.id)).where(expired)
+            ) or 0)
+            order_by = (
+                (UserRow.expires_at.desc(), UserRow.id.desc())
+                if normalized_view == "archived"
+                else (UserRow.id.desc(),)
+            )
+            rows = session.scalars(
+                select(UserRow)
+                .options(selectinload(UserRow.feature_policy))
+                .where(*conditions)
+                .order_by(*order_by)
+                .offset((current_page - 1) * current_page_size)
+                .limit(current_page_size)
+            ).all()
+            return {
+                "items": [self._to_dict(row) for row in rows],
+                "total": total,
+                "page": current_page,
+                "page_size": current_page_size,
+                "current_total": current_total,
+                "archived_total": archived_total,
+            }
+
+    def export_archived_users(
+        self,
+        *,
+        keyword: str | None = None,
+        card_type: str | None = None,
+        platform_scope: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[dict]:
+        rows: list[dict] = []
+        page = 1
+        while True:
+            result = self.query_users(
+                view="archived",
+                keyword=keyword,
+                card_type=card_type,
+                platform_scope=platform_scope,
+                start_date=start_date,
+                end_date=end_date,
+                page=page,
+                page_size=500,
+            )
+            rows.extend(result["items"])
+            if not result["items"] or len(rows) >= result["total"]:
+                return rows
+            page += 1
 
     def find_by_username(self, username: str) -> UserRow | None:
         with self.database.session() as session:
@@ -401,8 +582,10 @@ class AuthRepository:
                     row.card_activated_at = None
                     row.card_used_at = None
                     row.card_used_count = 0
-                    row.card_total_uses = 1
-                    row.card_delete_delay_seconds = 30
+                    row.card_total_uses = DEFAULT_CARD_TOTAL_USES
+                    row.card_delete_delay_seconds = (
+                        DEFAULT_CARD_DELETE_DELAY_SECONDS
+                    )
                     row.card_delete_due_at = None
                 else:
                     row.card_type = card_type
@@ -410,13 +593,15 @@ class AuthRepository:
                         row.card_activated_at = None
                         row.card_used_at = None
                         row.card_used_count = 0
-                        row.card_total_uses = total_uses or 1
+                        row.card_total_uses = (
+                            total_uses or DEFAULT_CARD_TOTAL_USES
+                        )
                         row.expires_at = None
                         row.card_delete_due_at = None
                         row.card_delete_delay_seconds = (
                             delete_delay_seconds
                             if delete_delay_seconds is not None
-                            else 30
+                            else DEFAULT_CARD_DELETE_DELAY_SECONDS
                         )
                     elif (
                         card_type == CARD_MONTHLY
@@ -427,6 +612,7 @@ class AuthRepository:
                             row.card_activated_at
                             + timedelta(days=MONTHLY_CARD_DAYS)
                         )
+                        row.card_delete_due_at = row.expires_at
                     elif card_type == CARD_SINGLE:
                         row.expires_at = None
                     if (
@@ -434,16 +620,29 @@ class AuthRepository:
                         and delete_delay_seconds is not None
                     ):
                         row.card_delete_delay_seconds = delete_delay_seconds
-                    if card_type == CARD_SINGLE and total_uses is not None:
                         if row.card_used_at is not None:
-                            raise ValueError("已核销次卡不能修改签到次数")
+                            row.expires_at = (
+                                row.card_used_at
+                                + timedelta(seconds=delete_delay_seconds)
+                            )
+                            row.card_delete_due_at = row.expires_at
+                    if card_type == CARD_SINGLE and total_uses is not None:
                         if total_uses < int(row.card_used_count or 0):
                             raise ValueError(
                                 "次卡总次数不能小于已签到次数"
                             )
+                        current_total_uses = normalize_total_uses(
+                            row.card_total_uses
+                        )
+                        if (
+                            row.card_used_at is not None
+                            and total_uses != current_total_uses
+                        ):
+                            raise ValueError("已核销次卡不能修改签到次数")
                         row.card_total_uses = total_uses
                         if (
-                            row.card_used_count
+                            row.card_used_at is None
+                            and row.card_used_count
                             and row.card_used_count >= total_uses
                         ):
                             now = datetime.now()
@@ -518,6 +717,7 @@ class AuthRepository:
             ):
                 row.card_activated_at = now
                 row.expires_at = now + timedelta(days=MONTHLY_CARD_DAYS)
+                row.card_delete_due_at = row.expires_at
             session.flush()
             return row
 
@@ -531,10 +731,11 @@ class AuthRepository:
             if row is None:
                 raise UserNotFoundError(user_id)
             current = now or datetime.now()
+            if row.card_type:
+                return AuthRepository._card_status(row, current) == "expired"
             return bool(
                 row.expires_at is not None
                 and row.expires_at <= current
-                and not row.is_active
             )
 
     def record_single_card_checkin(self, user_id: int) -> dict | None:
@@ -544,14 +745,19 @@ class AuthRepository:
                 .where(UserRow.id == int(user_id))
                 .with_for_update()
             )
+            now = datetime.now()
             if (
                 row is None
                 or row.role != "user"
+                or not row.is_active
+                or (
+                    row.expires_at is not None
+                    and row.expires_at <= now
+                )
                 or row.card_type != CARD_SINGLE
                 or row.card_used_at is not None
             ):
                 return None
-            now = datetime.now()
             total_uses = normalize_total_uses(row.card_total_uses)
             used_count = min(
                 int(row.card_used_count or 0) + 1,
@@ -576,17 +782,22 @@ class AuthRepository:
                 "card_consumed": consumed,
             }
 
-    def list_due_single_card_user_ids(
+    def list_due_card_cleanup_user_ids(
         self,
         now: datetime | None = None,
     ) -> list[int]:
+        """Return cards whose platform data is due for cleanup.
+
+        ``expires_at`` controls account access. ``card_delete_due_at`` is the
+        separate cleanup schedule used to remove platform accounts and tasks
+        while preserving the system user and run history.
+        """
         current = now or datetime.now()
         with self.database.session() as session:
             return list(session.scalars(
                 select(UserRow.id).where(
                     UserRow.role == "user",
-                    UserRow.card_type == CARD_SINGLE,
-                    UserRow.card_used_at.is_not(None),
+                    UserRow.card_type.in_(CARD_TYPES),
                     UserRow.card_delete_due_at.is_not(None),
                     UserRow.card_delete_due_at <= current,
                 )

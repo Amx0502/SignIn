@@ -1,6 +1,6 @@
-# 签到管理系统（Vue 3 + Element Plus + FastAPI）
+# 轻签（Vue 3 + Element Plus + FastAPI）
 
-基于 FastAPI 与 Vue 3 的签到管理系统。账户、签到任务和远端项目数据存储在 MySQL 中；系统设置、后台用户和登录会话暂时保留原有 JSON 存储。
+轻签是基于 FastAPI 与 Vue 3 的自动化签到管理系统。账户、签到任务和远端项目数据存储在 MySQL 中；系统设置、后台用户和登录会话暂时保留原有 JSON 存储。
 
 ## 环境要求
 

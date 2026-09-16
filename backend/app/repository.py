@@ -34,6 +34,20 @@ def _normalize_account(data: dict | None = None) -> dict:
     }
 
 
+def _normalize_fill_values(raw) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    values: dict[str, str] = {}
+    for key, val in raw.items():
+        key_str = str(key).strip()
+        if not key_str:
+            continue
+        text = "" if val is None else str(val).strip()
+        if text:
+            values[key_str] = text
+    return values
+
+
 def _normalize_task(data: dict | None = None) -> dict:
     data = data or {}
     raw_times = data.get("times", [])
@@ -41,13 +55,43 @@ def _normalize_task(data: dict | None = None) -> dict:
     raw_paths = data.get("pic_path", [])
     pic_paths = raw_paths if isinstance(raw_paths, list) else ([raw_paths] if raw_paths else [])
     date_rule = normalize_task_date_rule(data)
+    location_latitude = data.get("location_latitude")
+    location_longitude = data.get("location_longitude")
+    try:
+        location_latitude = (
+            float(location_latitude)
+            if location_latitude is not None
+            else None
+        )
+        location_longitude = (
+            float(location_longitude)
+            if location_longitude is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        location_latitude = None
+        location_longitude = None
+    if (
+        location_latitude is None
+        or location_longitude is None
+        or not -90 <= location_latitude <= 90
+        or not -180 <= location_longitude <= 180
+    ):
+        location_latitude = None
+        location_longitude = None
     return {
         "index": int(data.get("index", 1) or 1),
         "title": str(data.get("title", "")).strip() or f"任务{data.get('index', 1)}",
         "times": [str(item) for item in times],
         "enable": bool(data.get("enable", True)),
-        "use_location": bool(data.get("use_location", False)),
+        "use_location": bool(data.get("use_location", False))
+        or location_latitude is not None,
+        "location_address": str(data.get("location_address", "")).strip(),
+        "location_latitude": location_latitude,
+        "location_longitude": location_longitude,
         "text": str(data.get("text", "")),
+        "fill_name": str(data.get("fill_name", "")).strip(),
+        "fill_values": _normalize_fill_values(data.get("fill_values")),
         "pic_path": [str(item) for item in pic_paths if str(item)],
         "skip_weekends": bool(data.get("skip_weekends", False)),
         **date_rule,
@@ -72,7 +116,12 @@ class AccountRepository:
             "times": list(row.times or []),
             "enable": row.enable,
             "use_location": row.use_location,
+            "location_address": row.location_address or "",
+            "location_latitude": row.location_latitude,
+            "location_longitude": row.location_longitude,
             "text": row.text,
+            "fill_name": row.fill_name or "",
+            "fill_values": dict(row.fill_values or {}),
             "pic_path": list(row.pic_paths or []),
             "skip_weekends": row.skip_weekends,
             "date_mode": row.date_mode or "daily",
@@ -420,7 +469,12 @@ class AccountRepository:
         row.times = task["times"]
         row.enable = task["enable"]
         row.use_location = task["use_location"]
+        row.location_address = task["location_address"]
+        row.location_latitude = task["location_latitude"]
+        row.location_longitude = task["location_longitude"]
         row.text = task["text"]
+        row.fill_name = task["fill_name"]
+        row.fill_values = task["fill_values"]
         row.pic_paths = task["pic_path"]
         row.skip_weekends = task["skip_weekends"]
         row.date_mode = task["date_mode"]

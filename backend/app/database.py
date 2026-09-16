@@ -99,6 +99,37 @@ class Database:
                         "TINYINT(1) NOT NULL DEFAULT 0"
                     )
                 )
+            if "location_address" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE tasks ADD COLUMN location_address TEXT NULL"
+                ))
+                connection.execute(text(
+                    "UPDATE tasks SET location_address='' "
+                    "WHERE location_address IS NULL"
+                ))
+                connection.execute(text(
+                    "ALTER TABLE tasks MODIFY COLUMN location_address "
+                    "TEXT NOT NULL"
+                ))
+            if "location_latitude" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE tasks ADD COLUMN location_latitude "
+                    "DOUBLE NULL"
+                ))
+            if "location_longitude" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE tasks ADD COLUMN location_longitude "
+                    "DOUBLE NULL"
+                ))
+            if "fill_name" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE tasks ADD COLUMN fill_name "
+                    "VARCHAR(100) NOT NULL DEFAULT ''"
+                ))
+            if "fill_values" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE tasks ADD COLUMN fill_values JSON NULL"
+                ))
             if "completed_at" not in columns:
                 connection.execute(
                     text("ALTER TABLE tasks ADD COLUMN completed_at DATETIME NULL")

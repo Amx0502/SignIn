@@ -21,6 +21,7 @@ from .class_cube_models import (
     ClassCubeTaskBatchDelete,
     ClassCubeSettingsUpdate,
     ClassCubeLocationSearchRequest,
+    ClassCubeLocationReverseRequest,
 )
 from .class_cube_repository import ClassCubeNotFound
 from .class_cube_service import (
@@ -148,6 +149,20 @@ def create_class_cube_router(auth_dependency, menu_dependency=None) -> APIRouter
             payload.query,
             payload.limit,
             payload.region,
+            actor,
+        )
+
+    @router.post("/locations/reverse")
+    def reverse_location(
+        payload: ClassCubeLocationReverseRequest,
+        request: Request,
+        actor=Depends(access_locations),
+    ):
+        return _invoke(
+            request,
+            _service(request).reverse_location,
+            payload.latitude,
+            payload.longitude,
             actor,
         )
 

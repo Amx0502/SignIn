@@ -4,5 +4,8 @@
     "07:30:00"
   ],
   "webhook_url": "",
-  "class_cube_webhook_url": ""
+  "class_cube_webhook_url": "",
+  "site_settings": {
+    "purchase_url": "https://www.baidu.com"
+  }
 }

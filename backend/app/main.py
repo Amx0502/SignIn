@@ -2,13 +2,16 @@ import uuid
 import secrets
 import string
 import asyncio
+import csv
+import io
 from contextlib import asynccontextmanager
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
@@ -29,6 +32,7 @@ from .models import (
     LoginRequest,
     PasswordChange,
     PasswordReset,
+    PurchaseLinkSettingsUpdate,
     Settings,
     TaskCreate,
     TaskUpdate,
@@ -43,14 +47,25 @@ from .checkin_delay_settings import (
 )
 from .database_config import load_database_config
 from .class_cube_client import ClassCubeClient
+from .class_cube_models import (
+    ClassCubeLocationReverseRequest,
+    ClassCubeLocationSearchRequest,
+)
 from .class_cube_database import ClassCubeDatabase
 from .class_cube_repository import ClassCubeNotFound, ClassCubeRepository
 from .class_cube_router import create_class_cube_router
-from .class_cube_service import ClassCubeService
+from .class_cube_service import (
+    ClassCubeRemoteError,
+    ClassCubeService,
+    ClassCubeValidationError,
+)
 from .class_cube_scheduler import ClassCubeScheduler
 from .class_cube_logging import ClassCubeLogStore, create_class_cube_logger
 from .menu_events import MenuEventBroker
 from .membership_service import MembershipService
+from .membership_constants import (
+    DEFAULT_LOCATION_SEARCH_DAILY_LIMIT,
+)
 from .menu_repository import MenuRepository
 from .menu_router import create_menu_guard, create_menu_router
 from .miaoying_client import MiaoyingClient
@@ -60,6 +75,11 @@ from .miaoying_scheduler import MiaoyingScheduler
 from .miaoying_service import MiaoyingService
 from .repository import DuplicateMobileError
 from .service import AppState
+from .site_settings import (
+    SiteSettingsError,
+    load_site_settings,
+    save_purchase_url,
+)
 
 app_state = AppState(start_scheduler=False)
 auth_service = AuthService()
@@ -196,7 +216,7 @@ async def lifespan(app: FastAPI):
                             auth_service.repository = None
 
 
-app = FastAPI(title="签到管理系统", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="轻签", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -216,6 +236,16 @@ def success(data=None):
 
 def failure(message: str, status: int = 400):
     raise HTTPException(status_code=status, detail={"ok": False, "error": message})
+
+
+def _validate_task_location_payload(payload) -> None:
+    if payload.location_mode is None:
+        failure("前端资源版本过旧，请强制刷新页面后重新保存任务")
+    if payload.location_mode == "map" and (
+        payload.location_latitude is None
+        or payload.location_longitude is None
+    ):
+        failure("地图选择位置缺少经纬度，请重新选择签到位置")
 
 
 def _xxqd_scope(user: dict) -> tuple[int | None, bool]:
@@ -238,7 +268,7 @@ def _assert_xxqd_card_usable(user: dict) -> None:
     if user.get("role") == "admin":
         return
     if user.get("card_type") == "single" and user.get("card_used_at"):
-        failure("次卡次数已用完，账号将在删除延迟到期后失效")
+        failure("次卡次数已用完，账号将在清理时间到期后失效")
 
 
 @app.exception_handler(HTTPException)
@@ -523,6 +553,23 @@ def fetch_projects(account_index: int, user=Depends(require_menu("xxqd.accounts"
         failure("索引越界，请重新选择账号")
 
 
+@app.get("/api/accounts/{account_index}/fill-options")
+def fetch_fill_options(
+    account_index: int,
+    project_index: int,
+    user=Depends(require_menu("xxqd.tasks")),
+):
+    try:
+        owner_user_id, is_admin = _xxqd_scope(user)
+        return success(app_state.fetch_fill_options(
+            account_index, project_index, owner_user_id, is_admin
+        ))
+    except IndexError:
+        failure("索引越界，请重新选择账号")
+    except ValueError as exc:
+        failure(str(exc))
+
+
 @app.post("/api/accounts/{account_index}/tasks")
 def add_task(
     account_index: int,
@@ -530,6 +577,7 @@ def add_task(
     user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
+        _validate_task_location_payload(payload)
         _assert_xxqd_card_usable(user)
         owner_user_id, is_admin = _xxqd_scope(user)
         return success(app_state.add_task(
@@ -549,6 +597,7 @@ def update_task(
     user=Depends(require_menu("xxqd.tasks")),
 ):
     try:
+        _validate_task_location_payload(payload)
         owner_user_id, is_admin = _xxqd_scope(user)
         return success(app_state.update_task(
             account_index,
@@ -663,8 +712,88 @@ def change_password(
 
 
 @app.get("/api/users")
-def list_users(admin=Depends(require_admin)):
-    return success(auth_service.repository.list_users())
+def list_users(
+    view: Literal["current", "archived"] = "current",
+    keyword: str | None = Query(default=None, max_length=50),
+    role: Literal["admin", "user"] | None = None,
+    card_type: Literal["none", "single", "monthly"] | None = None,
+    platform_scope: Literal["all", "xxqd", "class_cube"] | None = None,
+    status: Literal[
+        "active", "pending", "used", "expired", "disabled"
+    ] | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=500),
+    admin=Depends(require_admin),
+):
+    try:
+        return success(auth_service.repository.query_users(
+            view=view,
+            keyword=keyword,
+            role=role,
+            card_type=card_type,
+            platform_scope=platform_scope,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            page=page,
+            page_size=page_size,
+        ))
+    except ValueError as exc:
+        failure(str(exc))
+
+
+@app.get("/api/users/archived/export")
+def export_archived_users(
+    keyword: str | None = Query(default=None, max_length=50),
+    card_type: Literal["none", "single", "monthly"] | None = None,
+    platform_scope: Literal["all", "xxqd", "class_cube"] | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    admin=Depends(require_admin),
+):
+    try:
+        rows = auth_service.repository.export_archived_users(
+            keyword=keyword,
+            card_type=card_type,
+            platform_scope=platform_scope,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except ValueError as exc:
+        failure(str(exc))
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "用户名",
+        "会员卡",
+        "功能范围",
+        "失效时间",
+        "最后登录",
+        "创建时间",
+    ])
+    card_names = {"single": "次卡", "monthly": "月卡"}
+    scope_names = {
+        "all": "全部平台",
+        "xxqd": "仅小小签到",
+        "class_cube": "仅班级魔方",
+    }
+    for row in rows:
+        writer.writerow([
+            row["username"],
+            card_names.get(row.get("card_type"), "无"),
+            scope_names.get(row.get("platform_scope"), "全部平台"),
+            row.get("archived_at") or row.get("expires_at") or "",
+            row.get("last_login") or "",
+            row.get("created_at") or "",
+        ])
+    filename = f"expired-users-{datetime.now().strftime('%Y%m%d')}.csv"
+    return Response(
+        content=output.getvalue().encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/admin/checkin-delay-settings")
@@ -672,6 +801,87 @@ def get_checkin_delay_settings(_admin=Depends(require_admin)):
     try:
         return success(load_checkin_delay_settings())
     except CheckinDelaySettingsError as exc:
+        failure(str(exc))
+
+
+@app.get("/api/site/config")
+def get_site_config():
+    try:
+        return success(load_site_settings())
+    except SiteSettingsError as exc:
+        failure(str(exc))
+
+
+@app.get("/api/locations/config")
+def get_location_config(
+    request: Request,
+    user=Depends(get_current_user),
+):
+    try:
+        return success(
+            request.app.state.class_cube_service.get_location_config(user)
+        )
+    except ClassCubeValidationError as exc:
+        failure(str(exc))
+
+
+@app.post("/api/locations/search")
+def search_locations(
+    payload: ClassCubeLocationSearchRequest,
+    request: Request,
+    user=Depends(get_current_user),
+):
+    try:
+        return success(
+            request.app.state.class_cube_service.search_locations(
+                payload.query,
+                payload.limit,
+                payload.region,
+                user,
+            )
+        )
+    except ClassCubeValidationError as exc:
+        failure(str(exc))
+    except ClassCubeRemoteError as exc:
+        failure(str(exc), 502)
+
+
+@app.post("/api/locations/reverse")
+def reverse_location(
+    payload: ClassCubeLocationReverseRequest,
+    request: Request,
+    user=Depends(get_current_user),
+):
+    try:
+        return success(
+            request.app.state.class_cube_service.reverse_location(
+                payload.latitude,
+                payload.longitude,
+                user,
+            )
+        )
+    except ClassCubeValidationError as exc:
+        failure(str(exc))
+    except ClassCubeRemoteError as exc:
+        failure(str(exc), 502)
+
+
+@app.get("/api/admin/purchase-link-settings")
+def get_purchase_link_settings(_admin=Depends(require_admin)):
+    try:
+        return success(load_site_settings())
+    except SiteSettingsError as exc:
+        failure(str(exc))
+
+
+@app.put("/api/admin/purchase-link-settings")
+def update_purchase_link_settings(
+    payload: PurchaseLinkSettingsUpdate,
+    _admin=Depends(require_admin),
+):
+    try:
+        return success(save_purchase_url(payload.purchase_url))
+    except SiteSettingsError as exc:
         failure(str(exc))
 
 
@@ -803,7 +1013,7 @@ async def create_platform_member(
                     1 if platform_scope == "xxqd" else None
                 ),
                 location_search_daily_limit=(
-                    100 if platform_scope == "class_cube" else None
+                    DEFAULT_LOCATION_SEARCH_DAILY_LIMIT
                 ),
                 card_type=payload.card_type,
                 card_delete_delay_seconds=payload.card_delete_delay_seconds,
@@ -1057,17 +1267,24 @@ app.mount("/uploads", StaticFiles(directory=str(config.UPLOAD_DIR)), name="uploa
 
 if FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="assets")
+    INDEX_HEADERS = {"Cache-Control": "no-store, max-age=0"}
 
     @app.get("/")
     def index():
-        return FileResponse(str(FRONTEND_DIST / "index.html"))
+        return FileResponse(
+            str(FRONTEND_DIST / "index.html"),
+            headers=INDEX_HEADERS,
+        )
 
     @app.get("/{full_path:path}")
     def spa_catch_all(full_path: str):
         target = FRONTEND_DIST / full_path
         if target.exists() and target.is_file():
             return FileResponse(str(target))
-        return FileResponse(str(FRONTEND_DIST / "index.html"))
+        return FileResponse(
+            str(FRONTEND_DIST / "index.html"),
+            headers=INDEX_HEADERS,
+        )
 
 
 if __name__ == "__main__":

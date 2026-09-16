@@ -90,7 +90,10 @@
                   </el-tooltip>
                 </span>
                 <span v-if="task.use_location"
-                  ><el-icon><MapLocation /></el-icon>位置</span
+                  ><el-icon><MapLocation /></el-icon>{{ taskLocationLabel(task) }}</span
+                >
+                <span v-if="task.fill_name"
+                  ><el-icon><User /></el-icon>{{ task.fill_name }}</span
                 >
                 <span v-if="task.pic_path && task.pic_path.length"
                   ><el-icon><Picture /></el-icon
@@ -129,7 +132,7 @@
                   }}
                 </span>
                 <span v-if="task.use_location"
-                  ><el-icon><MapLocation /></el-icon>位置</span
+                  ><el-icon><MapLocation /></el-icon>{{ taskLocationLabel(task) }}</span
                 >
                 <span v-if="task.pic_path && task.pic_path.length"
                   ><el-icon><Picture /></el-icon>{{ task.pic_path.length }} 图</span
@@ -229,11 +232,30 @@
                     placeholder="请输入签到时需要提交的文本内容"
                   />
                 </el-form-item>
+                <el-form-item label="签到姓名">
+                  <el-input
+                    v-model="getEditForm(task).fill_name"
+                    maxlength="50"
+                    placeholder="项目要求填写姓名时自动提交，请提前填写，例如：张三"
+                  />
+                </el-form-item>
                 <el-form-item label="签到位置">
                   <el-radio-group v-model="editLocationModes[getTaskKey(task)]">
                     <el-radio value="none">不显示位置</el-radio>
                     <el-radio value="auto">自动获取位置</el-radio>
+                    <el-radio value="map">地图选择位置</el-radio>
                   </el-radio-group>
+                  <div class="location-mode-tip">签到时根据接口自动判断需要提交的类型（文字 / 图片 / 位置 / 姓名），此处配置的内容会在项目要求时自动使用</div>
+                  <div v-if="editLocationModes[getTaskKey(task)] === 'map'" class="map-location-choice">
+                    <div>
+                      <span>签到位置</span>
+                      <strong>{{ getEditForm(task).location_address || '尚未选择地图位置' }}</strong>
+                      <small v-if="getEditForm(task).location_latitude != null">{{ Number(getEditForm(task).location_latitude).toFixed(6) }}, {{ Number(getEditForm(task).location_longitude).toFixed(6) }}</small>
+                    </div>
+                    <el-button type="primary" plain @click="openInlineLocationPicker(task)">
+                      {{ getEditForm(task).location_latitude == null ? '选择位置' : '重新选择' }}
+                    </el-button>
+                  </div>
                 </el-form-item>
                 <el-form-item label="签到图片">
                   <TaskImageUpload
@@ -282,6 +304,14 @@
       <TaskManager />
     </el-dialog>
 
+    <TaskLocationPickerDialog
+      v-model="locationPickerVisible"
+      :address="activeLocationForm?.location_address || ''"
+      :latitude="activeLocationForm?.location_latitude ?? null"
+      :longitude="activeLocationForm?.location_longitude ?? null"
+      @confirm="applyInlineMapLocation"
+    />
+
     <CheckinResultDialog
       v-model="checkinResultVisible"
       :result="checkinResult"
@@ -308,6 +338,7 @@ import CheckinResultDialog from "../components/CheckinResultDialog.vue";
 import TaskManager from "../components/TaskManager.vue";
 import TaskDateSchedule from "../components/TaskDateSchedule.vue";
 import TaskImageUpload from "../components/TaskImageUpload.vue";
+import TaskLocationPickerDialog from "../components/TaskLocationPickerDialog.vue";
 import { useAppState } from "../composables/useAppState";
 import { createCheckinResult } from "../utils/checkinResult";
 import { getTaskDeleteTargets } from "../utils/batchDelete";
@@ -322,9 +353,15 @@ const editForms = reactive({});
 const editFileLists = reactive({});
 const editTimesInputs = reactive({});
 const editLocationModes = reactive({});
+const inlineMapLocations = reactive({});
 const selectedTaskKeys = ref(new Set());
 const batchDeleting = ref(false);
 const runningTaskKey = ref(null);
+const locationPickerVisible = ref(false);
+const locationPickerTaskKey = ref(null);
+const activeLocationForm = computed(() => (
+  locationPickerTaskKey.value ? editForms[locationPickerTaskKey.value] : null
+));
 
 const isAdmin = (() => {
   try {
@@ -434,9 +471,14 @@ function getEditForm(task) {
       index: task.index || 1,
       times: [...(task.times || [])],
       text: task.text || "",
+      fill_name: task.fill_name || "",
+      fill_values: { ...(task.fill_values || {}) },
       pic_path: [...(task.pic_path || [])],
       enable: task.enable !== false,
       use_location: task.use_location || false,
+      location_address: task.location_address || "",
+      location_latitude: task.location_latitude ?? null,
+      location_longitude: task.location_longitude ?? null,
       skip_weekends: task.skip_weekends || false,
       date_mode: task.date_mode || "daily",
       run_dates: [...(task.run_dates || [])],
@@ -478,6 +520,7 @@ function toggleInlineEdit(task) {
     delete editFileLists[key];
     delete editTimesInputs[key];
     delete editLocationModes[key];
+    delete inlineMapLocations[key];
   } else {
     editingKey.value = key;
 
@@ -486,9 +529,14 @@ function toggleInlineEdit(task) {
       index: task.index || 1,
       times: [...(task.times || [])],
       text: task.text || "",
+      fill_name: task.fill_name || "",
+      fill_values: { ...(task.fill_values || {}) },
       pic_path: [...(task.pic_path || [])],
       enable: task.enable !== false,
       use_location: task.use_location || false,
+      location_address: task.location_address || "",
+      location_latitude: task.location_latitude ?? null,
+      location_longitude: task.location_longitude ?? null,
       skip_weekends: task.skip_weekends || false,
       date_mode: task.date_mode || "daily",
       run_dates: [...(task.run_dates || [])],
@@ -514,7 +562,16 @@ function toggleInlineEdit(task) {
     }));
 
     editTimesInputs[key] = (task.times || []).join(", ");
-    editLocationModes[key] = task.use_location ? "auto" : "none";
+    editLocationModes[key] = (
+      task.location_latitude != null && task.location_longitude != null
+    ) ? "map" : task.use_location ? "auto" : "none";
+    inlineMapLocations[key] = (
+      task.location_latitude != null && task.location_longitude != null
+    ) ? {
+      address: task.location_address || "",
+      latitude: task.location_latitude,
+      longitude: task.location_longitude,
+    } : null;
 
     watch(
       () => editTimesInputs[key],
@@ -532,15 +589,52 @@ function toggleInlineEdit(task) {
       () => editLocationModes[key],
       (val) => {
         if (val != null && editForms[key]) {
-          editForms[key].use_location = val === "auto";
+          editForms[key].use_location = val !== "none";
+          if (val === "none" || val === "auto") {
+            editForms[key].location_address = "";
+            editForms[key].location_latitude = null;
+            editForms[key].location_longitude = null;
+            inlineMapLocations[key] = null;
+          }
         }
       },
     );
   }
 }
 
+function taskLocationLabel(task) {
+  return task.location_latitude != null && task.location_longitude != null
+    ? "地图"
+    : "自动";
+}
+
+function openInlineLocationPicker(task) {
+  locationPickerTaskKey.value = getTaskKey(task);
+  locationPickerVisible.value = true;
+}
+
+function applyInlineMapLocation(location) {
+  const form = activeLocationForm.value;
+  if (!form) return;
+  form.use_location = true;
+  form.location_address = location.address || "";
+  form.location_latitude = location.latitude;
+  form.location_longitude = location.longitude;
+  inlineMapLocations[locationPickerTaskKey.value] = { ...location };
+}
+
 async function saveInlineEdit(task) {
   const key = getTaskKey(task);
+  if (
+    editLocationModes[key] === "map"
+    && (
+      editForms[key].location_latitude == null
+      || editForms[key].location_longitude == null
+    )
+  ) {
+    ElMessage.warning("请先通过地图选择签到位置");
+    return;
+  }
   editForms[key].times = editTimesInputs[key]
     .split(/[\s,|;，；、]+/)
     .map((t) => t.trim())
@@ -559,9 +653,18 @@ async function saveInlineEdit(task) {
   if (!isAdmin) editForms[key].notify_wechat = true;
 
   try {
-    await api.updateTask(task.accountIndex, task.taskIndex, {
-      ...editForms[key],
-    });
+    const mapLocation = inlineMapLocations[key];
+    await api.updateTask(task.accountIndex, task.taskIndex, mapLocation
+      ? {
+          ...editForms[key],
+          ...mapLocation,
+          use_location: true,
+          location_mode: "map",
+        }
+      : {
+          ...editForms[key],
+          location_mode: editLocationModes[key],
+        });
     ElMessage.success("任务已更新");
     await refreshState();
     await refreshLogs();
@@ -685,6 +788,13 @@ async function deleteSelectedTasks() {
 </script>
 
 <style scoped>
+.map-location-choice { display:flex; width:100%; margin-top:10px; padding:12px 14px; align-items:center; justify-content:space-between; gap:12px; border:1px solid #cfe2ff; border-radius:12px; background:#f8fbff; }
+.map-location-choice span,.map-location-choice strong,.map-location-choice small { display:block; }
+.map-location-choice span { color:#94a3b8; font-size:11px; }
+.map-location-choice strong { margin-top:3px; color:#1e3a5f; font-size:13px; }
+.map-location-choice small { margin-top:2px; color:#64748b; font-size:11px; }
+.location-mode-tip { width:100%; margin-top:6px; color:#94a3b8; font-size:11px; line-height:1.5; }
+@media (max-width:640px) { .map-location-choice { align-items:stretch; flex-direction:column; } .map-location-choice .el-button { width:100%; margin:0; } }
 .page-container {
   padding: 0;
 }

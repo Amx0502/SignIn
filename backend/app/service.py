@@ -74,6 +74,30 @@ def normalize_task(task: dict | None = None) -> dict:
     mode = str(task.get("mode", "")).strip() or ("image" if pic_paths else "normal")
     if mode not in {"normal", "image"}:
         mode = "normal"
+    location_latitude = task.get("location_latitude")
+    location_longitude = task.get("location_longitude")
+    try:
+        location_latitude = (
+            float(location_latitude)
+            if location_latitude is not None
+            else None
+        )
+        location_longitude = (
+            float(location_longitude)
+            if location_longitude is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        location_latitude = None
+        location_longitude = None
+    if (
+        location_latitude is None
+        or location_longitude is None
+        or not -90 <= location_latitude <= 90
+        or not -180 <= location_longitude <= 180
+    ):
+        location_latitude = None
+        location_longitude = None
     date_rule = normalize_task_date_rule(task)
     return {
         "id": int(raw_task_id) if raw_task_id not in (None, "") else None,
@@ -81,8 +105,14 @@ def normalize_task(task: dict | None = None) -> dict:
         "title": str(task.get("title", "")).strip() or f"任务{task.get('index', 1)}",
         "times": parse_time_list(task.get("times", [])),
         "enable": bool(task.get("enable", True)),
-        "use_location": bool(task.get("use_location", False)),
+        "use_location": bool(task.get("use_location", False))
+        or location_latitude is not None,
+        "location_address": str(task.get("location_address", "")).strip(),
+        "location_latitude": location_latitude,
+        "location_longitude": location_longitude,
         "text": str(task.get("text", "")),
+        "fill_name": str(task.get("fill_name", "")).strip(),
+        "fill_values": normalize_fill_values(task.get("fill_values")),
         "pic_path": pic_paths,
         "skip_weekends": bool(task.get("skip_weekends", False)),
         **date_rule,
@@ -92,6 +122,21 @@ def normalize_task(task: dict | None = None) -> dict:
         "mode": mode,
         "notify_wechat": bool(task.get("notify_wechat", True)),
     }
+
+
+def normalize_fill_values(raw) -> dict[str, str]:
+    """自定义填写项：field_key(字符串) → 提交值。"""
+    if not isinstance(raw, dict):
+        return {}
+    values: dict[str, str] = {}
+    for key, val in raw.items():
+        key_str = str(key).strip()
+        if not key_str:
+            continue
+        text = "" if val is None else str(val).strip()
+        if text:
+            values[key_str] = text
+    return values
 
 
 def normalize_account(account: dict | None = None) -> dict:
@@ -232,7 +277,7 @@ class CheckinService:
 
     def fetch_detail(self, cid: str, token: str) -> dict:
         url = (
-            "https://api-xcx-qunsou.weiyoubot.cn/xcx/checkin/v4/detail"
+            "https://api-xcx-qunsou.weiyoubot.cn/xcx/checkin/v5/detail"
             f"?cid={cid}&access_token={token}&tag=0"
         )
         return requests.get(url, headers=HEADERS, timeout=15).json()
@@ -261,36 +306,152 @@ class CheckinService:
 
         return None
 
+    @staticmethod
+    def _enabled_fill_options(detail: dict | None) -> list[dict]:
+        """返回签到项目实际需要提交的填写项。
+
+        v5/detail 的 fill_options 中：status 表示项目开放了哪些填写能力，
+        require=1 才是必填项（抓包验证 doit 只提交 require=1 的项）。
+        """
+        options = (detail or {}).get("data", {}).get("fill_options") or []
+        required = [option for option in options if option.get("require") == 1]
+        if required or any("require" in option for option in options):
+            return required
+        # 接口未返回 require 字段时，退回按 status 过滤的兼容行为
+        return [option for option in options if option.get("status") == 1]
+
+    @staticmethod
+    def _fill_option_label(option: dict) -> str:
+        field_key = option.get("field_key")
+        field_name = str(option.get("field_name", "")).strip()
+        if field_key == 1:
+            return "文字"
+        if field_key == 2:
+            return "图片"
+        if field_key == 6:
+            return "位置"
+        return field_name or str(field_key)
+
+    def _append_location_param(
+        self,
+        payload: dict,
+        task: dict,
+        detail: dict | None,
+        required: bool = False,
+    ) -> None:
+        location = self._task_location(task)
+        if location is None:
+            locations = (detail or {}).get("data", {}).get("locations") or []
+            if locations:
+                try:
+                    location = {
+                        "address": locations[0].get("address", ""),
+                        "latitude": float(locations[0]["latitude"]),
+                        "longitude": float(locations[0]["longitude"]),
+                    }
+                except (KeyError, TypeError, ValueError):
+                    location = None
+        if location is None and required:
+            raise ValueError(
+                "该签到项目要求提交位置信息，请在任务中设置签到位置后重试"
+            )
+        if location is not None:
+            payload["wifi_location_info"] = {
+                "latitude": location["latitude"],
+                "longitude": location["longitude"],
+                "accuracy": 68,
+                "wifi": "",
+            }
+            payload["fill_params"].append({
+                "key": 6,
+                "val": location.get("address", ""),
+            })
+            payload["wifi_match"] = 0
+
     def build_payload(self, token: str, cid: str, task: dict, detail: dict | None, image_urls: list[str] | None = None) -> dict:
         payload = {
             "cid": cid,
             "text": str(task.get("text", "")),
             "access_token": token,
-            "fill_params": [{"key": 1, "val": str(task.get("text", ""))}],
+            "fill_params": [],
         }
 
         image_urls = image_urls or []
-        if image_urls:
-            payload["fill_params"].append({"key": 2, "val": image_urls})
+        fill_name = str(task.get("fill_name", "")).strip()
+        fill_options = self._enabled_fill_options(detail)
 
-        if task.get("use_location"):
-            locations = (detail or {}).get("data", {}).get("locations") or []
-            if locations:
-                location = locations[0]
-                payload["wifi_location_info"] = {
-                    "latitude": float(location["latitude"]),
-                    "longitude": float(location["longitude"]),
-                    "accuracy": 323,
-                    "wifi": "",
-                }
-                payload["fill_params"].append({
-                    "key": 6,
-                    "val": location.get("address", ""),
-                    "lat": round(float(location["latitude"]), 5),
-                    "lon": round(float(location["longitude"]), 5),
-                })
-                payload["wifi_match"] = 0
+        if not fill_options:
+            # 详情接口未返回填写项定义时，退回按任务配置提交的旧行为
+            payload["fill_params"].append({"key": 1, "val": str(task.get("text", ""))})
+            if image_urls:
+                payload["fill_params"].append({"key": 2, "val": image_urls})
+            if fill_name:
+                raise ValueError(
+                    "无法读取该签到项目的填写项定义，请稍后重试或清空签到姓名"
+                )
+            if task.get("use_location"):
+                self._append_location_param(payload, task, detail)
+            return payload
+
+        # 根据接口返回的启用填写项自动判断需要提交的类型
+        required_keys = [option.get("field_key") for option in fill_options]
+        if 1 in required_keys:
+            payload["fill_params"].append({"key": 1, "val": str(task.get("text", ""))})
+        if 2 in required_keys:
+            if not image_urls:
+                raise ValueError(
+                    "该签到项目要求上传图片，请先在任务中配置签到图片"
+                )
+            payload["fill_params"].append({"key": 2, "val": image_urls})
+        if 6 in required_keys:
+            self._append_location_param(payload, task, detail, required=True)
+        fill_values = normalize_fill_values(task.get("fill_values"))
+        for option in fill_options:
+            field_key = option.get("field_key")
+            if field_key in (1, 2, 6):
+                continue
+            field_name = str(option.get("field_name", "")).strip()
+            field_type = option.get("field_type")
+            label = field_name or str(field_key)
+
+            if field_type in (0, 1):
+                # 文本输入 / 单选：优先取 fill_values，姓名项兼容旧的 fill_name
+                value = fill_values.get(str(field_key), "")
+                if not value and field_name in {"姓名", "名字"}:
+                    value = fill_name
+                if not value:
+                    raise ValueError(
+                        f"该签到项目要求填写「{label}」，请在任务中填写后重试"
+                    )
+                if field_type == 1:
+                    choices = [str(item) for item in option.get("options") or []]
+                    if choices and value not in choices:
+                        raise ValueError(
+                            f"「{label}」的值必须是 {'、'.join(choices)} 之一"
+                        )
+                payload["fill_params"].append({"key": field_key, "val": value})
+                continue
+
+            raise ValueError(
+                f"该签到项目包含暂不支持的填写项「{label}」"
+                f"（类型 {field_type}），无法自动提交"
+            )
         return payload
+
+    @staticmethod
+    def _task_location(task: dict) -> dict | None:
+        try:
+            latitude = float(task.get("location_latitude"))
+            longitude = float(task.get("location_longitude"))
+        except (TypeError, ValueError):
+            return None
+        if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            return None
+        return {
+            "address": str(task.get("location_address", "")).strip(),
+            "latitude": latitude,
+            "longitude": longitude,
+        }
 
     def execute_task(self, account: dict, task: dict) -> tuple[bool, dict]:
         name = account["name"] or account["mobile"]
@@ -312,9 +473,22 @@ class CheckinService:
         cid = target_item["cid"]
         real_title = target_item.get("title", "未知项目")
 
-        detail = None
-        if task.get("use_location"):
+        # 签到前拉取详情接口，用于自动判断该项目需要提交的填写类型
+        try:
             detail = self.fetch_detail(cid, token)
+        except Exception as exc:
+            self.logger.warning(
+                f"任务《{task_title}》读取签到项目填写项失败，将按任务配置提交：{exc}"
+            )
+            detail = None
+        enabled_names = [
+            self._fill_option_label(option)
+            for option in self._enabled_fill_options(detail)
+        ]
+        if enabled_names:
+            self.logger.info(
+                f"任务《{task_title}》检测到签到项目《{real_title}》需要提交：{'、'.join(enabled_names)}"
+            )
 
         pic_paths = task.get("pic_path", []) or []
         image_urls = []
@@ -327,7 +501,10 @@ class CheckinService:
                 if idx < len(pic_paths):
                     time.sleep(6.5)
 
-        payload = self.build_payload(token, cid, task, detail, image_urls)
+        try:
+            payload = self.build_payload(token, cid, task, detail, image_urls)
+        except ValueError as exc:
+            return False, {"error": f"[{name}] 任务《{task_title}》{exc}"}
         response = requests.post(
             "https://api-xcx-qunsou.weiyoubot.cn/xcx/checkin/v3/doit",
             headers=HEADERS,
@@ -346,14 +523,19 @@ class CheckinService:
             if image_urls:
                 result["image_urls"] = image_urls
             if task.get("use_location"):
-                locations = (detail or {}).get("data", {}).get("locations") or []
-                if locations:
-                    location = locations[0]
-                    result["location"] = {
-                        "address": location.get("address", ""),
-                        "latitude": float(location.get("latitude", 0)),
-                        "longitude": float(location.get("longitude", 0)),
-                    }
+                selected_location = self._task_location(task)
+                if selected_location is None:
+                    locations = (detail or {}).get(
+                        "data", {}
+                    ).get("locations") or []
+                    if locations:
+                        selected_location = {
+                            "address": locations[0].get("address", ""),
+                            "latitude": float(locations[0].get("latitude", 0)),
+                            "longitude": float(locations[0].get("longitude", 0)),
+                        }
+                if selected_location is not None:
+                    result["location"] = selected_location
             return True, result
 
         return False, {"error": f"[{name}] 任务《{task_title}》签到失败：{response.get('msg', '未知错误')}"}
@@ -386,7 +568,7 @@ class AppState:
         self.scheduler_thread = threading.Thread(target=self.scheduler_loop, daemon=True)
         if start_scheduler and self.repository is not None:
             self.scheduler_thread.start()
-        self.logger.info("签到 Web 管理系统已启动")
+        self.logger.info("轻签 Web 管理系统已启动")
 
     def initialize_database(self, settings: DatabaseSettings) -> None:
         if self.repository is not None:
@@ -677,6 +859,41 @@ class AppState:
             account_index, projects, owner_user_id, is_admin
         )
         return projects
+
+    def fetch_fill_options(
+        self,
+        account_index: int,
+        project_index: int,
+        owner_user_id: int | None = None,
+        is_admin: bool = True,
+    ) -> dict:
+        account = self.repository.list_accounts(
+            owner_user_id, is_admin
+        )[account_index]
+        if not account.get("token"):
+            raise ValueError("当前账号没有 Token，请先登录")
+        projects = self.service.fetch_checkin_list(account["token"])
+        target_index = int(project_index) - 1
+        if target_index < 0 or target_index >= len(projects):
+            raise ValueError("项目序号不存在，请先获取项目列表")
+        target = projects[target_index]
+        detail = self.service.fetch_detail(target["cid"], account["token"])
+        items = [
+            {
+                "key": str(option.get("field_key")),
+                "name": self.service._fill_option_label(option),
+                "field_type": option.get("field_type"),
+                "options": list(option.get("options") or []),
+            }
+            for option in self.service._enabled_fill_options(detail)
+        ]
+        self.logger.info(
+            "[%s] 检测到签到项目《%s》需要提交：%s",
+            account["name"],
+            target.get("title", "未知项目"),
+            "、".join(item["name"] for item in items) or "未返回填写项",
+        )
+        return {"title": target.get("title", "未知项目"), "items": items}
 
     def add_task(
         self,

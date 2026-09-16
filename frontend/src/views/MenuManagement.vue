@@ -194,8 +194,12 @@ function captureSavedState() {
 }
 
 async function loadUsers() {
-  const response = await getUsersApi()
-  users.value = response?.data || []
+  const response = await getUsersApi({
+    view: 'current',
+    page: 1,
+    page_size: 500,
+  })
+  users.value = response?.data?.items || []
   if (!selectedUserId.value && ordinaryUsers.value.length) {
     selectedUserId.value = ordinaryUsers.value[0].id
   }

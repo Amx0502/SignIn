@@ -1,7 +1,23 @@
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, JSON, String
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from .membership_constants import (
+    DEFAULT_CARD_DELETE_DELAY_SECONDS,
+    DEFAULT_CARD_TOTAL_USES,
+    PLATFORM_ALL,
+)
 
 
 class AuthBase(DeclarativeBase):
@@ -10,6 +26,9 @@ class AuthBase(DeclarativeBase):
 
 class UserRow(AuthBase):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_card_cleanup_due", "card_type", "card_delete_due_at"),
+    )
 
     id: Mapped[int] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
@@ -21,14 +40,18 @@ class UserRow(AuthBase):
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     platform_scope: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="all"
+        String(16), nullable=False, default=PLATFORM_ALL
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
     )
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Account access expires at expires_at; card_delete_due_at schedules
+    # platform account/task cleanup while keeping the system user row.
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
     card_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     card_activated_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True
@@ -37,13 +60,13 @@ class UserRow(AuthBase):
         DateTime, nullable=True
     )
     card_total_uses: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1
+        Integer, nullable=False, default=DEFAULT_CARD_TOTAL_USES
     )
     card_used_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )
     card_delete_delay_seconds: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=30
+        Integer, nullable=False, default=DEFAULT_CARD_DELETE_DELAY_SECONDS
     )
     card_delete_due_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True

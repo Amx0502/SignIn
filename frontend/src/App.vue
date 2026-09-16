@@ -21,7 +21,7 @@
         >
           <img src="./img/logo.png" class="logo-img" alt="签到" />
           <div v-if="!sidebarCollapsed">
-            <h1>签到管理系统</h1>
+            <h1>轻签</h1>
             <p>Professional Admin Console</p>
           </div>
         </div>
@@ -91,7 +91,7 @@
               v-if="isMobile"
               :src="mobilePlatform?.image || appLogo"
               class="mobile-header-logo"
-              :alt="mobilePlatform ? `${mobilePlatform.title} Logo` : '签到管理系统'"
+              :alt="mobilePlatform ? `${mobilePlatform.title} Logo` : '轻签'"
             />
             <div class="header-copy">
               <p class="breadcrumb">
@@ -529,6 +529,7 @@ import {
   ArrowRight,
   ArrowDown,
   Key,
+  Link,
   SwitchButton,
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
@@ -593,6 +594,7 @@ const iconMap = {
   Setting,
   UserFilled,
   Menu,
+  Link,
 };
 const imageMap = {
   xxqd: xxqdImage,

@@ -31,7 +31,7 @@ class MembershipService:
         return self.auth_repository.membership_is_usable(user_id)
 
     def expire_due(self) -> int:
-        for user_id in self.auth_repository.list_due_single_card_user_ids():
+        for user_id in self.auth_repository.list_due_card_cleanup_user_ids():
             try:
                 user = self.auth_repository.get_user(user_id)
                 platform_scope = user.platform_scope or "all"
