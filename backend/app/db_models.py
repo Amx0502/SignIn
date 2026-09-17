@@ -82,6 +82,8 @@ class TaskRow(Base):
     fill_values: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
+    # 用户勾选要提交的填写项 field_key 列表；NULL 表示未配置（提交全部检测项）
+    fill_fields: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     pic_paths: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     skip_weekends: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     date_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="daily")

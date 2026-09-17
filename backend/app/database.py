@@ -130,6 +130,10 @@ class Database:
                 connection.execute(text(
                     "ALTER TABLE tasks ADD COLUMN fill_values JSON NULL"
                 ))
+            if "fill_fields" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE tasks ADD COLUMN fill_fields JSON NULL"
+                ))
             if "completed_at" not in columns:
                 connection.execute(
                     text("ALTER TABLE tasks ADD COLUMN completed_at DATETIME NULL")

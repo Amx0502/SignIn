@@ -38,6 +38,7 @@ def _apply_membership_baseline(connection: Connection) -> None:
             f"{DEFAULT_CARD_DELETE_DELAY_SECONDS}"
         ),
         "card_delete_due_at": "DATETIME NULL",
+        "initial_password_enc": "BLOB NULL",
     }
     added_card_columns: set[str] = set()
     for name, definition in card_definitions.items():
@@ -100,6 +101,30 @@ def _synchronize_monthly_cleanup_schedule(connection: Connection) -> None:
     ))
 
 
+def _add_initial_password_enc(connection: Connection) -> None:
+    user_columns = _columns(connection, "users")
+    if "initial_password_enc" not in user_columns:
+        connection.execute(text(
+            "ALTER TABLE users ADD COLUMN initial_password_enc BLOB NULL"
+        ))
+
+
+def _add_user_remark(connection: Connection) -> None:
+    user_columns = _columns(connection, "users")
+    if "remark" not in user_columns:
+        connection.execute(text(
+            "ALTER TABLE users ADD COLUMN remark VARCHAR(255) NULL"
+        ))
+
+
+def _add_user_created_by(connection: Connection) -> None:
+    user_columns = _columns(connection, "users")
+    if "created_by" not in user_columns:
+        connection.execute(text(
+            "ALTER TABLE users ADD COLUMN created_by VARCHAR(50) NULL"
+        ))
+
+
 def _add_user_archive_indexes(connection: Connection) -> None:
     indexes = {
         index["name"]
@@ -131,6 +156,21 @@ AUTH_MIGRATIONS = (
         version=3,
         name="add_user_archive_indexes",
         upgrade=_add_user_archive_indexes,
+    ),
+    SchemaMigration(
+        version=4,
+        name="add_initial_password_enc",
+        upgrade=_add_initial_password_enc,
+    ),
+    SchemaMigration(
+        version=5,
+        name="add_user_remark",
+        upgrade=_add_user_remark,
+    ),
+    SchemaMigration(
+        version=6,
+        name="add_user_created_by",
+        upgrade=_add_user_created_by,
     ),
 )
 

@@ -47,9 +47,18 @@
           </span>
         </template>
       </el-table-column>
+      <el-table-column label="备注" min-width="140">
+        <template #default="{ row }">
+          <span v-if="row.remark">{{ row.remark }}</span>
+          <span v-else class="muted-text">—</span>
+        </template>
+      </el-table-column>
       <el-table-column label="到期时间" min-width="210">
         <template #default="{ row }">
-          <span :class="{ 'expired-time': isExpiredUser(row) }">{{ formatMembershipExpiry(row) }}</span>
+          <div class="expiry-cell">
+            <span :class="{ 'expired-time': isExpiredUser(row) }">{{ formatMembershipExpiry(row) }}</span>
+            <CardStatusBar v-if="row.card_type" :row="row" />
+          </div>
         </template>
       </el-table-column>
       <el-table-column prop="last_login" label="最后登录" min-width="180">
@@ -58,21 +67,22 @@
       <el-table-column prop="created_at" label="创建时间" min-width="180">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="300" fixed="right">
         <template #default="{ row }">
           <template v-if="!isExpiredUser(row)">
+            <el-button link type="primary" @click="emit('detail', row)">详情</el-button>
             <el-button link type="primary" @click="emit('edit', row)">编辑</el-button>
             <el-button link type="warning" @click="emit('reset', row)">重置密码</el-button>
             <el-button link type="danger" @click="emit('remove', row)">删除</el-button>
           </template>
-          <span v-else class="muted-text">已过期，只读</span>
+          <el-button v-else link type="primary" @click="emit('detail', row)">详情</el-button>
         </template>
       </el-table-column>
     </el-table>
 
     <div class="mobile-user-list" v-loading="loading">
       <el-empty v-if="!users.length && !loading" description="暂无用户" />
-      <article v-for="row in users" :key="row.id" class="mobile-user-card">
+      <article v-for="row in users" :key="row.id" class="mobile-user-card" @click="emit('detail', row)">
         <header>
           <div class="user-title">
             <strong>{{ row.username }}</strong>
@@ -85,21 +95,25 @@
         <div class="user-meta">
           <span>{{ row.card_type ? cardTypeLabel(row.card_type) : '无会员卡' }}</span>
           <span>{{ scopeLabel(row) }}</span>
-          <span>{{ formatMembershipExpiry(row) }}</span>
           <span>登录 {{ formatDateTime(row.last_login) }}</span>
         </div>
-        <footer v-if="!isExpiredUser(row)">
+        <div v-if="row.remark" class="user-remark">备注：{{ row.remark }}</div>
+        <div v-if="row.card_type" class="user-card-status">
+          <CardStatusBar :row="row" />
+        </div>
+        <footer v-if="!isExpiredUser(row)" @click.stop>
           <el-button link type="primary" @click="emit('edit', row)">编辑</el-button>
           <el-button link type="warning" @click="emit('reset', row)">重置密码</el-button>
           <el-button link type="danger" @click="emit('remove', row)">删除</el-button>
         </footer>
-        <div v-else class="expired-note">已过期，只读</div>
+        <div v-else class="expired-note">已过期，点卡片查看详情</div>
       </article>
     </div>
   </div>
 </template>
 
 <script setup>
+import CardStatusBar from './CardStatusBar.vue'
 import {
   accountStatusLabel,
   accountStatusTagType,
@@ -114,7 +128,7 @@ defineProps({
   users: { type: Array, default: () => [] },
   loading: Boolean,
 })
-const emit = defineEmits(['edit', 'reset', 'remove'])
+const emit = defineEmits(['edit', 'reset', 'remove', 'detail'])
 
 function scopeLabel(row) {
   if (row.role === 'admin') return '全部功能'
@@ -127,11 +141,12 @@ function scopeLabel(row) {
 <style scoped>
 .muted-text { color: #94a3b8; font-size: 12px; }
 .expired-time { color: #d97706; }
+.expiry-cell { display: grid; gap: 6px; }
 .mobile-user-list { display: none; }
 @media (max-width: 640px) {
   .desktop-user-table { display: none; }
   .mobile-user-list { display: grid; gap: 14px; }
-  .mobile-user-card { overflow: hidden; border: 1px solid #b6c6dc; border-radius: 14px; background: #fff; box-shadow: none; }
+  .mobile-user-card { overflow: hidden; border: 1px solid #b6c6dc; border-radius: 14px; background: #fff; box-shadow: none; cursor: pointer; }
   .mobile-user-card header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 8px 14px 6px; background: #eef2f8; }
   .mobile-user-card header .user-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
   .mobile-user-card header strong { overflow-wrap: anywhere; color: #172033; font-size: 14px; }
@@ -139,6 +154,8 @@ function scopeLabel(row) {
   .mobile-user-card .user-meta { display: flex; flex-wrap: wrap; align-items: center; row-gap: 3px; padding: 0 14px 8px; color: #64748b; font-size: 12px; line-height: 1.4; }
   .mobile-user-card .user-meta > span { min-width: 0; }
   .mobile-user-card .user-meta > span + span::before { content: '·'; margin: 0 6px; color: #cbd5e1; }
+  .mobile-user-card .user-remark { margin: 0 14px 9px; padding: 7px 10px; border-radius: 9px; background: #f5f8fc; color: #475569; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+  .mobile-user-card .user-card-status { padding: 0 14px 9px; }
   .mobile-user-card .expired-note { padding: 0 14px 10px; color: #94a3b8; font-size: 12px; }
   .mobile-user-card footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 5px 10px 6px; }
   .mobile-user-card footer .el-button { min-height: 30px; margin: 0; padding-inline: 4px; font-size: 13px; }

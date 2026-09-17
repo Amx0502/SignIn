@@ -7,6 +7,7 @@ import {
 } from '../utils/classCube.js'
 import { latestSyncedDayItems } from '../utils/classCubeItems.js'
 import { taskRequest } from '../utils/classCubeTaskForm.js'
+import { applyMembershipUpdate } from '../utils/userMembership.js'
 
 const TERMINAL_QR_STATES = new Set(['success', 'expired', 'error'])
 const BACKGROUND_REFRESH_MS = 30_000
@@ -408,7 +409,11 @@ export function useClassCube(api = classCubeApi) {
       request.photo_path = request.photoPath
       delete request.photoPath
     }
-    return invoke(api.manualCheckin, itemId, request)
+    return invoke(async () => {
+      const result = await api.manualCheckin(itemId, request)
+      applyMembershipUpdate(responseData(result))
+      return result
+    })
   }
 
   function batchCheckin(itemId, payload = {}, accountIds = []) {

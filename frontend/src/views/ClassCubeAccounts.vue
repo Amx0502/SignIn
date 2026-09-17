@@ -1,5 +1,5 @@
 <template>
-  <div class="cube-subpage"><el-card><template #header><div class="page-head"><span>账号管理</span><el-button type="primary" :disabled="!canAddAccount" @click="openQrLogin">微信扫码添加账号</el-button></div></template>
+  <div class="cube-subpage"><el-card>
     <AccountCheckinPanel :accounts="accounts" :account-access="accountAccess" :can-add-account="canAddAccount" :courses="courses" :items="items" :batch-targets="batchTargets" :selected-account-id="selectedAccountId" :selected-course-id="selectedCourseId" :selected-item-id="selectedItemId" :selected-course="selectedCourse" :selected-item="selectedItem" :courses-loading="coursesLoading" :items-loading="itemsLoading" :items-syncing="itemsSyncing" :is-admin="isAdmin" :manual-checkin-action="manualCheckinAndSync" :batch-checkin-action="batchCheckin" :sync-class-items-action="syncClassItemsAndRefresh" :sync-all-accounts-action="syncAllAccountsAndRefresh" :upload-photo-action="uploadPhoto" :batch-delete-accounts-action="removeAccounts" @qr-login="openQrLogin" @select-account="selectAccount" @select-course="selectCourse" @select-item="value => selectedItemId = value" @sync-courses="syncCourses" @sync-items="handleSyncItems" @rename-account="renameAccount" @delete-account="removeAccount" />
   </el-card><QrLoginDialog v-model="qrVisible" :session="qrSession" :qr-remaining-seconds="qrRemainingSeconds" :loading="qrLoading" @regenerate="regenerateQr" /></div>
 </template>
@@ -70,7 +70,6 @@ watch(() => [selectedItemId.value, selectedItem.value?.mode], ([value, mode]) =>
 </script>
 <style scoped>
 .cube-subpage{display:grid;gap:18px}
-.page-head{display:flex;justify-content:space-between;align-items:center;font-weight:700}
 @media(max-width:768px){
   .cube-subpage>:deep(.el-card)>.el-card__body{padding:0!important}
 }

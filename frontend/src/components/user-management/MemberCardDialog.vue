@@ -53,6 +53,17 @@
         </div>
         <small>默认 30 秒；设为 0 表示立即失效并清理平台数据</small>
       </label>
+      <label class="member-delay-field">
+        <span>备注</span>
+        <el-input
+          v-model="memberForm.remark"
+          type="textarea"
+          :rows="2"
+          maxlength="255"
+          show-word-limit
+          placeholder="选填，仅管理员可见，如：微信账号、手机号等"
+        />
+      </label>
       <p class="field-help">
         系统将自动生成随机用户名和密码，并仅开放{{ memberForm.platform_scope === 'xxqd' ? '小小签到' : '班级魔方' }}核心功能。
       </p>
@@ -112,6 +123,7 @@ const memberForm = reactive({
   card_type: CARD_SINGLE,
   card_total_uses: DEFAULT_CARD_TOTAL_USES,
   card_delete_delay_seconds: DEFAULT_CARD_DELETE_DELAY_SECONDS,
+  remark: '',
 })
 const memberTypeOptions = [
   {
@@ -134,6 +146,7 @@ watch(
     memberForm.card_type = CARD_SINGLE
     memberForm.card_total_uses = DEFAULT_CARD_TOTAL_USES
     memberForm.card_delete_delay_seconds = DEFAULT_CARD_DELETE_DELAY_SECONDS
+    memberForm.remark = ''
     memberCredentials.value = null
   },
 )

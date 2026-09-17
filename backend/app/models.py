@@ -62,6 +62,7 @@ class TaskCreate(BaseModel):
     text: str = ""
     fill_name: str = Field(default="", max_length=100)
     fill_values: dict[str, str] = Field(default_factory=dict)
+    fill_fields: List[str] | None = None
     pic_path: List[str] = Field(default_factory=list)
     enable: bool = True
     use_location: bool = False
@@ -144,6 +145,7 @@ class UserCreate(BaseModel):
         ge=MIN_CARD_TOTAL_USES,
         le=MAX_CARD_TOTAL_USES,
     )
+    remark: str | None = Field(default=None, max_length=255)
 
 
 class UserUpdate(BaseModel):
@@ -166,6 +168,7 @@ class UserUpdate(BaseModel):
         ge=MIN_CARD_TOTAL_USES,
         le=MAX_CARD_TOTAL_USES,
     )
+    remark: str | None = Field(default=None, max_length=255)
 
 
 class PlatformMemberCreate(BaseModel):
@@ -181,6 +184,7 @@ class PlatformMemberCreate(BaseModel):
         ge=MIN_CARD_TOTAL_USES,
         le=MAX_CARD_TOTAL_USES,
     )
+    remark: str | None = Field(default=None, max_length=255)
 
 
 class PasswordReset(BaseModel):

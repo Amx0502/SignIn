@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     Integer,
     JSON,
+    LargeBinary,
     String,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -71,6 +72,16 @@ class UserRow(AuthBase):
     card_delete_due_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True
     )
+    # AES-GCM encrypted copy of the admin-set password, used only by the
+    # admin account export. Cleared when the user changes their own password.
+    initial_password_enc: Mapped[bytes | None] = mapped_column(
+        LargeBinary(255), nullable=True
+    )
+    # Admin-visible note for member-card users, shown in user management.
+    remark: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Username of the admin who created this account (best effort, null for
+    # accounts created before this column existed or by seeding scripts).
+    created_by: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     sessions: Mapped[list["UserSessionRow"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True

@@ -1,0 +1,174 @@
+﻿
+> signin-vue@1.0.0 build
+> vite build
+
+[36mvite v8.3.0 [32mbuilding client environment for production...[36m[39m
+transforming...
+鉁?1996 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                     2.17 kB 鈹?gzip:  0.65 kB
+dist/assets/xxqd-ByRvGQMw.png                       6.34 kB
+dist/assets/bjmf-DHZx5MWU.png                       8.54 kB
+dist/assets/miaoying-QlrOBvw8.png                  11.07 kB
+dist/assets/logo-D7xrZ-Jj.png                      50.79 kB
+dist/assets/AutoCheckIn-CblmJVip.css                0.13 kB 鈹?gzip:  0.12 kB
+dist/assets/ChangePassword-CyCJZsE0.css             0.32 kB 鈹?gzip:  0.21 kB
+dist/assets/css-BAyktVMS.css                        0.92 kB 鈹?gzip:  0.32 kB
+dist/assets/LocationPanelLoading-DAlmp663.css       1.15 kB 鈹?gzip:  0.50 kB
+dist/assets/ClassCubeOverview-DIC1d8K9.css          1.29 kB 鈹?gzip:  0.52 kB
+dist/assets/NoAvailableMenus-CF-sYK2h.css           1.46 kB 鈹?gzip:  0.38 kB
+dist/assets/PurchaseLinkSettings-Z4Mz4bce.css       1.48 kB 鈹?gzip:  0.54 kB
+dist/assets/css-B0_1wuTg.css                        1.57 kB 鈹?gzip:  0.52 kB
+dist/assets/css-Dq8WDDkr.css                        1.59 kB 鈹?gzip:  0.53 kB
+dist/assets/QrLoginDialog-DM328rto.css              2.41 kB 鈹?gzip:  0.84 kB
+dist/assets/css-B7X4OvaL.css                        2.54 kB 鈹?gzip:  0.74 kB
+dist/assets/css-BG2Se6n6.css                        2.73 kB 鈹?gzip:  0.79 kB
+dist/assets/LogConsole-D8JY_4hp.css                 2.88 kB 鈹?gzip:  0.93 kB
+dist/assets/MenuManagement-CmV0MDx7.css             3.25 kB 鈹?gzip:  0.95 kB
+dist/assets/Accounts-BlLnQoBG.css                   3.31 kB 鈹?gzip:  0.98 kB
+dist/assets/CheckinDelaySettings-Bq4KVBCZ.css       3.38 kB 鈹?gzip:  0.97 kB
+dist/assets/XxqdRuns-SqEY-u4v.css                   3.41 kB 鈹?gzip:  1.07 kB
+dist/assets/css-B6UgayC7.css                        3.47 kB 鈹?gzip:  0.73 kB
+dist/assets/css-DUbGnqO_.css                        3.54 kB 鈹?gzip:  0.97 kB
+dist/assets/css-C8-vPSoj.css                        3.80 kB 鈹?gzip:  0.89 kB
+dist/assets/ClassCubeRuns-75lH8EZk.css              4.07 kB 鈹?gzip:  1.19 kB
+dist/assets/css-BmQQuU66.css                        4.07 kB 鈹?gzip:  1.06 kB
+dist/assets/TaskManagement-5mrlTEh3.css             4.18 kB 鈹?gzip:  1.13 kB
+dist/assets/css-DExoAqKP.css                        4.34 kB 鈹?gzip:  0.89 kB
+dist/assets/css-BrTRgFS7.css                        5.67 kB 鈹?gzip:  0.96 kB
+dist/assets/TaskDateSchedule-CQXSf6zM.css           6.30 kB 鈹?gzip:  1.70 kB
+dist/assets/css-CzNtyWdF.css                        6.51 kB 鈹?gzip:  1.22 kB
+dist/assets/Login-Wlc3k3SH.css                      7.41 kB 鈹?gzip:  1.85 kB
+dist/assets/css-TYBaCPcE.css                        7.58 kB 鈹?gzip:  1.41 kB
+dist/assets/api-cyJZB4WD.css                        7.85 kB 鈹?gzip:  1.96 kB
+dist/assets/LocationSearchPanel-DgtMAtQO.css        8.30 kB 鈹?gzip:  2.02 kB
+dist/assets/Landing-DtJyxkVI.css                    9.37 kB 鈹?gzip:  2.29 kB
+dist/assets/css-BeIfAqTO.css                       10.10 kB 鈹?gzip:  1.40 kB
+dist/assets/ClassCubeTasks-B4spTavC.css            10.67 kB 鈹?gzip:  2.26 kB
+dist/assets/ClassCubeAccounts-EhF16hjb.css         11.16 kB 鈹?gzip:  2.33 kB
+dist/assets/TaskManager-PS7LqGrH.css               13.52 kB 鈹?gzip:  2.86 kB
+dist/assets/Dashboard-D8Tr_ENn.css                 14.18 kB 鈹?gzip:  2.93 kB
+dist/assets/useUnsavedChangesGuard-BVXz1Lx1.css    14.68 kB 鈹?gzip:  2.66 kB
+dist/assets/css-Bn4f7rcU.css                       15.78 kB 鈹?gzip:  2.33 kB
+dist/assets/TaskImageUpload-BKiPvEeF.css           18.32 kB 鈹?gzip:  3.39 kB
+dist/assets/css-CvO7mB41.css                       19.33 kB 鈹?gzip:  2.89 kB
+dist/assets/css-ZSOkJyjJ.css                       19.89 kB 鈹?gzip:  2.13 kB
+dist/assets/UserManagement-CVTJOR-f.css            21.77 kB 鈹?gzip:  3.92 kB
+dist/assets/css-BNmWJdpO.css                       28.80 kB 鈹?gzip:  4.16 kB
+dist/assets/css-CA2RUhht.css                       36.47 kB 鈹?gzip:  3.48 kB
+dist/assets/Miaoying-nKSw1DAg.css                  39.99 kB 鈹?gzip:  6.77 kB
+dist/assets/index-DSA-rX27.css                    148.04 kB 鈹?gzip: 48.36 kB
+dist/assets/typescript-DOc6skV4.js                  0.02 kB 鈹?gzip:  0.04 kB
+dist/assets/refs-Cc5FwKWV.js                        0.06 kB 鈹?gzip:  0.07 kB
+dist/assets/validator-Dv0pY8vc.js                   0.08 kB 鈹?gzip:  0.09 kB
+dist/assets/castArray-C9ENxpDo.js                   0.12 kB 鈹?gzip:  0.13 kB
+dist/assets/use-scope-id-CHL0G_Cf.js                0.13 kB 鈹?gzip:  0.14 kB
+dist/assets/grid-Db4F5O0s.js                        0.15 kB 鈹?gzip:  0.14 kB
+dist/assets/constant-CeO-62Mn.js                    0.16 kB 鈹?gzip:  0.12 kB
+dist/assets/tabbar-MdpVeM0i.js                      0.16 kB 鈹?gzip:  0.14 kB
+dist/assets/isArrayLikeObject-DAgAdHaz.js           0.22 kB 鈹?gzip:  0.17 kB
+dist/assets/use-route-D10NgEe_.js                   0.29 kB 鈹?gzip:  0.22 kB
+dist/assets/batchDelete-BAXcVqLM.js                 0.37 kB 鈹?gzip:  0.22 kB
+dist/assets/Logs-F7ZX3pyn.js                        0.41 kB 鈹?gzip:  0.32 kB
+dist/assets/LocationPanelLoading-B9P8dCf3.js        0.46 kB 鈹?gzip:  0.35 kB
+dist/assets/use-attrs-WcIMM9FQ.js                   0.48 kB 鈹?gzip:  0.36 kB
+dist/assets/on-popup-reopen-CGgAjQM9.js             0.58 kB 鈹?gzip:  0.39 kB
+dist/assets/menuPermissions-D7syz6M4.js             0.59 kB 鈹?gzip:  0.34 kB
+dist/assets/Grid-qU9mns3P.js                        0.60 kB 鈹?gzip:  0.41 kB
+dist/assets/AutoCheckIn-CbUTA6IO.js                 0.63 kB 鈹?gzip:  0.45 kB
+dist/assets/cell-group-C_4VvslR.js                  0.66 kB 鈹?gzip:  0.42 kB
+dist/assets/ClassCubeLogs-BfjJyfZr.js               0.67 kB 鈹?gzip:  0.49 kB
+dist/assets/rolldown-runtime-hePW80VL.js            0.71 kB 鈹?gzip:  0.42 kB
+dist/assets/event-CxSRRtGH.js                       0.89 kB 鈹?gzip:  0.54 kB
+dist/assets/omit-CqelnMNF.js                        0.98 kB 鈹?gzip:  0.58 kB
+dist/assets/debounce-CtO517z-.js                    1.05 kB 鈹?gzip:  0.56 kB
+dist/assets/css-C3dumXoB.js                         1.10 kB 鈹?gzip:  0.55 kB
+dist/assets/classCubeTaskForm-CKiheq9K.js           1.19 kB 鈹?gzip:  0.73 kB
+dist/assets/Tabbar-C2ZJRvz-.js                      1.34 kB 鈹?gzip:  0.78 kB
+dist/assets/tabbar-item-BcnbAytJ.js                 1.40 kB 鈹?gzip:  0.76 kB
+dist/assets/grid-item-CqCt_Yvf.js                   1.66 kB 鈹?gzip:  0.87 kB
+dist/assets/cell-CEgNbOk-.js                        1.74 kB 鈹?gzip:  0.84 kB
+dist/assets/css-DEbhu6YX.js                         1.75 kB 鈹?gzip:  0.91 kB
+dist/assets/overlay-Ufu6TLs1.js                     1.77 kB 鈹?gzip:  0.92 kB
+dist/assets/use-aria-C2DKrNgF.js                    1.98 kB 鈹?gzip:  1.01 kB
+dist/assets/css-Brruw36p.js                         2.03 kB 鈹?gzip:  0.95 kB
+dist/assets/css-D1tvqyyD.js                         2.07 kB 鈹?gzip:  0.89 kB
+dist/assets/NoAvailableMenus-2AA-qRPl.js            2.12 kB 鈹?gzip:  1.12 kB
+dist/assets/index.esm-Do0Gn3n_.js                   2.29 kB 鈹?gzip:  1.13 kB
+dist/assets/tag-ryPi6s1I.js                         2.40 kB 鈹?gzip:  1.06 kB
+dist/assets/ChangePassword-BHfzO8Fk.js              2.52 kB 鈹?gzip:  1.18 kB
+dist/assets/userMembership-DnAyL2wk.js              2.83 kB 鈹?gzip:  1.16 kB
+dist/assets/LogConsole-BAFbh-sy.js                  2.84 kB 鈹?gzip:  1.38 kB
+dist/assets/ClassCubeOverview-DERXJ87c.js           2.85 kB 鈹?gzip:  1.46 kB
+dist/assets/with-install-CgHeMdjh.js                2.88 kB 鈹?gzip:  1.75 kB
+dist/assets/icon-BpmvItN3.js                        3.01 kB 鈹?gzip:  1.46 kB
+dist/assets/PurchaseLinkSettings-BZHb0brc.js        3.31 kB 鈹?gzip:  1.73 kB
+dist/assets/menuStore-DRtp9_sj.js                   3.71 kB 鈹?gzip:  1.75 kB
+dist/assets/use-dialog-tVMQHWNO.js                  4.24 kB 鈹?gzip:  1.75 kB
+dist/assets/css-DSxi7CH_.js                         4.33 kB 鈹?gzip:  1.79 kB
+dist/assets/Overview-D9haosgz.js                    4.47 kB 鈹?gzip:  2.02 kB
+dist/assets/Login-CspLakA6.js                       4.59 kB 鈹?gzip:  2.19 kB
+dist/assets/css-B8EQaBZd.js                         4.67 kB 鈹?gzip:  1.99 kB
+dist/assets/_baseClone-DLqpaA-z.js                  4.68 kB 鈹?gzip:  1.89 kB
+dist/assets/css-C7VKBnXh.js                         4.81 kB 鈹?gzip:  2.15 kB
+dist/assets/css-DUiLee8s.js                         5.01 kB 鈹?gzip:  2.31 kB
+dist/assets/css-B_tZQZrb.js                         5.22 kB 鈹?gzip:  2.17 kB
+dist/assets/popup-CUGiXE4N.js                       5.50 kB 鈹?gzip:  2.47 kB
+dist/assets/CheckinDelaySettings-z3mw4doR.js        6.43 kB 鈹?gzip:  2.37 kB
+dist/assets/devtools-EWN81iOl-DZLI4rnn.js           6.91 kB 鈹?gzip:  3.00 kB
+dist/assets/useClassCube-BxmPFVCQ.js                7.34 kB 鈹?gzip:  2.89 kB
+dist/assets/Landing-sQ7_CyhX.js                     7.43 kB 鈹?gzip:  3.02 kB
+dist/assets/useUnsavedChangesGuard-coCFJ9UH.js      7.48 kB 鈹?gzip:  3.20 kB
+dist/assets/css-_bR-4i3w.js                         7.58 kB 鈹?gzip:  3.12 kB
+dist/assets/XxqdRuns-9Wwtvv-z.js                    7.65 kB 鈹?gzip:  3.10 kB
+dist/assets/ClassCubeRuns-Dr0fw0lV.js               8.23 kB 鈹?gzip:  3.32 kB
+dist/assets/Accounts-DbjBGpXS.js                    8.38 kB 鈹?gzip:  3.36 kB
+dist/assets/chinaRegions-Cp9GmYRv.js                8.48 kB 鈹?gzip:  3.32 kB
+dist/assets/css-BnIWTbYA.js                         8.99 kB 鈹?gzip:  3.23 kB
+dist/assets/MenuManagement-7Dhswaam.js              9.75 kB 鈹?gzip:  3.83 kB
+dist/assets/css-DURrK5eP.js                        11.29 kB 鈹?gzip:  4.31 kB
+dist/assets/TaskDateSchedule-BM6sn2ZD.js           11.67 kB 鈹?gzip:  4.50 kB
+dist/assets/css-DTwjbuvp.js                        12.32 kB 鈹?gzip:  5.12 kB
+dist/assets/message-box-BGV2OX92.js                12.56 kB 鈹?gzip:  4.67 kB
+dist/assets/runtime-dom.esm-bundler-CWyWsdTb.js    13.55 kB 鈹?gzip:  5.90 kB
+dist/assets/input-DiN7NMOz.js                      14.05 kB 鈹?gzip:  5.09 kB
+dist/assets/Dashboard-CXZOzpHu.js                  14.21 kB 鈹?gzip:  5.63 kB
+dist/assets/LocationSearchPanel-CIIbMhfS.js        14.85 kB 鈹?gzip:  6.45 kB
+dist/assets/css-DcPE6YpL.js                        14.91 kB 鈹?gzip:  5.35 kB
+dist/assets/TaskManagement-BYSkiR-R.js             17.68 kB 鈹?gzip:  5.84 kB
+dist/assets/TaskImageUpload-BRgCnGWy.js            19.79 kB 鈹?gzip:  7.18 kB
+dist/assets/ClassCubeTasks-eu2JBVMH.js             22.06 kB 鈹?gzip:  7.95 kB
+dist/assets/ClassCubeAccounts-CVjNuRxX.js          24.49 kB 鈹?gzip:  8.68 kB
+dist/assets/css-D0Eg7h_u.js                        26.65 kB 鈹?gzip:  9.17 kB
+dist/assets/TaskManager-BSHW_Q15.js                28.55 kB 鈹?gzip:  9.43 kB
+dist/assets/css-BgDUvEwu.js                        47.42 kB 鈹?gzip: 18.05 kB
+dist/assets/css-BkHngF53.js                        54.44 kB 鈹?gzip: 19.28 kB
+dist/assets/UserManagement-Cgq-Qct_.js             57.47 kB 鈹?gzip: 16.31 kB
+dist/assets/runtime-core.esm-bundler-DS4DcaEB.js   67.06 kB 鈹?gzip: 26.31 kB
+dist/assets/css-BwewTQbH.js                        75.26 kB 鈹?gzip: 25.74 kB
+dist/assets/api-Ds5yBCLZ.js                        93.71 kB 鈹?gzip: 31.65 kB
+dist/assets/css-DHLDXRMi.js                        98.08 kB 鈹?gzip: 27.90 kB
+dist/assets/Miaoying-WxEeccSc.js                  111.34 kB 鈹?gzip: 36.24 kB
+dist/assets/QrLoginDialog-CRzN2F-k.js             136.21 kB 鈹?gzip: 50.63 kB
+dist/assets/index-DCaBWVCY.js                     145.46 kB 鈹?gzip: 49.09 kB
+
+[32m鉁?built in 4.92s[39m
+node.exe : [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 1.6s of this 4.9
+s build (33%).
+所在位置 行:1 字符: 1
++ & "C:\Users\ASUS\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[33m[PLUG...9s build (33%). 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+3 hooks are listed without a time. Their calls overlapped, so the time inside o
+ne call includes work from other calls. To find their cost, profile the build w
+ith `node --cpu-prof`:
+  - vite:css transform (123 calls)
+  - unplugin-vue-components transform (1996 calls)
+  - vite:asset load (4 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more de
+tails.
+[39m

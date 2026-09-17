@@ -4,7 +4,7 @@ from typing import Any, Iterable
 import uuid
 
 from sqlalchemy import Select, case, delete, desc, func, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from .class_cube_client import RemoteItemBundle
 from .class_cube_database import ClassCubeDatabase
@@ -18,7 +18,7 @@ from .class_cube_db_models import (
     ClassCubeTaskRow,
     ClassCubeTaskRunRow,
 )
-from .auth_models import UserFeaturePolicyRow
+from .auth_models import UserFeaturePolicyRow, UserRow
 from .class_cube_parser import (
     PASSWORD_FIELD_ALIASES,
     ParsedCourse,
@@ -1634,6 +1634,23 @@ class ClassCubeRepository:
                 )
                 for account in accounts
             }
+            owner_ids = {
+                int(row.owner_user_id)
+                for row in rows
+                if row.owner_user_id
+            }
+            owner_users = {}
+            if owner_ids:
+                try:
+                    owner_users = {
+                        int(user.id): user
+                        for user in session.scalars(
+                            select(UserRow).where(UserRow.id.in_(owner_ids))
+                        ).all()
+                    }
+                except OperationalError:
+                    # 独立部署/测试库可能没有系统用户表
+                    owner_users = {}
             records = []
             for row in rows:
                 record = self._run_record(row)
@@ -1641,6 +1658,18 @@ class ClassCubeRepository:
                     str(record.get("account_name") or "").strip()
                     or account_names.get(int(row.account_id))
                     or f"账号 {row.account_id}"
+                )
+                owner = (
+                    owner_users.get(int(row.owner_user_id))
+                    if row.owner_user_id
+                    else None
+                )
+                record["owner_username"] = (
+                    owner.username if owner is not None else None
+                )
+                # 备注仅管理员可见
+                record["owner_remark"] = (
+                    owner.remark if is_admin and owner is not None else None
                 )
                 claim_id = session.scalar(
                     select(ClassCubeTaskItemClaimRow.id).where(

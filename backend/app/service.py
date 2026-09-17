@@ -113,6 +113,7 @@ def normalize_task(task: dict | None = None) -> dict:
         "text": str(task.get("text", "")),
         "fill_name": str(task.get("fill_name", "")).strip(),
         "fill_values": normalize_fill_values(task.get("fill_values")),
+        "fill_fields": normalize_fill_fields(task.get("fill_fields")),
         "pic_path": pic_paths,
         "skip_weekends": bool(task.get("skip_weekends", False)),
         **date_rule,
@@ -137,6 +138,23 @@ def normalize_fill_values(raw) -> dict[str, str]:
         if text:
             values[key_str] = text
     return values
+
+
+def normalize_fill_fields(raw) -> list[str] | None:
+    """用户勾选要提交的填写项；None 表示未配置（沿用检测到的全部项）。"""
+    if raw is None:
+        return None
+    if not isinstance(raw, (list, tuple, set)):
+        return None
+    fields: list[str] = []
+    for item in raw:
+        try:
+            key = str(int(item))
+        except (TypeError, ValueError):
+            continue
+        if key not in fields:
+            fields.append(key)
+    return fields
 
 
 def normalize_account(account: dict | None = None) -> dict:
@@ -380,6 +398,29 @@ class CheckinService:
         fill_name = str(task.get("fill_name", "")).strip()
         fill_options = self._enabled_fill_options(detail)
 
+        # 用户可勾选要提交的填写项；未配置(None)时沿用检测到的全部项
+        fill_fields_raw = task.get("fill_fields")
+        if fill_fields_raw is None:
+            selected_keys = None
+        else:
+            try:
+                selected_keys = {int(k) for k in fill_fields_raw}
+            except (TypeError, ValueError):
+                selected_keys = None
+        # 位置填写项始终提交，不受检测结果影响
+        force_location = selected_keys is None or 6 in selected_keys
+        if selected_keys is not None:
+            fill_options = [
+                option
+                for option in fill_options
+                if option.get("field_key") in selected_keys
+            ]
+            if not fill_options:
+                # 用户取消全部填写项：按普通签到直接提交，但位置仍始终提交
+                if force_location:
+                    self._append_location_param(payload, task, detail)
+                return payload
+
         if not fill_options:
             # 详情接口未返回填写项定义时，退回按任务配置提交的旧行为
             payload["fill_params"].append({"key": 1, "val": str(task.get("text", ""))})
@@ -389,7 +430,7 @@ class CheckinService:
                 raise ValueError(
                     "无法读取该签到项目的填写项定义，请稍后重试或清空签到姓名"
                 )
-            if task.get("use_location"):
+            if task.get("use_location") or force_location:
                 self._append_location_param(payload, task, detail)
             return payload
 
@@ -436,6 +477,9 @@ class CheckinService:
                 f"该签到项目包含暂不支持的填写项「{label}」"
                 f"（类型 {field_type}），无法自动提交"
             )
+        # 检测结果不含位置时，位置仍始终提交
+        if force_location and 6 not in required_keys:
+            self._append_location_param(payload, task, detail)
         return payload
 
     @staticmethod

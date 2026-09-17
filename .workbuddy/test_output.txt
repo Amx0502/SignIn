@@ -1,0 +1,40 @@
+﻿python.exe : 2026-09-17 23:27:07,337 [INFO] 杞荤 Web 绠＄悊绯荤粺宸插惎鍔?
+所在位置 行:445 字符: 52
++ ... In\backend; & ".\venv\Scripts\python.exe" -m unittest discover -s tes ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-09-17 23:2...Web 绠＄悊绯荤粺宸插惎鍔? 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+...C:\Users\ASUS\Desktop\SignIn\backend\venv\Lib\site-packages\sqlalchemy\sql\c
+oercions.py:376: ResourceWarning: unclosed database in <sqlite3.Connection obje
+ct at 0x00000268CECA45E0>
+  while hasattr(element, "__clause_element__"):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.....C:\Users\ASUS\AppData\Local\Python\pythoncore-3.14-64\Lib\weakref.py:361: 
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000268C
+ECA46D0>
+  wr = ref(key)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...........C:\Users\ASUS\Desktop\SignIn\backend\venv\Lib\site-packages\sqlalche
+my\engine\cursor.py:1533: ResourceWarning: unclosed database in <sqlite3.Connec
+tion object at 0x00000268CEBF96C0>
+  def __init__(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+..C:\Users\ASUS\Desktop\SignIn\backend\venv\Lib\site-packages\sqlalchemy\engine
+\default.py:952: DeprecationWarning: The default datetime adapter is deprecated
+ as of Python 3.12; see the sqlite3 documentation for suggested replacement rec
+ipes
+  cursor.execute(statement, parameters)
+.................................C:\Users\ASUS\Desktop\SignIn\backend\app\servi
+ce.py:240: ResourceWarning: unclosed file <_io.TextIOWrapper name='C:\\Users\\A
+SUS\\Desktop\\SignIn\\backend\\logs\\checkin.log' mode='a' encoding='utf-8'>
+  logger.handlers.clear()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+2026-09-17 23:27:12,022 [INFO] 杞荤 Web 绠＄悊绯荤粺宸插惎鍔?
+2026-09-17 23:27:12,027 [INFO] [璐﹀彿13800000040] 宸叉洿鏂颁换鍔★細鍦板浘绛惧埌
+....
+----------------------------------------------------------------------
+Ran 58 tests in 4.607s
+
+OK

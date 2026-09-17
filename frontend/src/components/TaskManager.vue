@@ -204,17 +204,30 @@
           <div class="form-section project-section">
             <div class="section-header">
               <span>签到项目列表</span>
-              <el-button
-                type="primary"
-                plain
-                :icon="Search"
-                size="small"
-                @click="fetchProjects"
-                :disabled="selectedAccountIndex < 0 || projectsLoading"
-                :loading="projectsLoading"
-              >
-                {{ projectsLoading ? "获取中…" : "获取项目列表" }}
-              </el-button>
+              <div class="section-header-actions">
+                <el-button
+                  type="primary"
+                  plain
+                  :icon="Search"
+                  size="small"
+                  @click="fetchProjects"
+                  :disabled="selectedAccountIndex < 0 || projectsLoading"
+                  :loading="projectsLoading"
+                >
+                  {{ projectsLoading ? "获取中…" : "获取项目列表" }}
+                </el-button>
+                <el-button
+                  type="primary"
+                  plain
+                  :icon="DocumentChecked"
+                  size="small"
+                  @click="detectFillOptions"
+                  :disabled="selectedProjectIndex < 0 || fillOptionsLoading"
+                  :loading="fillOptionsLoading"
+                >
+                  {{ fillOptionsLoading ? "检测中…" : "检测填写项" }}
+                </el-button>
+              </div>
             </div>
             <el-empty
               v-if="!projects.length"
@@ -259,16 +272,6 @@
                       : "普通签到"
                   }}
                 </el-tag>
-                <el-button
-                  size="small"
-                  type="primary"
-                  text
-                  bg
-                  :loading="fillOptionsLoading"
-                  @click="detectFillOptions"
-                >
-                  {{ fillOptionsLoading ? "检测中…" : "检测填写项" }}
-                </el-button>
               </div>
             </div>
           </template>
@@ -329,7 +332,7 @@
                 :closable="false"
                 show-icon
                 :title="`检测失败：${fillOptionsError}`"
-                description="请检查账号 Token 与项目序号后，点击右上角「检测填写项」重试；检测成功前无法填写签到内容。"
+                description="请检查账号 Token 与项目序号后，点击「检测填写项」重试；检测成功前无法填写签到内容。"
               />
             </el-form-item>
             <el-form-item v-else-if="!fillOptionsChecked" class="detect-status-item">
@@ -345,19 +348,25 @@
               <div class="fill-detect-result">
                 <span>检测结果</span>
                 <div class="fill-detect-tags">
-                  <template v-if="fillOptions.length">
-                    <el-tag
-                      v-for="item in fillOptions"
+                  <template v-if="displayFillOptions.length">
+                    <el-tooltip
+                      v-for="item in displayFillOptions"
                       :key="item.key"
-                      :type="fillTagType(item)"
-                      size="small"
+                      :content="Number(item.key) === LOCATION_KEY ? '位置信息始终提交' : '点击切换是否提交该项'"
+                      placement="top"
                     >
-                      {{ item.name }}{{ fillTagType(item) === 'warning' ? '（暂不支持）' : '' }}
-                    </el-tag>
+                      <el-tag
+                        class="fill-option-tag"
+                        :type="isFillKeySelected(item.key) ? fillTagType(item) : 'info'"
+                        :effect="isFillKeySelected(item.key) ? 'light' : 'plain'"
+                        size="small"
+                        @click="toggleFillKey(item.key)"
+                      >
+                        {{ isFillKeySelected(item.key) ? "✓ " : "" }}{{ item.name }}{{ fillTagType(item) === 'warning' ? '（暂不支持）' : '' }}
+                      </el-tag>
+                    </el-tooltip>
+                    <small class="fill-detect-tip">点击标签可取消勾选，保存任务时将不提交该项（位置始终提交）</small>
                   </template>
-                  <span v-else class="fill-detect-empty">
-                    《{{ fillOptionsTitle }}》未要求填写内容，直接保存任务即可
-                  </span>
                 </div>
               </div>
               <el-form-item v-if="hasTextFill" label="签到文本" prop="text">
@@ -379,13 +388,13 @@
                   该项目要求提交图片，最多可上传 3 张
                 </div>
               </el-form-item>
-              <el-form-item v-if="hasLocationFill" label="签到位置">
+              <el-form-item label="签到位置">
                 <el-radio-group v-model="locationMode">
                   <el-radio value="none">不显示位置</el-radio>
                   <el-radio value="auto">自动获取位置</el-radio>
                   <el-radio value="map">地图选择位置</el-radio>
                 </el-radio-group>
-                <div class="location-mode-tip">该项目要求提交位置信息，建议选择「地图选择位置」指定准确坐标</div>
+                <div class="location-mode-tip">位置信息始终随签到提交，建议选择「地图选择位置」指定准确坐标</div>
                 <div v-if="locationMode === 'map'" class="map-location-choice">
                   <div>
                     <span>签到位置</span>
@@ -479,7 +488,7 @@
 
 <script setup>
 import { reactive, ref, computed, onMounted, watch } from "vue";
-import { Search, VideoPlay, Delete, Refresh, Check } from "@element-plus/icons-vue";
+import { Search, VideoPlay, Delete, Refresh, Check, DocumentChecked } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import CheckinResultDialog from "./CheckinResultDialog.vue";
 import TaskDateSchedule from "./TaskDateSchedule.vue";
@@ -487,6 +496,7 @@ import TaskImageUpload from "./TaskImageUpload.vue";
 import TaskLocationPickerDialog from "./TaskLocationPickerDialog.vue";
 import { useAppState } from "../composables/useAppState";
 import { createCheckinResult } from "../utils/checkinResult";
+import { applyMembershipUpdate } from "../utils/userMembership";
 import api from "../api";
 
 const { state, refreshState, refreshLogs, selectedAccountIndex } =
@@ -523,23 +533,60 @@ const selectedMapLocation = ref(null);
 const fillKeys = computed(
   () => new Set(fillOptions.value.map((item) => Number(item.key))),
 );
-const hasTextFill = computed(() => fillKeys.value.has(1));
-const hasImageFill = computed(() => fillKeys.value.has(2));
-const hasLocationFill = computed(() => fillKeys.value.has(6));
+// 用户勾选要提交的填写项 key（字符串）；检测成功后默认全选
+const selectedFillKeys = ref(new Set());
+const activeFillOptions = computed(() =>
+  fillOptions.value.filter((item) => selectedFillKeys.value.has(String(item.key))),
+);
+// 位置填写项始终存在、始终提交，不受检测结果影响
+const LOCATION_KEY = 6;
+const displayFillOptions = computed(() => {
+  const items = [...fillOptions.value];
+  if (!items.some((item) => Number(item.key) === LOCATION_KEY)) {
+    items.push({ key: LOCATION_KEY, name: "位置", forced: true });
+  }
+  return items;
+});
+const activeFillKeys = computed(
+  () => new Set(activeFillOptions.value.map((item) => Number(item.key))),
+);
+const hasTextFill = computed(() => activeFillKeys.value.has(1));
+const hasImageFill = computed(() => activeFillKeys.value.has(2));
+const hasLocationFill = computed(() => activeFillKeys.value.has(6));
 const hasNameFill = computed(() =>
-  fillOptions.value.some(
+  activeFillOptions.value.some(
     (item) =>
       ![1, 2, 6].includes(Number(item.key)) &&
       /姓名|名字/.test(item.name || ""),
   ),
 );
 const customFillItems = computed(() =>
-  fillOptions.value.filter(
+  activeFillOptions.value.filter(
     (item) =>
       ![1, 2, 6].includes(Number(item.key)) &&
       !/姓名|名字/.test(item.name || ""),
   ),
 );
+
+function isFillKeySelected(key) {
+  if (Number(key) === LOCATION_KEY) return true; // 位置始终提交
+  return selectedFillKeys.value.has(String(key));
+}
+
+function toggleFillKey(key) {
+  if (Number(key) === LOCATION_KEY) {
+    ElMessage.info("位置信息始终提交，无法取消");
+    return;
+  }
+  const next = new Set(selectedFillKeys.value);
+  const k = String(key);
+  if (next.has(k)) {
+    next.delete(k);
+  } else {
+    next.add(k);
+  }
+  selectedFillKeys.value = next;
+}
 
 const form = reactive({
   title: "",
@@ -548,6 +595,7 @@ const form = reactive({
   text: "",
   fill_name: "",
   fill_values: {},
+  fill_fields: null,
   pic_path: [],
   enable: true,
   use_location: false,
@@ -698,6 +746,7 @@ function createNew() {
   form.text = "";
   form.fill_name = "";
   form.fill_values = {};
+  form.fill_fields = null;
   form.pic_path = [];
   form.enable = true;
   form.use_location = false;
@@ -727,6 +776,9 @@ function onSelectTask(row) {
   form.text = task.text;
   form.fill_name = task.fill_name || "";
   form.fill_values = { ...(task.fill_values || {}) };
+  form.fill_fields = Array.isArray(task.fill_fields)
+    ? [...task.fill_fields.map(String)]
+    : null;
   const taskPicPaths = Array.isArray(task.pic_path)
     ? task.pic_path
     : task.pic_path
@@ -822,15 +874,27 @@ async function detectFillOptions() {
     fillOptions.value = data.items || [];
     fillOptionsTitle.value = data.title || "";
     fillOptionsChecked.value = true;
-    // 项目要求位置时，默认改为自动获取位置
-    if (hasLocationFill.value && locationMode.value === "none") {
+    // 编辑已有任务时优先沿用其保存的勾选，否则默认全选
+    const currentTask = selectedActualIndex.value >= 0
+      ? state.value.accounts[selectedAccountIndex.value]?.tasks?.[selectedActualIndex.value]
+      : null;
+    const savedFields = Array.isArray(currentTask?.fill_fields)
+      ? currentTask.fill_fields.map(String)
+      : null;
+    selectedFillKeys.value = new Set(
+      savedFields ?? fillOptions.value.map((item) => String(item.key)),
+    );
+    // 位置填写项始终勾选并提交
+    selectedFillKeys.value.add(String(LOCATION_KEY));
+    // 位置始终提交，默认改为自动获取位置
+    if (locationMode.value === "none") {
       locationMode.value = "auto";
     }
     ElMessage.success(
       fillOptions.value.length
-        ? `《${fillOptionsTitle.value}》需要提交：${fillOptions.value
+        ? `《${fillOptionsTitle.value}》检测到填写项：${fillOptions.value
             .map((item) => item.name)
-            .join("、")}`
+            .join("、")}（不需要的可点击标签取消）`
         : `《${fillOptionsTitle.value}》未要求填写内容`,
     );
   } catch (err) {
@@ -847,6 +911,7 @@ function resetFillOptionsState() {
   fillOptionsTitle.value = "";
   fillOptionsChecked.value = false;
   fillOptionsError.value = "";
+  selectedFillKeys.value = new Set();
 }
 
 function fillTagType(item) {
@@ -904,8 +969,11 @@ async function saveTask() {
   // Parse the latest raw value before validation/submission without rewriting
   // what the user typed into the input.
   form.times = parseTimesText(timesText.value);
+  // 位置始终提交，保存时强制带上
+  form.fill_fields = [...new Set([...selectedFillKeys.value, String(LOCATION_KEY)])];
   if (
-    locationMode.value === "map"
+    hasLocationFill.value
+    && locationMode.value === "map"
     && (form.location_latitude == null || form.location_longitude == null)
   ) {
     ElMessage.warning("请先通过地图选择签到位置");
@@ -913,6 +981,11 @@ async function saveTask() {
   }
   if (form.date_mode === "specific" && !form.run_dates.length) {
     ElMessage.warning("指定日期模式下请至少选择一个执行日期");
+    return;
+  }
+  if (!form.times.length) {
+    formRef.value?.validateField("times").catch(() => {});
+    ElMessage.warning("请至少设置一个执行时间");
     return;
   }
   const valid = await formRef.value.validate().catch(() => false);
@@ -974,6 +1047,7 @@ async function runTask() {
       selectedActualIndex.value,
     );
     checkinResult.value = createCheckinResult(res.data || {});
+    applyMembershipUpdate(res.data || {});
     checkinResultVisible.value = true;
     await refreshLogs();
   } catch (err) {
@@ -1011,6 +1085,8 @@ async function deleteTask() {
 .fill-detect-result > span { color:#94a3b8; font-size:11px; }
 .fill-detect-tags { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; }
 .fill-detect-empty { color:#64748b; font-size:12px; }
+.fill-option-tag { cursor:pointer; user-select:none; }
+.fill-detect-tip { width:100%; color:#94a3b8; font-size:11px; }
 .location-mode-tip { width:100%; margin-top:6px; color:#94a3b8; font-size:11px; line-height:1.5; }
 @media (max-width:640px) { .map-location-choice { align-items:stretch; flex-direction:column; } .map-location-choice .el-button { width:100%; margin:0; } }
 .page-container {
@@ -1039,6 +1115,13 @@ async function deleteTask() {
   align-items: center;
   margin-bottom: 12px;
   font-weight: 500;
+}
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .project-section {
   background: #f8fafc;

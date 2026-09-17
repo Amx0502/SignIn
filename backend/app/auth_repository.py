@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from .auth_database import AuthDatabase
 from .auth_models import UserFeaturePolicyRow, UserRow, UserSessionRow
+from .password_vault import decrypt_password, encrypt_password
 from .membership_constants import (
     CARD_MONTHLY,
     CARD_SINGLE,
@@ -63,6 +64,18 @@ def normalize_platform_scope(value: str | None) -> str:
     if normalized not in PLATFORM_SCOPES:
         raise ValueError("用户平台范围无效")
     return normalized
+
+
+MAX_REMARK_LENGTH = 255
+
+
+def normalize_remark(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    return normalized[:MAX_REMARK_LENGTH]
 
 
 def normalize_delete_delay_seconds(value: int | None) -> int:
@@ -157,6 +170,8 @@ class AuthRepository:
             "role": row.role,
             "is_active": row.is_active,
             "platform_scope": row.platform_scope or "all",
+            "remark": row.remark,
+            "created_by": row.created_by,
             "created_at": row.created_at.isoformat(),
             "updated_at": row.updated_at.isoformat(),
             "last_login": row.last_login.isoformat() if row.last_login else None,
@@ -430,6 +445,62 @@ class AuthRepository:
                 return rows
             page += 1
 
+    def export_current_users(
+        self,
+        *,
+        keyword: str | None = None,
+        card_type: str | None = None,
+        platform_scope: str | None = None,
+        status: str | None = None,
+    ) -> list[dict]:
+        """Collect all current users matching the filters, with the decrypted
+        admin-set password copy when available."""
+        items: list[dict] = []
+        page = 1
+        while True:
+            result = self.query_users(
+                view="current",
+                keyword=keyword,
+                card_type=card_type,
+                platform_scope=platform_scope,
+                status=status,
+                page=page,
+                page_size=500,
+            )
+            items.extend(result["items"])
+            if not result["items"] or len(items) >= result["total"]:
+                break
+            page += 1
+
+        user_ids = [item["id"] for item in items]
+        encrypted: dict[int, bytes | None] = {}
+        if user_ids:
+            with self.database.session() as session:
+                rows = session.execute(
+                    select(UserRow.id, UserRow.initial_password_enc).where(
+                        UserRow.id.in_(user_ids)
+                    )
+                ).all()
+                for row_id, blob in rows:
+                    encrypted[row_id] = blob
+        for item in items:
+            item["export_password"] = decrypt_password(
+                encrypted.get(item["id"])
+            )
+        return items
+
+    def get_user_credentials(self, user_id: int) -> dict:
+        """Return one user's basic info with the decrypted admin-set
+        password copy when available."""
+        with self.database.session() as session:
+            row = session.get(UserRow, int(user_id))
+            if row is None:
+                raise UserNotFoundError(user_id)
+            blob = row.initial_password_enc
+            info = self._to_dict(row)
+        info["initial_password"] = decrypt_password(blob)
+        return info
+
     def find_by_username(self, username: str) -> UserRow | None:
         with self.database.session() as session:
             return session.scalar(select(UserRow).where(UserRow.username == username))
@@ -460,9 +531,13 @@ class AuthRepository:
         card_type: str | None = None,
         card_delete_delay_seconds: int | None = None,
         card_total_uses: int | None = None,
+        remark: str | None = None,
+        created_by: str | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
         card_type = normalize_card_type(card_type)
+        remark = normalize_remark(remark)
+        created_by = (str(created_by).strip() or None) if created_by else None
         delete_delay_seconds = normalize_delete_delay_seconds(
             card_delete_delay_seconds
         )
@@ -491,6 +566,9 @@ class AuthRepository:
                     card_type=card_type,
                     card_delete_delay_seconds=delete_delay_seconds,
                     card_total_uses=total_uses,
+                    initial_password_enc=encrypt_password(password),
+                    remark=remark,
+                    created_by=created_by,
                 )
                 session.add(row)
                 session.flush()
@@ -536,9 +614,11 @@ class AuthRepository:
         card_type: str | None = None,
         card_delete_delay_seconds: int | None = None,
         card_total_uses: int | None = None,
+        remark: str | None = None,
     ) -> dict:
         expires_at = normalize_expiration(expires_at)
         card_type = normalize_card_type(card_type)
+        remark = normalize_remark(remark)
         delete_delay_seconds = (
             normalize_delete_delay_seconds(card_delete_delay_seconds)
             if card_delete_delay_seconds is not None
@@ -576,6 +656,7 @@ class AuthRepository:
                 row.role = role
                 row.is_active = is_active
                 row.platform_scope = platform_scope
+                row.remark = remark
                 if role != "user" or card_type is None:
                     row.expires_at = expires_at if role == "user" else None
                     row.card_type = None
@@ -682,6 +763,7 @@ class AuthRepository:
             if row is None:
                 raise UserNotFoundError(user_id)
             row.password_hash = hash_password(new_password)
+            row.initial_password_enc = encrypt_password(new_password)
             statement = delete(UserSessionRow).where(UserSessionRow.user_id == user_id)
             if keep_token_hash:
                 statement = statement.where(UserSessionRow.token_hash != keep_token_hash)
@@ -831,6 +913,9 @@ class AuthRepository:
             if row is None or not verify_password(current_password, row.password_hash)[0]:
                 return False
             row.password_hash = hash_password(new_password)
+            # User changed their own password: the admin-side copy is no
+            # longer valid, drop it so exports show "未保存".
+            row.initial_password_enc = None
             session.execute(
                 delete(UserSessionRow).where(
                     UserSessionRow.user_id == user_id,

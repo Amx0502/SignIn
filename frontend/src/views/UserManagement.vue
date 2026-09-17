@@ -4,6 +4,23 @@
       <div><h2>用户管理</h2><p>管理当前用户、会员卡和永久保留的过期归档</p></div>
       <div class="page-heading__actions">
         <template v-if="activeTab === 'current'">
+          <el-dropdown
+            class="export-dropdown"
+            trigger="click"
+            :disabled="exporting"
+            @command="handleExportCommand"
+          >
+            <el-button plain :icon="Download" :loading="exporting">
+              导出账号<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="all">全部账号</el-dropdown-item>
+                <el-dropdown-item command="xxqd">小小签到</el-dropdown-item>
+                <el-dropdown-item command="class_cube">班级魔方</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-button plain @click="openMemberCreate">一键创建用户</el-button>
           <el-button type="primary" :icon="Plus" @click="openCreate">新增用户</el-button>
         </template>
@@ -35,6 +52,7 @@
           <UserTable
             :users="currentUsers"
             :loading="currentLoading"
+            @detail="openUserInfo"
             @edit="openEdit"
             @reset="openReset"
             @remove="removeUser"
@@ -86,6 +104,10 @@
       :account-pool="accountPool"
       @saved="handleSaved"
     />
+    <UserInfoDrawer
+      v-model:visible="userInfoVisible"
+      :user-id="userInfoUser?.id || null"
+    />
     <MemberCardDialog
       v-model="memberDialog"
       :default-platform="memberPlatform"
@@ -114,9 +136,9 @@ import {
   watch,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Download, Plus } from '@element-plus/icons-vue'
+import { ArrowDown, Download, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteUserApi, exportArchivedUsersApi, getUsersApi } from '../api'
+import { deleteUserApi, exportArchivedUsersApi, exportUsersApi, getUsersApi } from '../api'
 import classCubeApi from '../api/classCube.js'
 import ArchiveFilterBar from '../components/user-management/ArchiveFilterBar.vue'
 import ArchivedUserDetailDrawer from '../components/user-management/ArchivedUserDetailDrawer.vue'
@@ -124,6 +146,7 @@ import ArchivedUserTable from '../components/user-management/ArchivedUserTable.v
 import MemberCardDialog from '../components/user-management/MemberCardDialog.vue'
 import PasswordResetDialog from '../components/user-management/PasswordResetDialog.vue'
 import UserEditorDialog from '../components/user-management/UserEditorDialog.vue'
+import UserInfoDrawer from '../components/user-management/UserInfoDrawer.vue'
 import UserFilterBar from '../components/user-management/UserFilterBar.vue'
 import UserTable from '../components/user-management/UserTable.vue'
 import { accountStatus } from '../utils/userMembership'
@@ -143,6 +166,8 @@ const memberDialog = ref(false)
 const memberPlatform = ref('class_cube')
 const resetDialog = ref(false)
 const resetUser = ref(null)
+const userInfoVisible = ref(false)
+const userInfoUser = ref(null)
 const archiveDetailDialog = ref(false)
 const archiveDetailUser = ref(null)
 const currentPage = ref(1)
@@ -172,6 +197,7 @@ function resetArchiveFilters() {
 function openCreate() { editingUser.value = null; userDialog.value = true }
 function openEdit(row) { if (accountStatus(row) === 'expired') return; editingUser.value = row; userDialog.value = true }
 function openReset(row) { if (accountStatus(row) === 'expired') return; resetUser.value = row; resetDialog.value = true }
+function openUserInfo(row) { userInfoUser.value = row; userInfoVisible.value = true }
 function openMemberCreate() { memberPlatform.value = 'class_cube'; memberDialog.value = true }
 function openArchiveDetail(row) { archiveDetailUser.value = row; archiveDetailDialog.value = true }
 function changeCurrentPage(page) { currentPage.value = page; loadCurrentUsers() }
@@ -231,6 +257,52 @@ function archiveQueryParams() {
     platform_scope: archiveFilters.scope || undefined,
     start_date: startDate || undefined,
     end_date: endDate || undefined,
+  }
+}
+
+const EXPORT_OPTIONS = {
+  all: { label: '全部账号', params: {} },
+  xxqd: {
+    label: '小小签到',
+    params: { platform_scope: 'xxqd' },
+  },
+  class_cube: {
+    label: '班级魔方',
+    params: { platform_scope: 'class_cube' },
+  },
+}
+
+function handleExportCommand(command) {
+  const option = EXPORT_OPTIONS[command]
+  if (option) exportSystemAccounts(option)
+}
+
+async function exportSystemAccounts(option) {
+  try {
+    await ElMessageBox.confirm(
+      `将导出「${option.label}」系统账号的用户名和明文密码，请妥善保管，确认导出？`,
+      '导出系统账号',
+      { type: 'warning', confirmButtonText: '导出', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  exporting.value = true
+  try {
+    const blob = await exportUsersApi(option.params)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `系统账号导出_${option.label}_${new Date().toISOString().slice(0, 10)}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success('系统账号已导出')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -309,8 +381,29 @@ onBeforeUnmount(() => {
   .page-heading { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 10px; }
   .page-heading h2 { margin-bottom: 3px; font-size: 20px; }
   .page-heading p { font-size: 12px; line-height: 1.45; }
-  .page-heading__actions { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
-  .page-heading__actions .el-button { width: 100%; margin: 0; }
+  .page-heading__actions {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+  }
+  .page-heading__actions .el-button {
+    flex: 1;
+    width: auto;
+    margin: 0;
+    padding: 0 6px;
+    font-size: 13px;
+  }
+  .page-heading__actions .el-button + .el-button {
+    margin-left: 0;
+  }
+  .page-heading__actions .export-dropdown {
+    flex: 1.15;
+    display: flex;
+  }
+  .page-heading__actions .export-dropdown .el-button {
+    width: 100%;
+  }
   .user-view-tabs :deep(.el-tabs__nav-wrap) { padding-inline: 2px; }
   .user-pagination { justify-content: center; }
 }

@@ -34,12 +34,18 @@ instance.interceptors.response.use(
 
 export const loginApi = data => instance.post('/auth/login', data)
 export const logoutApi = () => instance.post('/auth/logout')
+export const verifyTokenApi = () => instance.post('/auth/verify')
 export const changePasswordApi = data => instance.post('/auth/change-password', data)
 export const getUsersApi = (params = {}) => instance.get('/users', { params })
 export const exportArchivedUsersApi = (params = {}) => instance.get('/users/archived/export', {
   params,
   responseType: 'blob',
 })
+export const exportUsersApi = (params = {}) => instance.get('/users/export', {
+  params,
+  responseType: 'blob',
+})
+export const getUserCredentialsApi = id => instance.get(`/users/${id}/credentials`)
 export const createUserApi = data => instance.post('/users', data)
 export const createPlatformMemberApi = data => instance.post('/users/members', data)
 export const updateUserApi = (id, data) => instance.put(`/users/${id}`, data)

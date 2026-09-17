@@ -7,6 +7,8 @@ backend/uploads/
 backend/logs/
 backend/.test-tmp-*/
 backend/venv/
+backend/export_secret.key
+backend/settings.json
 frontend/node_modules/
 frontend/dist/
 .vscode/

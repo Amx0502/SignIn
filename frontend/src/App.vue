@@ -221,6 +221,7 @@
                 </div>
               </div>
             </el-popover>
+            <HeaderCardBadge v-if="!isMobile" :user="currentUser" />
             <el-dropdown @command="handleUserCommand">
               <span class="user-info" role="button" tabindex="0" aria-label="用户菜单">
                 <el-icon><User /></el-icon>
@@ -471,6 +472,13 @@
           <h3>账户</h3>
           <span>{{ currentUser?.username || "当前用户" }}</span>
         </div>
+        <div v-if="membershipVisible" class="mobile-membership">
+          <div class="mobile-membership__head">
+            <strong>我的会员卡</strong>
+            <span>{{ cardTypeLabel(currentUser?.card_type) }}</span>
+          </div>
+          <CardStatusBar :row="currentUser" :key="`${currentUser?.updated_at}-${currentUser?.card_used_count}-${currentUser?.card_status || ''}`" />
+        </div>
         <van-cell-group inset>
           <van-cell
             v-if="currentUser?.role === 'admin'"
@@ -508,6 +516,7 @@
 import {
   ref,
   computed,
+  watch,
   defineAsyncComponent,
   onMounted,
   onUnmounted,
@@ -544,7 +553,7 @@ import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { useAppState } from "./composables/useAppState";
 import { formatCurrentTime } from "./utils/currentTime";
 import { getBreadcrumb } from "./utils/breadcrumb";
-import { logoutApi } from "./api";
+import { logoutApi, verifyTokenApi } from "./api";
 import xxqdImage from "./img/xxqd.png";
 import classCubeImage from "./img/bjmf.png";
 import miaoyingImage from "./img/miaoying.png";
@@ -559,6 +568,9 @@ import { buildSidebarSections } from "./menu/sidebarSections.js";
 import { useMobileNavigation } from "./composables/useMobileNavigation.js";
 import { useNotifications } from "./composables/useNotifications.js";
 import { useVisitedTabs } from "./composables/useVisitedTabs.js";
+import CardStatusBar from "./components/user-management/CardStatusBar.vue";
+import HeaderCardBadge from "./components/HeaderCardBadge.vue";
+import { cardTypeLabel } from "./utils/userMembership";
 
 const VanGrid = defineAsyncComponent(() => import("vant/es/grid"));
 const VanGridItem = defineAsyncComponent(() => import("vant/es/grid-item"));
@@ -698,6 +710,36 @@ function getUserInfo() {
   }
 }
 
+const membershipVisible = computed(() => {
+  const user = currentUser.value;
+  return (
+    user &&
+    user.role !== "admin" &&
+    (user.card_type === "single" || user.card_type === "monthly")
+  );
+});
+
+async function refreshCurrentUser() {
+  if (isLoginPage.value || !localStorage.getItem("access_token")) return;
+  try {
+    const { data } = await verifyTokenApi();
+    if (data?.ok && data.data) {
+      currentUser.value = data.data;
+      localStorage.setItem("user", JSON.stringify(data.data));
+    }
+  } catch {
+    /* 保持本地缓存的用户信息 */
+  }
+}
+
+watch(mobileMoreVisible, visible => {
+  if (visible && membershipVisible.value) refreshCurrentUser();
+});
+
+function handleMembershipUpdated(event) {
+  if (event?.detail) currentUser.value = event.detail;
+}
+
 async function handleUserCommand(command) {
   if (command === "logout") {
     try {
@@ -741,6 +783,8 @@ function closeSidebar() {
 onMounted(async () => {
   checkMobile();
   getUserInfo();
+  refreshCurrentUser();
+  window.addEventListener("membership-updated", handleMembershipUpdated);
   loadTabs();
   loadNotifications();
   syncCurrentTab();
@@ -1422,7 +1466,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 1px 16px 15px;
+  padding: 10px;
   border-bottom: 1px solid #e2e8f0;
 }
 .mobile-more-header img {
@@ -1591,6 +1635,38 @@ onUnmounted(() => {
 }
 .mobile-logout-cell :deep(.van-cell__title) {
   color: #dc2626;
+}
+.mobile-membership {
+  margin: 0 16px 10px;
+  padding: 12px 14px;
+  border: 1px solid #dbe6f5;
+  border-radius: 12px;
+  background: #f8fafd;
+}
+.mobile-membership__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.mobile-membership__head strong {
+  color: #263247;
+  font-size: 13px;
+  font-weight: 650;
+}
+.mobile-membership__head span {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 600;
+}
+.mobile-membership :deep(.card-status-bar__label) {
+  font-size: 12px;
+}
+.mobile-membership :deep(.card-status-bar__value) {
+  font-size: 13px;
+}
+.mobile-membership :deep(.card-status-bar__foot) {
+  font-size: 11px;
 }
 
 @media (max-width: 768px) {

@@ -4,11 +4,15 @@ import string
 import asyncio
 import csv
 import io
+import logging
+import urllib.parse
+
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Literal
 
+import openpyxl
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -459,6 +463,7 @@ def get_logs(limit: int = 200, _user=Depends(require_menu("xxqd.logs"))):
 
 @app.get("/api/xxqd/runs")
 def list_xxqd_runs(
+    owner_user_id: int | None = Query(default=None, gt=0),
     account_id: int | None = Query(default=None, gt=0),
     task_id: int | None = Query(default=None, gt=0),
     status: str | None = Query(default=None, max_length=32),
@@ -467,9 +472,12 @@ def list_xxqd_runs(
     offset: int = Query(default=0, ge=0),
     user=Depends(require_menu("xxqd.runs")),
 ):
-    owner_user_id, is_admin = _xxqd_scope(user)
+    scope_user_id, is_admin = _xxqd_scope(user)
+    effective_owner = scope_user_id
+    if is_admin and owner_user_id is not None:
+        effective_owner = int(owner_user_id)
     return success(app_state.repository.list_runs(
-        owner_user_id=owner_user_id,
+        owner_user_id=effective_owner,
         is_admin=is_admin,
         account_id=account_id,
         task_id=task_id,
@@ -796,6 +804,136 @@ def export_archived_users(
     )
 
 
+def _write_audit_log(message: str) -> None:
+    try:
+        config.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        log_file = config.LOG_DIR / "audit.log"
+        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with log_file.open("a", encoding="utf-8") as handle:
+            handle.write(f"[{stamp}] {message}\n")
+    except OSError:
+        logging.getLogger(__name__).warning("审计日志写入失败: %s", message)
+
+
+def _format_user_expiry(row: dict) -> str:
+    if row.get("card_type") == "monthly":
+        if not row.get("card_activated_at"):
+            return "首次登录后激活"
+        return str(row.get("expires_at") or "")
+    if row.get("card_type") == "single":
+        if row.get("card_delete_due_at"):
+            return f"{row['card_delete_due_at']} 清理"
+        remaining = row.get("card_remaining_uses") or 0
+        return f"剩余 {remaining} 次"
+    return str(row.get("expires_at") or "永不过期")
+
+
+@app.get("/api/users/{user_id}/credentials")
+def get_user_credentials(user_id: int, admin=Depends(require_admin)):
+    try:
+        info = auth_service.repository.get_user_credentials(user_id)
+    except UserNotFoundError:
+        failure("用户不存在", 404)
+    _write_audit_log(
+        f"管理员 {admin['username']} 查看用户 {info.get('username')} 的账号信息"
+    )
+    return success(info)
+
+
+@app.get("/api/users/export")
+def export_users(
+    keyword: str | None = Query(default=None, max_length=50),
+    card_type: Literal["none", "single", "monthly"] | None = None,
+    platform_scope: Literal["all", "xxqd", "class_cube"] | None = None,
+    status: Literal[
+        "active", "pending", "used", "expired", "disabled"
+    ] | None = None,
+    admin=Depends(require_admin),
+):
+    try:
+        rows = auth_service.repository.export_current_users(
+            keyword=keyword,
+            card_type=card_type,
+            platform_scope=platform_scope,
+            status=status,
+        )
+    except ValueError as exc:
+        failure(str(exc))
+
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "系统账号"
+    headers = ["用户名", "密码", "会员卡", "功能范围", "有效期", "状态", "备注"]
+    sheet.append(headers)
+    password_header = sheet.cell(row=1, column=2)
+    password_header.font = openpyxl.styles.Font(color="FFCC0000", bold=True)
+
+    card_names = {"single": "次卡", "monthly": "月卡", "none": "无"}
+    scope_names = {
+        "all": "全部平台",
+        "xxqd": "仅小小签到",
+        "class_cube": "仅班级魔方",
+    }
+    status_names = {
+        "active": "已启用",
+        "pending": "待激活",
+        "used": "已核销待失效",
+        "expired": "已过期",
+        "disabled": "已禁用",
+    }
+
+    def _user_status(row: dict) -> str:
+        if row.get("is_expired"):
+            return "已过期"
+        if not row.get("is_active"):
+            return "已禁用"
+        return status_names.get(row.get("card_status") or "", "已启用")
+
+    for row in rows:
+        password = row.get("export_password")
+        sheet.append([
+            row.get("username", ""),
+            password if password else "(未保存，重置密码后可导出)",
+            card_names.get(row.get("card_type") or "none", "无"),
+            scope_names.get(row.get("platform_scope"), "全部平台"),
+            _format_user_expiry(row),
+            _user_status(row),
+            row.get("remark") or "",
+        ])
+
+    sheet.column_dimensions["A"].width = 22
+    sheet.column_dimensions["B"].width = 28
+    sheet.column_dimensions["C"].width = 10
+    sheet.column_dimensions["D"].width = 14
+    sheet.column_dimensions["E"].width = 24
+    sheet.column_dimensions["F"].width = 14
+    sheet.column_dimensions["G"].width = 30
+
+    output = io.BytesIO()
+    workbook.save(output)
+    _write_audit_log(
+        f"管理员 {admin['username']} 导出 {len(rows)} 个系统账号"
+        f"（会员卡={card_type or '全部'}，平台={platform_scope or '全部'}）"
+    )
+
+    card_label = card_names.get(card_type or "", "全部")
+    filename = (
+        f"系统账号导出_{card_label}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    )
+    quoted = urllib.parse.quote(filename)
+    return Response(
+        content=output.getvalue(),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename*=UTF-8''{quoted}"
+            ),
+        },
+    )
+
+
 @app.get("/api/admin/checkin-delay-settings")
 def get_checkin_delay_settings(_admin=Depends(require_admin)):
     try:
@@ -955,6 +1093,8 @@ async def create_user(
             card_type=payload.card_type,
             card_delete_delay_seconds=payload.card_delete_delay_seconds,
             card_total_uses=payload.card_total_uses,
+            remark=payload.remark,
+            created_by=admin["username"],
         )
         menu_result = get_menu_repository().apply_user_access_profile(
             user_id=created["id"],
@@ -1018,6 +1158,7 @@ async def create_platform_member(
                 card_type=payload.card_type,
                 card_delete_delay_seconds=payload.card_delete_delay_seconds,
                 card_total_uses=payload.card_total_uses,
+                remark=payload.remark,
             )
             break
         except DuplicateUsernameError:
@@ -1099,6 +1240,10 @@ async def update_user(
             location_search_daily_limit = previous.get(
                 "location_search_daily_limit"
             )
+        if "remark" in payload.model_fields_set:
+            remark = payload.remark
+        else:
+            remark = previous.get("remark")
         request.app.state.class_cube_service.repository.validate_account_limit(
             user_id,
             account_limit,
@@ -1116,6 +1261,7 @@ async def update_user(
             card_type=payload.card_type,
             card_delete_delay_seconds=payload.card_delete_delay_seconds,
             card_total_uses=payload.card_total_uses,
+            remark=remark,
         )
         if (
             previous.get("platform_scope") != platform_scope

@@ -85,6 +85,16 @@
               <el-switch v-model="form.is_active" active-text="启用" inactive-text="禁用" />
             </div>
           </el-form-item>
+          <el-form-item label="备注" class="user-form-grid__full">
+            <el-input
+              v-model="form.remark"
+              type="textarea"
+              :rows="2"
+              maxlength="255"
+              show-word-limit
+              placeholder="选填，仅管理员可见，如：张三班级专用"
+            />
+          </el-form-item>
           <el-form-item v-if="form.role === 'user' && !form.card_type" label="账号到期时间" class="user-form-grid__full">
             <el-date-picker
               v-model="form.expires_at"
@@ -269,6 +279,7 @@ function hydrateForm() {
     card_type: row.role === 'user' ? row.card_type : null,
     card_total_uses: row.card_total_uses ?? DEFAULT_CARD_TOTAL_USES,
     card_delete_delay_seconds: row.card_delete_delay_seconds ?? DEFAULT_CARD_DELETE_DELAY_SECONDS,
+    remark: row.remark || '',
   })
 }
 
@@ -319,6 +330,7 @@ function buildPayload() {
     card_total_uses: form.role === 'user' ? form.card_total_uses : DEFAULT_CARD_TOTAL_USES,
     card_delete_delay_seconds: form.role === 'user'
       ? form.card_delete_delay_seconds : DEFAULT_CARD_DELETE_DELAY_SECONDS,
+    remark: (form.remark || '').trim() || null,
   }
 }
 

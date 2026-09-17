@@ -48,6 +48,23 @@ def _normalize_fill_values(raw) -> dict[str, str]:
     return values
 
 
+def _normalize_fill_fields(raw) -> list[str] | None:
+    """None 表示未配置（沿用检测到的全部必填项）；列表表示用户勾选的提交项。"""
+    if raw is None:
+        return None
+    if not isinstance(raw, (list, tuple, set)):
+        return None
+    fields: list[str] = []
+    for item in raw:
+        try:
+            key = str(int(item))
+        except (TypeError, ValueError):
+            continue
+        if key not in fields:
+            fields.append(key)
+    return fields
+
+
 def _normalize_task(data: dict | None = None) -> dict:
     data = data or {}
     raw_times = data.get("times", [])
@@ -92,6 +109,7 @@ def _normalize_task(data: dict | None = None) -> dict:
         "text": str(data.get("text", "")),
         "fill_name": str(data.get("fill_name", "")).strip(),
         "fill_values": _normalize_fill_values(data.get("fill_values")),
+        "fill_fields": _normalize_fill_fields(data.get("fill_fields")),
         "pic_path": [str(item) for item in pic_paths if str(item)],
         "skip_weekends": bool(data.get("skip_weekends", False)),
         **date_rule,
@@ -122,6 +140,9 @@ class AccountRepository:
             "text": row.text,
             "fill_name": row.fill_name or "",
             "fill_values": dict(row.fill_values or {}),
+            "fill_fields": (
+                list(row.fill_fields) if row.fill_fields is not None else None
+            ),
             "pic_path": list(row.pic_paths or []),
             "skip_weekends": row.skip_weekends,
             "date_mode": row.date_mode or "daily",
@@ -248,7 +269,7 @@ class AccountRepository:
     ) -> dict:
         with self.database.session() as session:
             conditions = []
-            if not is_admin and owner_user_id is not None:
+            if owner_user_id is not None:
                 conditions.append(
                     XxqdTaskRunRow.owner_user_id == owner_user_id
                 )
@@ -475,6 +496,7 @@ class AccountRepository:
         row.text = task["text"]
         row.fill_name = task["fill_name"]
         row.fill_values = task["fill_values"]
+        row.fill_fields = task.get("fill_fields")
         row.pic_paths = task["pic_path"]
         row.skip_weekends = task["skip_weekends"]
         row.date_mode = task["date_mode"]
