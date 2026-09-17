@@ -270,6 +270,7 @@ export function useClassCube(api = classCubeApi) {
   }
 
   async function refreshBackground() {
+    if (document.visibilityState === 'hidden') return
     try {
       await Promise.all([loadTasks(), loadRuns()])
     } catch (caught) {

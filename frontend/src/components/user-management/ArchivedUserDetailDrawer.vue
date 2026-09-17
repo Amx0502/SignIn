@@ -90,10 +90,13 @@ async function loadLastRun(user) {
   runLoading.value = true
   try {
     if (user.platform_scope === 'class_cube') {
+      // class-cube/runs 返回纯数组，xxqd/runs 返回 { items, total }
       const response = await classCubeApi.listRuns({
         owner_user_id: user.id, limit: 1,
       })
-      lastRun.value = response.data?.items?.[0] || null
+      const data = response.data
+      const items = Array.isArray(data) ? data : data?.items || []
+      lastRun.value = items[0] || null
     } else {
       const response = await listXxqdRunsApi({
         owner_user_id: user.id, limit: 1,

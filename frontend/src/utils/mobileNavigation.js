@@ -1,7 +1,7 @@
 export const MOBILE_PLATFORM_DEFINITIONS = {
   xxqd: {
     title: '小小签到',
-    paths: ['/overview', '/accounts', '/tasks', '/runs', '/logs', '/checkin/auto'],
+    paths: ['/overview', '/accounts', '/tasks', '/runs', '/logs'],
     primary: [
       ['xxqd.accounts', '账号', 'User'],
       ['xxqd.tasks', '任务', 'Timer'],

@@ -1386,6 +1386,9 @@ class ClassCubeService:
                 if checkin_result.get("photo_res"):
                     detail["photo_res"] = checkin_result["photo_res"]
                     result["photo_res"] = checkin_result["photo_res"]
+                if checkin_result.get("photo_src"):
+                    detail["photo_src"] = checkin_result["photo_src"]
+                    result["photo_src"] = checkin_result["photo_src"]
                 result["details"].append(detail)
                 parameter_text = "；".join(
                     self._parameter_log_parts(task_parameters)
@@ -1672,6 +1675,7 @@ class ClassCubeService:
         status: str,
         message: str,
         photo_res: str = "",
+        photo_src: str = "",
     ) -> dict[str, str]:
         safe_message = " ".join(str(message).split())[:200]
         result = {
@@ -1680,6 +1684,8 @@ class ClassCubeService:
         }
         if photo_res:
             result["photo_res"] = photo_res
+        if photo_src:
+            result["photo_src"] = photo_src
         return result
 
     def _mark_account_expired(
@@ -1858,6 +1864,7 @@ class ClassCubeService:
             "started_at": started_at.isoformat(),
             "parameters": self._manual_parameters(payload),
             "photo_res": result.get("photo_res", ""),
+            "photo_src": result.get("photo_src", ""),
         }
 
     def _record_manual_run(self, context, summary, started_at):
@@ -2349,6 +2356,13 @@ class ClassCubeService:
         )
 
         remote_photo_value = str(payload.get("photo_res") or "").strip()
+        raw_photo_src = str(payload.get("photo_path") or "").strip()
+        if not raw_photo_src:
+            photo_src = ""
+        elif raw_photo_src.startswith(("http://", "https://", "/uploads/")):
+            photo_src = raw_photo_src
+        else:
+            photo_src = f"/uploads/{raw_photo_src.lstrip('/')}"
         if form.mode == "gps_photo":
             if not remote_photo_value:
                 photo_path = str(payload.get("photo_path") or "").strip()
@@ -2423,6 +2437,8 @@ class ClassCubeService:
                     self._checkin_view(
                         "success",
                         "签到成功",
+                        photo_res=photo_res_value,
+                        photo_src=photo_src,
                     ),
                 )
             self._log_remote_failure("提交签到", exc)
@@ -2454,6 +2470,7 @@ class ClassCubeService:
                     "success",
                     "签到成功",
                     photo_res=photo_res_value,
+                    photo_src=photo_src,
                 ),
             )
         if result.status == "already_signed":
@@ -2461,6 +2478,7 @@ class ClassCubeService:
                 "already_signed",
                 "该签到项已经完成",
                 photo_res=photo_res_value,
+                photo_src=photo_src,
             )
         if result.status == "password_error":
             return self._checkin_view(

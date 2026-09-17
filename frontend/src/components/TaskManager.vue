@@ -52,6 +52,7 @@
           </template>
 
           <el-table
+            ref="taskTableRef"
             class="desktop-task-table"
             :data="accountTasks"
             highlight-current-row
@@ -389,21 +390,26 @@
                 </div>
               </el-form-item>
               <el-form-item label="签到位置">
-                <el-radio-group v-model="locationMode">
-                  <el-radio value="none">不显示位置</el-radio>
-                  <el-radio value="auto">自动获取位置</el-radio>
-                  <el-radio value="map">地图选择位置</el-radio>
-                </el-radio-group>
-                <div class="location-mode-tip">位置信息始终随签到提交，建议选择「地图选择位置」指定准确坐标</div>
-                <div v-if="locationMode === 'map'" class="map-location-choice">
-                  <div>
-                    <span>签到位置</span>
-                    <strong>{{ form.location_address || '尚未选择地图位置' }}</strong>
-                    <small v-if="form.location_latitude != null">{{ Number(form.location_latitude).toFixed(6) }}, {{ Number(form.location_longitude).toFixed(6) }}</small>
+                <div class="location-field">
+                  <el-radio-group v-model="locationMode" class="location-mode-group">
+                    <el-radio-button value="none">不显示</el-radio-button>
+                    <el-radio-button value="auto">自动获取</el-radio-button>
+                    <el-radio-button value="map">地图选择</el-radio-button>
+                  </el-radio-group>
+                  <div class="location-mode-tip">位置信息始终随签到提交，选择「地图选择」可指定准确坐标</div>
+                  <div v-if="locationMode === 'map'" class="location-choice-card">
+                    <div class="location-choice-icon">
+                      <el-icon><MapLocation /></el-icon>
+                    </div>
+                    <div class="location-choice-info">
+                      <strong>{{ form.location_address || '尚未选择地图位置' }}</strong>
+                      <small v-if="form.location_latitude != null">{{ Number(form.location_latitude).toFixed(6) }}, {{ Number(form.location_longitude).toFixed(6) }}</small>
+                      <small v-else>点击右侧按钮在地图上选择签到坐标</small>
+                    </div>
+                    <el-button type="primary" plain size="small" @click="locationPickerVisible = true">
+                      {{ form.location_latitude == null ? '选择位置' : '重新选择' }}
+                    </el-button>
                   </div>
-                  <el-button type="primary" plain @click="locationPickerVisible = true">
-                    {{ form.location_latitude == null ? '选择位置' : '重新选择' }}
-                  </el-button>
                 </div>
               </el-form-item>
               <el-form-item v-if="hasNameFill" label="签到姓名">
@@ -487,8 +493,8 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted, watch } from "vue";
-import { Search, VideoPlay, Delete, Refresh, Check, DocumentChecked } from "@element-plus/icons-vue";
+import { reactive, ref, computed, onMounted, watch, nextTick } from "vue";
+import { Search, VideoPlay, Delete, Refresh, Check, DocumentChecked, MapLocation } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import CheckinResultDialog from "./CheckinResultDialog.vue";
 import TaskDateSchedule from "./TaskDateSchedule.vue";
@@ -496,8 +502,11 @@ import TaskImageUpload from "./TaskImageUpload.vue";
 import TaskLocationPickerDialog from "./TaskLocationPickerDialog.vue";
 import { useAppState } from "../composables/useAppState";
 import { createCheckinResult } from "../utils/checkinResult";
+import { buildXxqdTaskPayload } from "../utils/xxqdTaskPayload.js";
 import { applyMembershipUpdate } from "../utils/userMembership";
 import api from "../api";
+
+const emit = defineEmits(["saved"]);
 
 const { state, refreshState, refreshLogs, selectedAccountIndex } =
   useAppState();
@@ -529,6 +538,9 @@ const runningTask = ref(false);
 const locationMode = ref("none");
 const locationPickerVisible = ref(false);
 const selectedMapLocation = ref(null);
+const taskTableRef = ref(null);
+// 编辑已有任务时临时抑制「检测状态重置」watcher，避免刚合成的提交项被清掉
+let suppressFillReset = false;
 
 const fillKeys = computed(
   () => new Set(fillOptions.value.map((item) => Number(item.key))),
@@ -767,8 +779,15 @@ function createNew() {
 
 function onSelectTask(row) {
   if (!row) return;
+  suppressFillReset = true;
   selectedActualIndex.value = row.actualIndex;
   const task = row.task;
+  // 自动选中任务对应的项目（项目序号从 1 开始）
+  const projIdx = Number(task.index) - 1;
+  selectedProjectIndex.value =
+    projects.value.length && projIdx >= 0 && projIdx < projects.value.length
+      ? projIdx
+      : -1;
   form.title = task.title;
   form.index = task.index;
   form.times = [...(task.times || [])];
@@ -806,6 +825,49 @@ function onSelectTask(row) {
   form.notify_wechat = isAdmin ? task.notify_wechat !== false : true;
   syncLocationMode();
   syncFileList();
+  // 已保存提交项的任务直接按其渲染表单，无需重新检测
+  const saved = buildSavedFillOptions(task);
+  if (saved) {
+    fillOptions.value = saved.items;
+    fillOptionsTitle.value = task.title || "";
+    fillOptionsChecked.value = true;
+    fillOptionsError.value = "";
+    selectedFillKeys.value = saved.keys;
+  } else {
+    // 旧任务未配置提交项，仍走检测流程
+    resetFillOptionsState();
+  }
+  nextTick(() => {
+    suppressFillReset = false;
+  });
+}
+
+// 根据任务保存的 fill_fields 合成检测结果（用于编辑时免检测渲染表单）
+function buildSavedFillOptions(task) {
+  if (!Array.isArray(task.fill_fields) || !task.fill_fields.length) return null;
+  const knownNames = { 1: "签到文本", 2: "签到图片" };
+  const items = [];
+  const keys = new Set([String(LOCATION_KEY)]); // 位置始终提交
+  let nameAssigned = false;
+  for (const raw of task.fill_fields) {
+    const k = String(raw);
+    if (Number(k) === LOCATION_KEY) continue; // 展示逻辑会自动补位置标签
+    keys.add(k);
+    if (knownNames[k]) {
+      items.push({ key: Number(k), name: knownNames[k], field_type: 0 });
+    } else if (
+      task.fill_name &&
+      !nameAssigned &&
+      !String(task.fill_values?.[k] ?? "").trim()
+    ) {
+      // 该 key 原为姓名项（值存在 fill_name 里）
+      items.push({ key: Number(k), name: "签到姓名", field_type: 0 });
+      nameAssigned = true;
+    } else {
+      items.push({ key: Number(k), name: `填写项 ${k}`, field_type: 0 });
+    }
+  }
+  return { items, keys };
 }
 
 function applyMapLocation(location) {
@@ -922,6 +984,7 @@ function fillTagType(item) {
 }
 
 watch([selectedAccountIndex, () => form.index], () => {
+  if (suppressFillReset) return;
   resetFillOptionsState();
 });
 
@@ -947,6 +1010,36 @@ async function refreshSelectedAccountToken() {
 }
 
 function applyProject(idx, item) {
+  const hadTaskSelected = selectedActualIndex.value >= 0;
+  if (hadTaskSelected) {
+    // 从编辑任务切换到重新新建：取消任务选中并清空表单
+    selectedActualIndex.value = -1;
+    taskTableRef.value?.setCurrentRow?.(null);
+    form.title = "";
+    form.times = [];
+    timesText.value = "";
+    form.text = "";
+    form.fill_name = "";
+    form.fill_values = {};
+    form.fill_fields = null;
+    form.pic_path = [];
+    form.enable = true;
+    form.use_location = false;
+    form.location_address = "";
+    form.location_latitude = null;
+    form.location_longitude = null;
+    selectedMapLocation.value = null;
+    form.skip_weekends = false;
+    form.date_mode = "daily";
+    form.run_dates = [];
+    form.skip_dates = [];
+    form.auto_disable_after_finish = true;
+    form.mode = "normal";
+    form.notify_wechat = true;
+    locationMode.value = "none";
+    fileList.value = [];
+    resetFillOptionsState();
+  }
   selectedProjectIndex.value = idx;
   form.index = idx + 1;
   if (!form.title) form.title = item.title || `任务${idx + 1}`;
@@ -1001,14 +1094,11 @@ async function saveTask() {
     const tasks = account?.tasks || [];
     const existingTaskIndex = tasks.findIndex((t) => t.index === form.index);
 
-    const taskPayload = selectedMapLocation.value
-      ? {
-          ...form,
-          ...selectedMapLocation.value,
-          use_location: true,
-          location_mode: "map",
-        }
-      : { ...form, location_mode: locationMode.value };
+    const taskPayload = buildXxqdTaskPayload(
+      form,
+      locationMode.value,
+      selectedMapLocation.value,
+    );
     if (existingTaskIndex >= 0) {
       await api.updateTask(selectedAccountIndex.value, existingTaskIndex, {
         ...taskPayload,
@@ -1028,6 +1118,7 @@ async function saveTask() {
     }
     await refreshState();
     await refreshLogs();
+    emit("saved");
   } catch (err) {
     ElMessage.error(err.message);
   }
@@ -1074,11 +1165,19 @@ async function deleteTask() {
 </script>
 
 <style scoped>
-.map-location-choice { display:flex; width:100%; margin-top:10px; padding:12px 14px; align-items:center; justify-content:space-between; gap:12px; border:1px solid #cfe2ff; border-radius:12px; background:#f8fbff; }
-.map-location-choice span,.map-location-choice strong,.map-location-choice small { display:block; }
-.map-location-choice span { color:#94a3b8; font-size:11px; }
-.map-location-choice strong { margin-top:3px; color:#1e3a5f; font-size:13px; }
-.map-location-choice small { margin-top:2px; color:#64748b; font-size:11px; }
+.location-field { width:100%; display:flex; flex-direction:column; gap:10px; }
+.location-mode-group { width:100%; }
+.location-mode-group :deep(.el-radio-button__inner) { padding:8px 0; width:104px; border-radius:0; }
+.location-mode-group :deep(.el-radio-button:first-child .el-radio-button__inner) { border-radius:8px 0 0 8px; }
+.location-mode-group :deep(.el-radio-button:last-child .el-radio-button__inner) { border-radius:0 8px 8px 0; }
+.location-choice-card { display:flex; width:100%; padding:12px 14px; align-items:center; gap:12px; border:1px solid #cfe2ff; border-radius:12px; background:linear-gradient(135deg, #f3f9ff, #f8fbff); }
+.location-choice-icon { flex:none; display:grid; width:38px; height:38px; place-items:center; border-radius:10px; color:#2563eb; font-size:20px; background:#eaf3ff; }
+.location-choice-info { flex:1; min-width:0; }
+.location-choice-info strong { display:block; overflow:hidden; color:#1e3a5f; font-size:13px; line-height:20px; text-overflow:ellipsis; white-space:nowrap; }
+.location-choice-info small { display:block; margin-top:2px; color:#94a3b8; font-size:11px; }
+.location-choice-card .el-button { flex:none; margin:0; }
+.location-mode-tip { width:100%; color:#94a3b8; font-size:11px; line-height:1.5; }
+@media (max-width:640px) { .location-choice-card { gap:10px; padding:10px 12px; } .location-mode-group :deep(.el-radio-button__inner) { width:auto; min-width:96px; padding:8px 10px; } }
 .card-header-right { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .detect-status-item :deep(.el-alert) { width:100%; }
 .fill-detect-result { width:100%; margin-bottom:14px; padding:10px 14px; border:1px dashed #bfdbfe; border-radius:10px; background:#f8fbff; }
@@ -1087,8 +1186,6 @@ async function deleteTask() {
 .fill-detect-empty { color:#64748b; font-size:12px; }
 .fill-option-tag { cursor:pointer; user-select:none; }
 .fill-detect-tip { width:100%; color:#94a3b8; font-size:11px; }
-.location-mode-tip { width:100%; margin-top:6px; color:#94a3b8; font-size:11px; line-height:1.5; }
-@media (max-width:640px) { .map-location-choice { align-items:stretch; flex-direction:column; } .map-location-choice .el-button { width:100%; margin:0; } }
 .page-container {
   width: 100%;
   min-width: 0;

@@ -359,7 +359,11 @@ onMounted(async () => {
   await Promise.all([loadAccountPool(), loadCurrentUsers()])
   if (activeTab.value === 'archived') await loadArchivedUsers()
   userRefreshTimer = window.setInterval(() => {
-    if (activeTab.value === 'current' && !currentLoading.value) loadCurrentUsers()
+    if (
+      activeTab.value === 'current'
+      && !currentLoading.value
+      && document.visibilityState !== 'hidden'
+    ) loadCurrentUsers()
   }, 30_000)
 })
 onBeforeUnmount(() => {

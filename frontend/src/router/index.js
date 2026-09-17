@@ -16,7 +16,6 @@ const NoAvailableMenus = () => import('../views/NoAvailableMenus.vue')
 const Dashboard = () => import('../views/Dashboard.vue')
 const Overview = () => import('../views/Overview.vue')
 const Accounts = () => import('../views/Accounts.vue')
-const AutoCheckIn = () => import('../views/AutoCheckIn.vue')
 const TaskManagement = () => import('../views/TaskManagement.vue')
 const XxqdRuns = () => import('../views/XxqdRuns.vue')
 const Logs = () => import('../views/Logs.vue')
@@ -40,10 +39,7 @@ const routes = [
   { path: '/overview', name: 'Overview', component: Overview, meta: { title: '系统概览', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.overview' } },
   { path: '/accounts', name: 'Accounts', component: Accounts, meta: { title: '账号管理', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.accounts' } },
   { path: '/tasks', name: 'TaskManagement', component: TaskManagement, meta: { title: '自动任务', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.tasks' } },
-  { path: '/checkin/auto', name: 'AutoCheckIn', component: AutoCheckIn, meta: { title: '新建任务', parentTitle: '自动任务', requiresAuth: true, menuKey: 'xxqd.tasks' } },
   { path: '/runs', name: 'XxqdRuns', component: XxqdRuns, meta: { title: '运行记录', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.runs' } },
-  { path: '/checkin/normal', redirect: '/tasks' },
-  { path: '/checkin/image', redirect: '/tasks' },
   { path: '/logs', name: 'Logs', component: Logs, meta: { title: '签到日志', parentTitle: '小小签到', requiresAuth: true, menuKey: 'xxqd.logs' } },
   { path: '/class-cube', redirect: '/class-cube/overview' },
   { path: '/class-cube/overview', name: 'ClassCubeOverview', component: ClassCubeOverview, meta: { title: '系统概览', parentTitle: '班级魔方', requiresAuth: true, menuKey: 'class_cube.overview' } },

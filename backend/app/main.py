@@ -1159,6 +1159,7 @@ async def create_platform_member(
                 card_delete_delay_seconds=payload.card_delete_delay_seconds,
                 card_total_uses=payload.card_total_uses,
                 remark=payload.remark,
+                created_by=admin["username"],
             )
             break
         except DuplicateUsernameError:

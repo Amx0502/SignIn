@@ -21,6 +21,9 @@ const logs = ref([])
 const loading = ref(false)
 const selectedAccountIndex = ref(undefined)
 
+const STATE_POLL_MS = 5000
+const LOGS_POLL_MS = 5000
+
 let stateTimer = null
 let logsTimer = null
 let consumerCount = 0
@@ -87,25 +90,31 @@ function stopPolling() {
 
 function startPolling() {
   stopPolling()
-  if (!isLoggedIn()) return
+  if (!isLoggedIn() || document.visibilityState === 'hidden') return
 
   if (canAccessMenu('xxqd')) {
     void refreshState()
-    stateTimer = window.setInterval(refreshState, 3000)
+    stateTimer = window.setInterval(refreshState, STATE_POLL_MS)
   } else {
     state.value = emptyState()
   }
 
   if (canAccessMenu('xxqd.logs')) {
     void refreshLogs()
-    logsTimer = window.setInterval(refreshLogs, 3000)
+    logsTimer = window.setInterval(refreshLogs, LOGS_POLL_MS)
   } else {
     logs.value = []
   }
 }
 
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') startPolling()
+  else stopPolling()
+}
+
 function beginSharedPolling() {
   if (stopPermissionWatch) return
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   stopPermissionWatch = watch(
     [() => menuState.loaded, () => menuState.version],
     startPolling,
@@ -116,6 +125,7 @@ function beginSharedPolling() {
 function endSharedPolling() {
   stopPermissionWatch?.()
   stopPermissionWatch = null
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   stopPolling()
 }
 

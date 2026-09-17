@@ -208,7 +208,7 @@ export function useNotifications({
   );
 
   async function refreshCcLogs() {
-    if (!canPollCcLogs.value) return;
+    if (!canPollCcLogs.value || document.visibilityState === 'hidden') return;
     try {
       const response = await classCubeApi.listLogs(50);
       if (response.ok) ccLogs.value = response.data || [];
@@ -224,7 +224,7 @@ export function useNotifications({
   function startCcLogPolling() {
     stopCcLogPolling();
     refreshCcLogs();
-    ccLogTimer = window.setInterval(refreshCcLogs, 3000);
+    ccLogTimer = window.setInterval(refreshCcLogs, 10_000);
   }
   function syncCcLogPolling() {
     if (isLoginPage.value || !canPollCcLogs.value) {

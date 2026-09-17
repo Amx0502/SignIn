@@ -722,10 +722,11 @@ const membershipVisible = computed(() => {
 async function refreshCurrentUser() {
   if (isLoginPage.value || !localStorage.getItem("access_token")) return;
   try {
-    const { data } = await verifyTokenApi();
-    if (data?.ok && data.data) {
-      currentUser.value = data.data;
-      localStorage.setItem("user", JSON.stringify(data.data));
+    // 拦截器已解包为 { ok, data: user }，与用户管理页同源的最新会员卡数据
+    const res = await verifyTokenApi();
+    if (res?.ok && res?.data) {
+      currentUser.value = res.data;
+      localStorage.setItem("user", JSON.stringify(res.data));
     }
   } catch {
     /* 保持本地缓存的用户信息 */

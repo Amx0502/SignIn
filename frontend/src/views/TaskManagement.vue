@@ -170,7 +170,6 @@
               >
             </div>
           </div>
-
           <div v-if="isEditing(task)" class="inline-edit-panel">
             <el-card shadow="always" class="edit-card">
               <template #header>
@@ -181,8 +180,6 @@
               <el-form
                 :model="getEditForm(task)"
                 label-width="100px"
-                :rules="rules"
-                :ref="`formRef-${task.accountIndex}-${task.taskIndex}`"
               >
                 <el-form-item label="任务标题" prop="title">
                   <el-input
@@ -224,7 +221,7 @@
                     "
                   />
                 </el-form-item>
-                <el-form-item label="签到文本" prop="text">
+                <el-form-item v-if="hasFillKey(task, 1)" label="签到文本" prop="text">
                   <el-input
                     v-model="getEditForm(task).text"
                     type="textarea"
@@ -232,7 +229,21 @@
                     placeholder="请输入签到时需要提交的文本内容"
                   />
                 </el-form-item>
-                <el-form-item label="签到姓名">
+                <el-form-item
+                  v-for="entry in customFillEntries(task)"
+                  :key="entry.key"
+                  :label="entry.label"
+                >
+                  <el-input
+                    v-model="getEditForm(task).fill_values[entry.key]"
+                    maxlength="200"
+                    :placeholder="`请输入「${entry.label}」提交内容`"
+                  />
+                </el-form-item>
+                <el-form-item
+                  v-if="!Array.isArray(task.fill_fields)"
+                  label="签到姓名"
+                >
                   <el-input
                     v-model="getEditForm(task).fill_name"
                     maxlength="50"
@@ -240,24 +251,29 @@
                   />
                 </el-form-item>
                 <el-form-item label="签到位置">
-                  <el-radio-group v-model="editLocationModes[getTaskKey(task)]">
-                    <el-radio value="none">不显示位置</el-radio>
-                    <el-radio value="auto">自动获取位置</el-radio>
-                    <el-radio value="map">地图选择位置</el-radio>
-                  </el-radio-group>
-                  <div class="location-mode-tip">签到时根据接口自动判断需要提交的类型（文字 / 图片 / 位置 / 姓名），此处配置的内容会在项目要求时自动使用</div>
-                  <div v-if="editLocationModes[getTaskKey(task)] === 'map'" class="map-location-choice">
-                    <div>
-                      <span>签到位置</span>
-                      <strong>{{ getEditForm(task).location_address || '尚未选择地图位置' }}</strong>
-                      <small v-if="getEditForm(task).location_latitude != null">{{ Number(getEditForm(task).location_latitude).toFixed(6) }}, {{ Number(getEditForm(task).location_longitude).toFixed(6) }}</small>
+                  <div class="location-field">
+                    <el-radio-group v-model="editLocationModes[getTaskKey(task)]" class="location-mode-group">
+                      <el-radio-button value="none">不显示</el-radio-button>
+                      <el-radio-button value="auto">自动获取</el-radio-button>
+                      <el-radio-button value="map">地图选择</el-radio-button>
+                    </el-radio-group>
+                    <div class="location-mode-tip">位置信息始终随签到提交，选择「地图选择」可指定准确坐标</div>
+                    <div v-if="editLocationModes[getTaskKey(task)] === 'map'" class="location-choice-card">
+                      <div class="location-choice-icon">
+                        <el-icon><MapLocation /></el-icon>
+                      </div>
+                      <div class="location-choice-info">
+                        <strong>{{ getEditForm(task).location_address || '尚未选择地图位置' }}</strong>
+                        <small v-if="getEditForm(task).location_latitude != null">{{ Number(getEditForm(task).location_latitude).toFixed(6) }}, {{ Number(getEditForm(task).location_longitude).toFixed(6) }}</small>
+                        <small v-else>点击右侧按钮在地图上选择签到坐标</small>
+                      </div>
+                      <el-button type="primary" plain size="small" @click="openInlineLocationPicker(task)">
+                        {{ getEditForm(task).location_latitude == null ? '选择位置' : '重新选择' }}
+                      </el-button>
                     </div>
-                    <el-button type="primary" plain @click="openInlineLocationPicker(task)">
-                      {{ getEditForm(task).location_latitude == null ? '选择位置' : '重新选择' }}
-                    </el-button>
                   </div>
                 </el-form-item>
-                <el-form-item label="签到图片">
+                <el-form-item v-if="hasFillKey(task, 2)" label="签到图片">
                   <TaskImageUpload
                     :file-list="getEditFileList(task)"
                     :http-request="(options) => customUpload(task, options)"
@@ -265,7 +281,7 @@
                     :limit="3"
                   />
                   <div class="upload-tip">
-                    最多可上传 3 张图片，留空表示不使用图片签到
+                    最多可上传 3 张图片
                   </div>
                 </el-form-item>
                 <el-form-item>
@@ -292,16 +308,16 @@
     </el-card>
 
     <el-dialog
-      v-model="createTaskVisible"
+      v-model="taskDialogVisible"
       title="新建任务"
       width="min(1180px, 96vw)"
       align-center
       append-to-body
       destroy-on-close
       class="create-task-dialog"
-      @closed="refreshAfterCreate"
+      @closed="refreshAfterDialog"
     >
-      <TaskManager />
+      <TaskManager @saved="taskDialogVisible = false" />
     </el-dialog>
 
     <TaskLocationPickerDialog
@@ -342,12 +358,13 @@ import TaskLocationPickerDialog from "../components/TaskLocationPickerDialog.vue
 import { useAppState } from "../composables/useAppState";
 import { createCheckinResult } from "../utils/checkinResult";
 import { getTaskDeleteTargets } from "../utils/batchDelete";
+import { buildXxqdTaskPayload } from "../utils/xxqdTaskPayload.js";
 import api from "../api";
 
 const { state: appState, refreshState, refreshLogs } = useAppState();
 const checkinResultVisible = ref(false);
 const checkinResult = ref(null);
-const createTaskVisible = ref(false);
+const taskDialogVisible = ref(false);
 const editingKey = ref(null);
 const editForms = reactive({});
 const editFileLists = reactive({});
@@ -387,23 +404,6 @@ const allTasks = computed(() => {
   return tasks;
 });
 
-const rules = {
-  title: [{ required: true, message: "请输入任务标题", trigger: "blur" }],
-  index: [{ required: true, message: "请输入项目序号", trigger: "blur" }],
-  times: [
-    {
-      validator: (rule, value, callback) => {
-        if (!value || value.length === 0) {
-          callback(new Error("请至少设置一个执行时间"));
-        } else {
-          callback();
-        }
-      },
-      trigger: "blur",
-    },
-  ],
-};
-
 function getTaskKey(task) {
   return `${task.accountIndex}-${task.taskIndex}`;
 }
@@ -435,32 +435,37 @@ function toggleTaskSelection(task, checked) {
   selectedTaskKeys.value = nextKeys;
 }
 
-function resetTaskEditingState() {
-  editingKey.value = null;
-  for (const cache of [
-    editForms,
-    editFileLists,
-    editTimesInputs,
-    editLocationModes,
-  ]) {
-    for (const key of Object.keys(cache)) {
-      delete cache[key];
-    }
-  }
-}
-
 function openCreateTask() {
-  createTaskVisible.value = true;
+  taskDialogVisible.value = true;
 }
 
-async function refreshAfterCreate() {
-  resetTaskEditingState();
+async function refreshAfterDialog() {
   selectedTaskKeys.value = new Set();
   await Promise.allSettled([refreshState(), refreshLogs()]);
 }
 
 function isEditing(task) {
   return editingKey.value === getTaskKey(task);
+}
+
+function fillKeysOf(task) {
+  // 任务保存时勾选的提交项；null 表示旧任务未配置，保持旧行为显示全部
+  return Array.isArray(task.fill_fields)
+    ? new Set(task.fill_fields.map(String))
+    : null;
+}
+
+function hasFillKey(task, key) {
+  const keys = fillKeysOf(task);
+  return keys === null || keys.has(String(key));
+}
+
+function customFillEntries(task) {
+  const keys = fillKeysOf(task);
+  if (keys === null) return [];
+  return Object.keys(task.fill_values || {})
+    .filter((k) => keys.has(String(k)) && !["1", "2", "6"].includes(String(k)))
+    .map((k) => ({ key: k, label: `填写项(${k})` }));
 }
 
 function getEditForm(task) {
@@ -473,6 +478,9 @@ function getEditForm(task) {
       text: task.text || "",
       fill_name: task.fill_name || "",
       fill_values: { ...(task.fill_values || {}) },
+      fill_fields: Array.isArray(task.fill_fields)
+        ? [...task.fill_fields.map(String)]
+        : null,
       pic_path: [...(task.pic_path || [])],
       enable: task.enable !== false,
       use_location: task.use_location || false,
@@ -523,28 +531,7 @@ function toggleInlineEdit(task) {
     delete inlineMapLocations[key];
   } else {
     editingKey.value = key;
-
-    editForms[key] = reactive({
-      title: task.title || "",
-      index: task.index || 1,
-      times: [...(task.times || [])],
-      text: task.text || "",
-      fill_name: task.fill_name || "",
-      fill_values: { ...(task.fill_values || {}) },
-      pic_path: [...(task.pic_path || [])],
-      enable: task.enable !== false,
-      use_location: task.use_location || false,
-      location_address: task.location_address || "",
-      location_latitude: task.location_latitude ?? null,
-      location_longitude: task.location_longitude ?? null,
-      skip_weekends: task.skip_weekends || false,
-      date_mode: task.date_mode || "daily",
-      run_dates: [...(task.run_dates || [])],
-      skip_dates: [...(task.skip_dates || [])],
-      auto_disable_after_finish: task.auto_disable_after_finish === true,
-      mode: task.mode || "normal",
-      notify_wechat: task.notify_wechat !== false,
-    });
+    getEditForm(task);
 
     const paths = Array.isArray(task.pic_path)
       ? task.pic_path
@@ -653,18 +640,15 @@ async function saveInlineEdit(task) {
   if (!isAdmin) editForms[key].notify_wechat = true;
 
   try {
-    const mapLocation = inlineMapLocations[key];
-    await api.updateTask(task.accountIndex, task.taskIndex, mapLocation
-      ? {
-          ...editForms[key],
-          ...mapLocation,
-          use_location: true,
-          location_mode: "map",
-        }
-      : {
-          ...editForms[key],
-          location_mode: editLocationModes[key],
-        });
+    await api.updateTask(
+      task.accountIndex,
+      task.taskIndex,
+      buildXxqdTaskPayload(
+        editForms[key],
+        editLocationModes[key],
+        inlineMapLocations[key],
+      ),
+    );
     ElMessage.success("任务已更新");
     await refreshState();
     await refreshLogs();
@@ -771,13 +755,11 @@ async function deleteSelectedTasks() {
     for (const target of targets) {
       await api.deleteTask(target.accountIndex, target.taskIndex);
     }
-    resetTaskEditingState();
     selectedTaskKeys.value = new Set();
     await refreshState();
     await refreshLogs();
     ElMessage.success(`已删除 ${targets.length} 个任务`);
   } catch (err) {
-    resetTaskEditingState();
     selectedTaskKeys.value = new Set();
     await Promise.allSettled([refreshState(), refreshLogs()]);
     ElMessage.error(err.message || "批量删除任务失败");
@@ -788,13 +770,19 @@ async function deleteSelectedTasks() {
 </script>
 
 <style scoped>
-.map-location-choice { display:flex; width:100%; margin-top:10px; padding:12px 14px; align-items:center; justify-content:space-between; gap:12px; border:1px solid #cfe2ff; border-radius:12px; background:#f8fbff; }
-.map-location-choice span,.map-location-choice strong,.map-location-choice small { display:block; }
-.map-location-choice span { color:#94a3b8; font-size:11px; }
-.map-location-choice strong { margin-top:3px; color:#1e3a5f; font-size:13px; }
-.map-location-choice small { margin-top:2px; color:#64748b; font-size:11px; }
-.location-mode-tip { width:100%; margin-top:6px; color:#94a3b8; font-size:11px; line-height:1.5; }
-@media (max-width:640px) { .map-location-choice { align-items:stretch; flex-direction:column; } .map-location-choice .el-button { width:100%; margin:0; } }
+.location-field { width:100%; display:flex; flex-direction:column; gap:10px; }
+.location-mode-group { width:100%; }
+.location-mode-group :deep(.el-radio-button__inner) { padding:8px 0; width:104px; border-radius:0; }
+.location-mode-group :deep(.el-radio-button:first-child .el-radio-button__inner) { border-radius:8px 0 0 8px; }
+.location-mode-group :deep(.el-radio-button:last-child .el-radio-button__inner) { border-radius:0 8px 8px 0; }
+.location-choice-card { display:flex; width:100%; padding:12px 14px; align-items:center; gap:12px; border:1px solid #cfe2ff; border-radius:12px; background:linear-gradient(135deg, #f3f9ff, #f8fbff); }
+.location-choice-icon { flex:none; display:grid; width:38px; height:38px; place-items:center; border-radius:10px; color:#2563eb; font-size:20px; background:#eaf3ff; }
+.location-choice-info { flex:1; min-width:0; }
+.location-choice-info strong { display:block; overflow:hidden; color:#1e3a5f; font-size:13px; line-height:20px; text-overflow:ellipsis; white-space:nowrap; }
+.location-choice-info small { display:block; margin-top:2px; color:#94a3b8; font-size:11px; }
+.location-choice-card .el-button { flex:none; margin:0; }
+.location-mode-tip { width:100%; color:#94a3b8; font-size:11px; line-height:1.5; }
+@media (max-width:640px) { .location-choice-card { gap:10px; padding:10px 12px; } .location-mode-group :deep(.el-radio-button__inner) { width:auto; min-width:96px; padding:8px 10px; } }
 .page-container {
   padding: 0;
 }

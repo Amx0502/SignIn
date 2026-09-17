@@ -39,7 +39,25 @@
       <div class="detail-row"><span>结束时间</span><strong>{{ formatTime(currentRun.finished_at) }}</strong></div>
       <div v-if="locationText" class="detail-row detail-row--wide"><span>签到位置</span><p>{{ locationText }}</p></div>
       <div class="detail-row detail-row--wide"><span>结果说明</span><p>{{ currentRun.message || statusMeta(currentRun.status).tip }}</p></div>
-      <div v-if="currentRun.response_summary?.photo_res" class="detail-row detail-row--wide"><span>照片资源</span><p>res: {{ currentRun.response_summary.photo_res }}</p></div>
+      <div v-if="currentRun.response_summary?.photo_res || currentRun.response_summary?.photo_src" class="detail-row detail-row--wide">
+        <span>照片资源</span>
+        <div class="photo-cell">
+          <el-image
+            v-if="photoSrcUrl"
+            class="photo-thumb"
+            :src="photoSrcUrl"
+            :preview-src-list="[photoSrcUrl]"
+            preview-teleported
+            hide-on-click-modal
+            fit="cover"
+          >
+            <template #error>
+              <div class="photo-error">图片加载失败</div>
+            </template>
+          </el-image>
+          <code v-if="currentRun.response_summary?.photo_res" class="photo-res">res: {{ currentRun.response_summary.photo_res }}</code>
+        </div>
+      </div>
     </div>
   </el-drawer>
 </template>
@@ -73,6 +91,13 @@ const locationText = computed(() => {
   if (lat == null || lon == null) return ''
   return `${lat}, ${lon}`
 })
+// 兼容老记录：相对路径（class-cube/uid/xxx.jpg）补 /uploads/ 前缀
+const photoSrcUrl = computed(() => {
+  const src = String(currentRun.value?.response_summary?.photo_src || '').trim()
+  if (!src) return ''
+  if (/^https?:\/\//.test(src) || src.startsWith('/uploads/')) return src
+  return `/uploads/${src.replace(/^\/+/, '')}`
+})
 function statusMeta(status){return statuses[status]||statuses.failed}
 function taskName(run){if(run.source==='course_manual')return '课程手动签到';return props.tasks.find(row=>row.id===run.task_id)?.name||`任务 ${run.task_id}`}
 function accountName(run){const account=props.accounts.find(row=>row.id===run.account_id);return run.account_name||account?.name||account?.remote_user_name||(run.account_id?`账号 ${run.account_id}`:'未知账号')}
@@ -96,6 +121,10 @@ async function confirmRetry(run){
 .detail-row>span{color:#64748b;font-size:12px}
 .detail-row strong,.detail-row p{margin:0;overflow-wrap:anywhere;font-size:13px;color:#0f172a}
 .detail-row--wide{grid-template-columns:90px minmax(0,1fr)}
+.photo-cell{display:flex;flex-direction:column;gap:6px;min-width:0}
+.photo-thumb{width:96px;height:96px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;cursor:zoom-in}
+.photo-error{display:grid;place-items:center;width:100%;height:100%;color:#94a3b8;font-size:11px;background:#f1f5f9}
+.photo-cell .photo-res{display:block;overflow-wrap:anywhere;color:#2563eb;font-size:11px;white-space:pre-wrap}
 @media(max-width:1100px){.filters{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:650px){
   .panel-head{align-items:center}

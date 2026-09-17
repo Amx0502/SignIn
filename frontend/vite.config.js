@@ -69,7 +69,7 @@ export default defineConfig({
         changeOrigin: true
       },
       '/uploads': {
-        target: 'http://127.0.0.1:8765',
+        target: 'http://127.0.0.1:2206',
         changeOrigin: true
       }
     }
