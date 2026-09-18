@@ -229,26 +229,16 @@
                     placeholder="请输入签到时需要提交的文本内容"
                   />
                 </el-form-item>
-                <el-form-item
-                  v-for="entry in customFillEntries(task)"
-                  :key="entry.key"
-                  :label="entry.label"
-                >
-                  <el-input
-                    v-model="getEditForm(task).fill_values[entry.key]"
-                    maxlength="200"
-                    :placeholder="`请输入「${entry.label}」提交内容`"
+                <el-form-item v-if="hasFillKey(task, 2)" label="签到图片">
+                  <TaskImageUpload
+                    :file-list="getEditFileList(task)"
+                    :http-request="(options) => customUpload(task, options)"
+                    :on-remove="(file) => onImageRemove(task, file)"
+                    :limit="3"
                   />
-                </el-form-item>
-                <el-form-item
-                  v-if="!Array.isArray(task.fill_fields)"
-                  label="签到姓名"
-                >
-                  <el-input
-                    v-model="getEditForm(task).fill_name"
-                    maxlength="50"
-                    placeholder="项目要求填写姓名时自动提交，请提前填写，例如：张三"
-                  />
+                  <div class="upload-tip">
+                    最多可上传 3 张图片
+                  </div>
                 </el-form-item>
                 <el-form-item label="签到位置">
                   <div class="location-field">
@@ -273,16 +263,26 @@
                     </div>
                   </div>
                 </el-form-item>
-                <el-form-item v-if="hasFillKey(task, 2)" label="签到图片">
-                  <TaskImageUpload
-                    :file-list="getEditFileList(task)"
-                    :http-request="(options) => customUpload(task, options)"
-                    :on-remove="(file) => onImageRemove(task, file)"
-                    :limit="3"
+                <el-form-item
+                  v-if="!Array.isArray(task.fill_fields) || savedNameKey(task) !== null"
+                  label="签到姓名"
+                >
+                  <el-input
+                    v-model="getEditForm(task).fill_name"
+                    maxlength="50"
+                    placeholder="项目要求填写姓名时自动提交，请提前填写，例如：张三"
                   />
-                  <div class="upload-tip">
-                    最多可上传 3 张图片
-                  </div>
+                </el-form-item>
+                <el-form-item
+                  v-for="entry in customFillEntries(task)"
+                  :key="entry.key"
+                  :label="entry.label"
+                >
+                  <el-input
+                    v-model="getEditForm(task).fill_values[entry.key]"
+                    maxlength="200"
+                    :placeholder="`请输入「${entry.label}」提交内容`"
+                  />
                 </el-form-item>
                 <el-form-item>
                   <el-checkbox v-model="getEditForm(task).enable"
@@ -463,9 +463,28 @@ function hasFillKey(task, key) {
 function customFillEntries(task) {
   const keys = fillKeysOf(task);
   if (keys === null) return [];
+  const nameKey = savedNameKey(task);
   return Object.keys(task.fill_values || {})
-    .filter((k) => keys.has(String(k)) && !["1", "2", "6"].includes(String(k)))
+    .filter(
+      (k) =>
+        keys.has(String(k))
+        && !["1", "2", "6"].includes(String(k))
+        && k !== nameKey,
+    )
     .map((k) => ({ key: k, label: `填写项(${k})` }));
+}
+
+// 保存任务时「签到姓名」的值存在 fill_name（不在 fill_values），
+// 对应 fill_fields 里第一个没有 fill_values 值的非标准 key
+function savedNameKey(task) {
+  const keys = fillKeysOf(task);
+  if (keys === null) return null;
+  if (!String(task.fill_name || "").trim()) return null;
+  const custom = [...keys].filter((k) => !["1", "2", "6"].includes(k));
+  if (!custom.length) return null;
+  return (
+    custom.find((k) => !String(task.fill_values?.[k] ?? "").trim()) || null
+  );
 }
 
 function getEditForm(task) {

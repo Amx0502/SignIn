@@ -569,6 +569,8 @@ function removePhoto() {
 .qr-upload-zone span { color: #64748b; font-size: 12px; }
 .account-checkin { display: grid; gap: 18px; }
 .workspace-grid { display: grid; grid-template-columns: minmax(330px, .85fr) minmax(0, 1.5fr); gap: 18px; align-items: start; }
+/* 桌面端：右侧签到内容较长时，左侧账号卡片跟随滚动 */
+@media(min-width:1025px){.account-card{position:sticky;top:16px;z-index:1}}
 .glass-card { border: 1px solid rgb(191 219 254 / 58%); border-radius: 22px; background: rgb(255 255 255 / 82%); box-shadow: 0 18px 42px rgb(15 23 42 / 7%); backdrop-filter: blur(18px); }
 .checkin-card { container-type:inline-size }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.section-head strong,.section-head small { display: block; }.section-head strong { color: #172033; font-size: 16px; }.section-head small { margin-top: 4px; color: #64748b; font-size: 11px; }

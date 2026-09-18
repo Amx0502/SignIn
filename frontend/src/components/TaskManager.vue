@@ -280,6 +280,7 @@
             class="task-settings-form"
             :model="form"
             label-width="100px"
+            label-position="left"
             :rules="rules"
             ref="formRef"
           >
@@ -299,26 +300,34 @@
                 placeholder="08:00:00 18:00:00（支持空格、逗号、竖线等分隔符）"
               />
             </el-form-item>
-            <el-form-item label="执行日期" prop="run_dates">
-              <TaskDateSchedule
-                :date-mode="form.date_mode"
-                :run-dates="form.run_dates"
-                :skip-dates="form.skip_dates"
-                :skip-weekends="form.skip_weekends"
-                :times="form.times"
-                :auto-disable-after-finish="form.auto_disable_after_finish"
-                @update:date-mode="form.date_mode = $event"
+            <el-form-item
+              prop="run_dates"
+              label-width="0"
+              class="date-schedule-item"
+            >
+              <div class="date-schedule-wrap">
+                <span class="date-schedule-label">执行日期</span>
+                <TaskDateSchedule
+                  :date-mode="form.date_mode"
+                  :run-dates="form.run_dates"
+                  :skip-dates="form.skip_dates"
+                  :skip-weekends="form.skip_weekends"
+                  :times="form.times"
+                  :auto-disable-after-finish="form.auto_disable_after_finish"
+                  @update:date-mode="form.date_mode = $event"
                 @update:run-dates="form.run_dates = $event"
                 @update:skip-dates="form.skip_dates = $event"
                 @update:skip-weekends="form.skip_weekends = $event"
                 @update:auto-disable-after-finish="
                   form.auto_disable_after_finish = $event
                 "
-              />
+                />
+              </div>
             </el-form-item>
             <el-form-item
               v-if="fillOptionsLoading"
               class="detect-status-item"
+              label-width="0"
             >
               <el-alert
                 type="info"
@@ -327,7 +336,11 @@
                 title="正在检测填写项，请稍候…"
               />
             </el-form-item>
-            <el-form-item v-else-if="fillOptionsError" class="detect-status-item">
+            <el-form-item
+              v-else-if="fillOptionsError"
+              class="detect-status-item"
+              label-width="0"
+            >
               <el-alert
                 type="error"
                 :closable="false"
@@ -336,7 +349,11 @@
                 description="请检查账号 Token 与项目序号后，点击「检测填写项」重试；检测成功前无法填写签到内容。"
               />
             </el-form-item>
-            <el-form-item v-else-if="!fillOptionsChecked" class="detect-status-item">
+            <el-form-item
+              v-else-if="!fillOptionsChecked"
+              class="detect-status-item"
+              label-width="0"
+            >
               <el-alert
                 type="info"
                 :closable="false"
@@ -445,19 +462,20 @@
                 />
               </el-form-item>
             </template>
-            <el-form-item class="task-primary-actions">
+            <el-form-item class="task-primary-actions" label-width="0">
               <el-checkbox v-model="form.enable">启用任务</el-checkbox>
               <el-checkbox v-if="isAdmin" v-model="form.notify_wechat"
                 >发送企业微信通知</el-checkbox
               >
             </el-form-item>
-            <el-form-item>
+            <el-form-item label-width="0">
               <el-button type="primary" @click="saveTask">保存任务</el-button>
               <el-button @click="createNew">重置</el-button>
             </el-form-item>
             <el-form-item
               v-if="selectedActualIndex >= 0"
               class="task-secondary-actions"
+              label-width="0"
             >
               <div class="task-secondary-grid">
                 <el-button
@@ -504,6 +522,11 @@ import { useAppState } from "../composables/useAppState";
 import { createCheckinResult } from "../utils/checkinResult";
 import { buildXxqdTaskPayload } from "../utils/xxqdTaskPayload.js";
 import { applyMembershipUpdate } from "../utils/userMembership";
+import {
+  getFillOptionsCache,
+  setFillOptionsCache,
+  projectFingerprint,
+} from "../utils/fillOptionsCache";
 import api from "../api";
 
 const emit = defineEmits(["saved"]);
@@ -598,6 +621,8 @@ function toggleFillKey(key) {
     next.add(k);
   }
   selectedFillKeys.value = next;
+  // 勾选状态同步进缓存，切换回来后保持一致
+  saveFillOptionsCache();
 }
 
 const form = reactive({
@@ -750,6 +775,8 @@ function syncFileList() {
 function createNew() {
   selectedActualIndex.value = -1;
   selectedProjectIndex.value = -1;
+  // 重置 = 清空表单与检测状态，不被缓存回填
+  suppressFillReset = true;
   resetFillOptionsState();
   form.title = "";
   form.index = 1;
@@ -775,6 +802,9 @@ function createNew() {
   form.notify_wechat = true;
   locationMode.value = "none";
   fileList.value = [];
+  nextTick(() => {
+    suppressFillReset = false;
+  });
 }
 
 function onSelectTask(row) {
@@ -959,6 +989,8 @@ async function detectFillOptions() {
             .join("、")}（不需要的可点击标签取消）`
         : `《${fillOptionsTitle.value}》未要求填写内容`,
     );
+    // 检测结果入缓存，切换项目/刷新页面后可直接复用
+    saveFillOptionsCache();
   } catch (err) {
     fillOptionsChecked.value = false;
     fillOptions.value = [];
@@ -976,6 +1008,56 @@ function resetFillOptionsState() {
   selectedFillKeys.value = new Set();
 }
 
+// ---- 检测结果缓存：切换项目/账号/刷新页面后复用，避免重复检测 ----
+function fillCacheScope() {
+  return {
+    accountKey: currentAccount.value?.name || `idx-${selectedAccountIndex.value}`,
+    projectIndex: form.index || 1,
+  };
+}
+
+function currentProjectFingerprint() {
+  const idx = (form.index || 1) - 1;
+  return projectFingerprint(projects.value[idx] ?? null);
+}
+
+// 把当前检测结果与勾选项写入缓存
+function saveFillOptionsCache() {
+  if (!fillOptionsChecked.value) return;
+  const { accountKey, projectIndex } = fillCacheScope();
+  setFillOptionsCache(accountKey, projectIndex, currentProjectFingerprint(), {
+    items: fillOptions.value,
+    title: fillOptionsTitle.value,
+    keys: selectedFillKeys.value,
+  });
+}
+
+// 切换项目/账号时：有有效缓存则恢复（含勾选状态），否则按原逻辑清空等待检测
+function restoreFillOptionsState() {
+  const { accountKey, projectIndex } = fillCacheScope();
+  const cached = getFillOptionsCache(
+    accountKey,
+    projectIndex,
+    currentProjectFingerprint(),
+  );
+  if (!cached) {
+    resetFillOptionsState();
+    return;
+  }
+  fillOptions.value = cached.items;
+  fillOptionsTitle.value = cached.title;
+  fillOptionsChecked.value = true;
+  fillOptionsError.value = "";
+  selectedFillKeys.value =
+    cached.keys ?? new Set(cached.items.map((item) => String(item.key)));
+  // 位置始终提交
+  selectedFillKeys.value.add(String(LOCATION_KEY));
+  // 与检测成功后的行为保持一致：默认改为自动获取位置
+  if (locationMode.value === "none") {
+    locationMode.value = "auto";
+  }
+}
+
 function fillTagType(item) {
   const key = Number(item.key);
   if ([1, 2, 6].includes(key)) return "success";
@@ -985,7 +1067,7 @@ function fillTagType(item) {
 
 watch([selectedAccountIndex, () => form.index], () => {
   if (suppressFillReset) return;
-  resetFillOptionsState();
+  restoreFillOptionsState();
 });
 
 async function refreshSelectedAccountToken() {
@@ -1205,6 +1287,29 @@ async function deleteTask() {
 }
 .task-form-card :deep(.el-card__body) {
   overflow-x: hidden;
+}
+/* 桌面端：右侧表单较长时，左侧任务列表卡片跟随滚动，避免左下方大片空白 */
+.date-schedule-item :deep(.el-form-item__content) {
+  width: 100%;
+  margin-left: 0 !important;
+}
+.date-schedule-wrap {
+  width: 100%;
+  min-width: 0;
+}
+.date-schedule-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.4;
+}
+@media (min-width: 992px) {
+  .task-list-card {
+    position: sticky;
+    top: 16px;
+    z-index: 1;
+  }
 }
 .section-header {
   display: flex;
