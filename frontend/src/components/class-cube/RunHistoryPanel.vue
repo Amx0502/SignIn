@@ -27,7 +27,7 @@
     </div>
   </el-card>
 
-  <el-drawer v-model="detailVisible" title="运行记录详情" size="min(560px, 92vw)">
+  <el-drawer v-model="detailVisible" title="运行记录详情" size="min(560px, 92vw)" @opened="() => setupRunMap()" @closed="destroyRunMap">
     <div v-if="currentRun" class="run-detail">
       <div class="detail-row"><span>任务</span><strong>{{ taskName(currentRun) }}</strong></div>
       <div class="detail-row"><span>平台账号</span><strong>{{ accountName(currentRun) }}</strong></div>
@@ -38,6 +38,18 @@
       <div class="detail-row"><span>开始时间</span><strong>{{ formatTime(currentRun.started_at) }}</strong></div>
       <div class="detail-row"><span>结束时间</span><strong>{{ formatTime(currentRun.finished_at) }}</strong></div>
       <div v-if="locationText" class="detail-row detail-row--wide"><span>签到位置</span><p>{{ locationText }}</p></div>
+      <div v-if="locationText" class="detail-row detail-row--wide"><span>地图视图</span>
+        <div class="map-cell">
+          <template v-if="runCoordinate">
+            <div class="run-map-wrap">
+              <div ref="mapElement" class="run-map"></div>
+              <span v-if="mapPending" class="map-pending">地图加载中…</span>
+            </div>
+            <small v-if="mapNotice" class="map-fallback">{{ mapNotice }}</small>
+          </template>
+          <div v-else class="map-fallback">该记录未包含有效经纬度坐标，无法展示地图视图</div>
+        </div>
+      </div>
       <div class="detail-row detail-row--wide"><span>结果说明</span><p>{{ currentRun.message || statusMeta(currentRun.status).tip }}</p></div>
       <div v-if="currentRun.response_summary?.photo_res || currentRun.response_summary?.photo_src" class="detail-row detail-row--wide">
         <span>照片资源</span>
@@ -63,9 +75,11 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { ArrowRight, CircleCheckFilled, CircleCloseFilled, Clock, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import classCubeApi from '../../api/classCube.js'
+import { loadTencentMapSdk } from '../../utils/tencentMapSdk.js'
 
 const props = defineProps({
   runs: { type: Array, default: () => [] }, tasks: { type: Array, default: () => [] },
@@ -91,6 +105,157 @@ const locationText = computed(() => {
   if (lat == null || lon == null) return ''
   return `${lat}, ${lon}`
 })
+// 详情地图：解析记录中的经纬度（兼容 parameters 与 location 两个字段），无效坐标返回 null 走兜底展示
+const runCoordinate = computed(() => {
+  const summary = currentRun.value?.response_summary || {}
+  const params = summary.parameters || summary.location || {}
+  const latitude = Number(params.latitude)
+  const longitude = Number(params.longitude)
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null
+  if (latitude === 0 && longitude === 0) return null
+  return { latitude, longitude }
+})
+const mapElement = ref(null)
+const mapNotice = ref('')
+const mapPending = ref(false)
+let runMap = null
+let runMapSeq = 0
+let runMapKey = ''
+let runMapResizeObserver = null
+let runMapResizeFrame = 0
+let runMapTileTimer = 0
+let runMapRetriedFor = ''
+
+function destroyRunMap() {
+  runMapSeq += 1
+  if (runMapTileTimer) { window.clearTimeout(runMapTileTimer); runMapTileTimer = 0 }
+  if (runMapResizeFrame) { window.cancelAnimationFrame(runMapResizeFrame); runMapResizeFrame = 0 }
+  runMapResizeObserver?.disconnect()
+  runMapResizeObserver = null
+  runMap?.destroy?.()
+  runMap = null
+  runMapKey = ''
+  mapPending.value = false
+}
+
+function scheduleRunMapResize() {
+  if (!runMap) return
+  if (runMapResizeFrame) window.cancelAnimationFrame(runMapResizeFrame)
+  runMapResizeFrame = window.requestAnimationFrame(() => {
+    runMapResizeFrame = 0
+    if (!runMap) return
+    const center = runMap.getCenter?.()
+    if (typeof runMap.resize === 'function') runMap.resize()
+    else window.dispatchEvent(new Event('resize'))
+    if (center) runMap.setCenter(center)
+  })
+}
+
+function observeRunMapSize() {
+  runMapResizeObserver?.disconnect()
+  if (!mapElement.value || typeof ResizeObserver === 'undefined') return
+  runMapResizeObserver = new ResizeObserver(() => scheduleRunMapResize())
+  runMapResizeObserver.observe(mapElement.value)
+}
+
+// 腾讯地图 JavaScript API GL 依赖 WebGL，浏览器禁用硬件加速时无法渲染
+function webglAvailable() {
+  try {
+    const canvas = document.createElement('canvas')
+    return Boolean(
+      canvas.getContext('webgl2')
+      || canvas.getContext('webgl')
+      || canvas.getContext('experimental-webgl'),
+    )
+  } catch {
+    return false
+  }
+}
+
+async function setupRunMap(options = {}) {
+  const coordinate = runCoordinate.value
+  const key = detailVisible.value && coordinate
+    ? `${coordinate.latitude},${coordinate.longitude}`
+    : ''
+  if (!options.force && key && key === runMapKey && runMap) return
+  // 先销毁旧地图（会使旧流程令牌失效），再取本次流程令牌，
+  // 否则 destroyRunMap 内部的自增会让 seq 立即过期，导致后续校验恒不通过。
+  destroyRunMap()
+  const seq = runMapSeq
+  if (!key || !mapElement.value) return
+  runMapKey = key
+  mapNotice.value = ''
+  mapPending.value = true
+  if (!webglAvailable()) {
+    mapPending.value = false
+    mapNotice.value = '当前浏览器未启用 WebGL（通常是关闭了硬件加速），无法渲染地图视图'
+    return
+  }
+  try {
+    const configResponse = await classCubeApi.getLocationConfig()
+    if (seq !== runMapSeq) return
+    const config = configResponse?.data || {}
+    if (!String(config.map_sdk_key || '').trim()) {
+      mapPending.value = false
+      mapNotice.value = '后台未配置腾讯地图 JavaScript API Key，无法展示地图视图'
+      return
+    }
+    const TMap = await loadTencentMapSdk({
+      key: config.map_sdk_key,
+      url: config.map_sdk_url,
+    })
+    if (seq !== runMapSeq || !mapElement.value) return
+    const center = new TMap.LatLng(coordinate.latitude, coordinate.longitude)
+    runMap = new TMap.Map(mapElement.value, {
+      center,
+      zoom: 16,
+      pitch: 0,
+      rotation: 0,
+      showControl: false,
+      draggable: false,
+      scrollable: false,
+      doubleClickZoom: false,
+      touchZoomable: false,
+    })
+    new TMap.MultiMarker({
+      map: runMap,
+      geometries: [{ id: 'run-location', position: center }],
+    })
+    observeRunMapSize()
+    scheduleRunMapResize()
+    // 创建后再次校正尺寸：抽屉动画 / 异步布局都可能在首帧后改变容器大小
+    window.setTimeout(() => { if (seq === runMapSeq) scheduleRunMapResize() }, 320)
+    if (runMapTileTimer) window.clearTimeout(runMapTileTimer)
+    runMap.on?.('tilesloaded', () => {
+      if (seq !== runMapSeq) return
+      if (runMapTileTimer) { window.clearTimeout(runMapTileTimer); runMapTileTimer = 0 }
+      mapPending.value = false
+      mapNotice.value = ''
+    })
+    runMapTileTimer = window.setTimeout(() => {
+      if (seq !== runMapSeq || !runMap) return
+      // 首次未加载出底图时自动重建一次（部分环境首次创建在未完成布局的容器上会一直空屏）
+      if (runMapRetriedFor !== key) {
+        runMapRetriedFor = key
+        scheduleRunMapResize()
+        setupRunMap({ force: true })
+        return
+      }
+      mapPending.value = false
+      mapNotice.value = '地图底图加载超时，请检查腾讯地图 Key 的域名白名单配置'
+    }, 8_000)
+  } catch (error) {
+    if (seq !== runMapSeq) return
+    runMap = null
+    mapPending.value = false
+    mapNotice.value = error?.message || '地图加载失败，请检查腾讯地图 Key 配置'
+  }
+}
+
+// 地图初始化统一由 el-drawer 的 @opened（动画结束后）触发；坐标解析变化只发生在
+// openDetail 设置 currentRun 时，此时抽屉尚未打开，若在此建图会因动画中尺寸不稳而灰屏。
+onBeforeUnmount(destroyRunMap)
 // 兼容老记录：相对路径（class-cube/uid/xxx.jpg）补 /uploads/ 前缀
 const photoSrcUrl = computed(() => {
   const src = String(currentRun.value?.response_summary?.photo_src || '').trim()
@@ -125,6 +290,11 @@ async function confirmRetry(run){
 .photo-thumb{width:96px;height:96px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;cursor:zoom-in}
 .photo-error{display:grid;place-items:center;width:100%;height:100%;color:#94a3b8;font-size:11px;background:#f1f5f9}
 .photo-cell .photo-res{display:block;overflow-wrap:anywhere;color:#2563eb;font-size:11px;white-space:pre-wrap}
+.map-cell{display:grid;gap:6px;min-width:0}
+.run-map-wrap{position:relative;height:220px;overflow:hidden;border:1px solid #e2e8f0;border-radius:12px;background:#eef2f7;pointer-events:none;user-select:none}
+.run-map{width:100%;height:100%}
+.map-pending{position:absolute;inset:0;display:grid;place-items:center;color:#64748b;font-size:12px;background:#eef2f7}
+.map-fallback{display:grid;place-items:center;min-height:96px;padding:12px;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;color:#94a3b8;font-size:12px;line-height:1.5;text-align:center}
 @media(max-width:1100px){.filters{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:650px){
   .panel-head{align-items:center}
