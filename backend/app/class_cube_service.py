@@ -1269,6 +1269,14 @@ class ClassCubeService:
         }
         completed_normally = False
         task_parameters = self._task_parameters(task)
+        # 任务配置的签到照片：远端未回传时用于运行记录详情兜底展示
+        task_photo_res = str(task.get("photo_res") or "").strip()
+        task_photo_src = str(task.get("photo_path") or "").strip()
+        if task_photo_src and not task_photo_src.startswith(
+            ("http://", "https://", "/uploads/")
+        ):
+            task_photo_src = f"/uploads/{task_photo_src.lstrip('/')}"
+        result["parameters"] = dict(task_parameters)
         notification = {
             **result,
             "account_name": (
@@ -1389,6 +1397,20 @@ class ClassCubeService:
                 if checkin_result.get("photo_src"):
                     detail["photo_src"] = checkin_result["photo_src"]
                     result["photo_src"] = checkin_result["photo_src"]
+                run_summary = {
+                    "parameters": dict(task_parameters),
+                    "item_title": detail["title"],
+                }
+                run_photo_res = (
+                    checkin_result.get("photo_res") or task_photo_res
+                )
+                run_photo_src = (
+                    checkin_result.get("photo_src") or task_photo_src
+                )
+                if run_photo_res:
+                    run_summary["photo_res"] = run_photo_res
+                if run_photo_src:
+                    run_summary["photo_src"] = run_photo_src
                 result["details"].append(detail)
                 parameter_text = "；".join(
                     self._parameter_log_parts(task_parameters)
@@ -1417,6 +1439,7 @@ class ClassCubeService:
                     item.get("mode", "unknown"),
                     expected_lease_token=claim["lease_token"],
                     started_at=claim["started_at"],
+                    response_summary=run_summary,
                 )
                 if checkin_result.get("membership_card_consumed"):
                     delay = checkin_result.get(
@@ -1816,7 +1839,11 @@ class ClassCubeService:
         return {
             "latitude": payload.get("latitude"),
             "longitude": payload.get("longitude"),
-            "image_count": 1 if payload.get("photo_path") else 0,
+            "image_count": (
+                1
+                if payload.get("photo_path") or payload.get("photo_res")
+                else 0
+            ),
             "password": (
                 "configured"
                 if payload.get("password")
@@ -1863,9 +1890,25 @@ class ClassCubeService:
             "trigger": "course_manual",
             "started_at": started_at.isoformat(),
             "parameters": self._manual_parameters(payload),
-            "photo_res": result.get("photo_res", ""),
-            "photo_src": result.get("photo_src", ""),
+            "photo_res": (
+                result.get("photo_res")
+                or str(payload.get("photo_res") or "").strip()
+            ),
+            "photo_src": self._manual_photo_src(item, result, payload),
         }
+
+    def _manual_photo_src(self, item, result, payload):
+        """手动签到的本地照片路径：优先用本次上传的，
+        只填了远端 res 时复用该签到项上一次上传的照片，保证记录里能看到照片。"""
+        photo_src = str(result.get("photo_src") or "").strip()
+        if photo_src:
+            return photo_src
+        if not str(payload.get("photo_res") or "").strip():
+            return ""
+        try:
+            return self.repository.latest_photo_src(int(item["id"]))
+        except Exception:
+            return ""
 
     def _record_manual_run(self, context, summary, started_at):
         item = context["item"]

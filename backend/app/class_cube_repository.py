@@ -1466,6 +1466,7 @@ class ClassCubeRepository:
         *,
         expected_lease_token,
         started_at=None,
+        response_summary=None,
     ):
         now = datetime.now()
         with self.database.session() as session:
@@ -1491,7 +1492,7 @@ class ClassCubeRepository:
                 mode=mode,
                 status=run_status,
                 message=" ".join(str(message).split())[:500],
-                response_summary={},
+                response_summary=dict(response_summary or {}),
                 started_at=started_at or now,
                 finished_at=now,
             )
@@ -1588,6 +1589,25 @@ class ClassCubeRepository:
             session.add(run)
             session.flush()
             return self._run_record(run)
+
+    def latest_photo_src(self, checkin_item_id) -> str:
+        """取该签到项最近一次记录中的本地照片路径（用于只填 res 时复用照片）。"""
+        try:
+            item_id = int(checkin_item_id)
+        except (TypeError, ValueError):
+            return ""
+        with self.database.session() as session:
+            summaries = session.scalars(
+                select(ClassCubeTaskRunRow.response_summary)
+                .where(ClassCubeTaskRunRow.checkin_item_id == item_id)
+                .order_by(ClassCubeTaskRunRow.id.desc())
+                .limit(20)
+            ).all()
+        for summary in summaries:
+            src = str((summary or {}).get("photo_src") or "").strip()
+            if src:
+                return src
+        return ""
 
     def list_runs(
         self, actor_user_id, is_admin, owner_user_id=None,

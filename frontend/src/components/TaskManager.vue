@@ -1272,7 +1272,6 @@ async function deleteTask() {
 .fill-detect-result { width:100%; margin-bottom:14px; padding:10px 14px; border:1px dashed #bfdbfe; border-radius:10px; background:#f8fbff; }
 .fill-detect-result > span { color:#94a3b8; font-size:11px; }
 .fill-detect-tags { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; }
-.fill-detect-empty { color:#64748b; font-size:12px; }
 .fill-option-tag { cursor:pointer; user-select:none; }
 .fill-detect-tip { width:100%; color:#94a3b8; font-size:11px; }
 .page-container {

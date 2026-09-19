@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import List, Literal
 from datetime import datetime
 
 from .membership_constants import (
@@ -10,35 +10,6 @@ from .membership_constants import (
     MIN_CARD_DELETE_DELAY_SECONDS,
     MIN_CARD_TOTAL_USES,
 )
-
-
-class Task(BaseModel):
-    index: int = Field(default=1, ge=1)
-    title: str = Field(default="")
-    times: List[str] = Field(default_factory=list)
-    enable: bool = Field(default=True)
-    use_location: bool = Field(default=False)
-    location_address: str = Field(default="", max_length=500)
-    location_latitude: float | None = Field(default=None, ge=-90, le=90)
-    location_longitude: float | None = Field(default=None, ge=-180, le=180)
-    text: str = Field(default="")
-    fill_name: str = Field(default="", max_length=100)
-    pic_path: List[str] = Field(default_factory=list)
-    skip_weekends: bool = Field(default=False)
-    date_mode: str = Field(default="daily", pattern="^(daily|specific)$")
-    run_dates: List[str] = Field(default_factory=list, max_length=730)
-    skip_dates: List[str] = Field(default_factory=list, max_length=730)
-    auto_disable_after_finish: bool = Field(default=False)
-    mode: str = Field(default="normal", pattern="^(normal|image)$")
-    notify_wechat: bool = Field(default=True)
-
-
-class Account(BaseModel):
-    name: str
-    mobile: str
-    password: str
-    token: str = Field(default="")
-    tasks: List[Task] = Field(default_factory=list)
 
 
 class AccountCreate(BaseModel):
@@ -98,29 +69,9 @@ class CheckinDelaySettingsUpdate(BaseModel):
     miaoying_max_seconds: int = Field(default=18, ge=0, le=300)
 
 
-class User(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
-    password_hash: str
-    created_at: datetime = Field(default_factory=datetime.now)
-    last_login: Optional[datetime] = None
-    is_active: bool = True
-    role: str = "user"
-
-
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6)
-
-
-class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_at: datetime
-    user: dict
-
-
-class LogoutRequest(BaseModel):
-    refresh_token: str = ""
 
 
 class UserCreate(BaseModel):
@@ -198,6 +149,5 @@ class PasswordChange(BaseModel):
 
 class PurchaseLinkSettingsUpdate(BaseModel):
     purchase_url: str = Field(..., min_length=1, max_length=2048)
-
 
 

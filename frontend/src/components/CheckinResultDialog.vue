@@ -68,10 +68,8 @@
               v-for="(url, index) in result.imageUrls"
               :key="`${url}-${index}`"
               :src="url"
-              :preview-src-list="result.imageUrls"
-              :initial-index="index"
               fit="cover"
-              preview-teleported
+              @click="openImagePreview(index)"
             />
           </div>
         </section>
@@ -85,6 +83,11 @@
         </footer>
       </main>
     </div>
+    <ImageViewerOverlay
+      v-model="imagePreviewVisible"
+      :urls="result.imageUrls"
+      :initial-index="imagePreviewIndex"
+    />
   </el-dialog>
 </template>
 
@@ -99,6 +102,8 @@ import {
   OfficeBuilding,
   Picture,
 } from '@element-plus/icons-vue'
+import { ref } from 'vue'
+import ImageViewerOverlay from './common/ImageViewerOverlay.vue'
 
 defineProps({
   modelValue: {
@@ -112,6 +117,14 @@ defineProps({
 })
 
 const emit = defineEmits(['update:modelValue'])
+
+const imagePreviewVisible = ref(false)
+const imagePreviewIndex = ref(0)
+
+function openImagePreview(index) {
+  imagePreviewIndex.value = index
+  imagePreviewVisible.value = true
+}
 
 function close() {
   emit('update:modelValue', false)

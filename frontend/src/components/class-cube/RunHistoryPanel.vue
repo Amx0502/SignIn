@@ -54,23 +54,27 @@
       <div v-if="currentRun.response_summary?.photo_res || currentRun.response_summary?.photo_src" class="detail-row detail-row--wide">
         <span>照片资源</span>
         <div class="photo-cell">
-          <el-image
-            v-if="photoSrcUrl"
-            class="photo-thumb"
-            :src="photoSrcUrl"
-            :preview-src-list="[photoSrcUrl]"
-            preview-teleported
-            hide-on-click-modal
-            fit="cover"
-          >
-            <template #error>
-              <div class="photo-error">图片加载失败</div>
-            </template>
-          </el-image>
+          <div v-if="photoSrcUrl" class="photo-grid">
+            <el-image
+              class="photo-thumb"
+              :src="photoSrcUrl"
+              fit="cover"
+              @click="openPhotoPreview"
+            >
+              <template #error>
+                <div class="photo-error">图片加载失败，文件可能已被清理</div>
+              </template>
+            </el-image>
+          </div>
           <code v-if="currentRun.response_summary?.photo_res" class="photo-res">res: {{ currentRun.response_summary.photo_res }}</code>
         </div>
       </div>
     </div>
+    <ImageViewerOverlay
+      v-model="photoPreviewVisible"
+      :urls="photoPreviewUrls"
+      :initial-index="0"
+    />
   </el-drawer>
 </template>
 
@@ -78,6 +82,7 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { ArrowRight, CircleCheckFilled, CircleCloseFilled, Clock, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import ImageViewerOverlay from '../common/ImageViewerOverlay.vue'
 import classCubeApi from '../../api/classCube.js'
 import { loadTencentMapSdk } from '../../utils/tencentMapSdk.js'
 
@@ -98,6 +103,12 @@ const statuses = {
 const filters = reactive({ account_id:null, course_id:null, task_id:null, status:'' })
 const detailVisible = ref(false)
 const currentRun = ref(null)
+const photoPreviewVisible = ref(false)
+const photoPreviewUrls = computed(() => (photoSrcUrl.value ? [photoSrcUrl.value] : []))
+
+function openPhotoPreview() {
+  if (photoSrcUrl.value) photoPreviewVisible.value = true
+}
 const locationText = computed(() => {
   const params = currentRun.value?.response_summary?.parameters
   if (!params) return ''
@@ -286,9 +297,12 @@ async function confirmRetry(run){
 .detail-row>span{color:#64748b;font-size:12px}
 .detail-row strong,.detail-row p{margin:0;overflow-wrap:anywhere;font-size:13px;color:#0f172a}
 .detail-row--wide{grid-template-columns:90px minmax(0,1fr)}
-.photo-cell{display:flex;flex-direction:column;gap:6px;min-width:0}
-.photo-thumb{width:96px;height:96px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;cursor:zoom-in}
-.photo-error{display:grid;place-items:center;width:100%;height:100%;color:#94a3b8;font-size:11px;background:#f1f5f9}
+.photo-cell{display:grid;gap:6px;min-width:0}
+/* 与小小签到保持同款 3 列栅格，但照片占 2 列（约放大一倍） */
+.photo-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.photo-grid :deep(.el-image){grid-column:span 2;width:100%;aspect-ratio:1;border-radius:10px;overflow:hidden}
+.photo-thumb{cursor:zoom-in}
+.photo-error{display:grid;place-items:center;width:100%;height:100%;padding:6px;color:#94a3b8;font-size:10px;line-height:1.4;background:#f1f5f9;text-align:center;overflow-wrap:anywhere}
 .photo-cell .photo-res{display:block;overflow-wrap:anywhere;color:#2563eb;font-size:11px;white-space:pre-wrap}
 .map-cell{display:grid;gap:6px;min-width:0}
 .run-map-wrap{position:relative;height:220px;overflow:hidden;border:1px solid #e2e8f0;border-radius:12px;background:#eef2f7;pointer-events:none;user-select:none}

@@ -89,15 +89,18 @@
               v-for="(url, index) in imageUrls"
               :key="`${url}-${index}`"
               :src="url"
-              :preview-src-list="imageUrls"
-              :initial-index="index"
               fit="cover"
-              preview-teleported
+              @click="openImagePreview(index)"
             />
           </div>
         </div>
       </div>
     </el-drawer>
+    <ImageViewerOverlay
+      v-model="imagePreviewVisible"
+      :urls="imageUrls"
+      :initial-index="imagePreviewIndex"
+    />
   </div>
 </template>
 
@@ -115,6 +118,7 @@ import { ElMessage } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { listXxqdRunsApi } from '../api'
 import { useAppState } from '../composables/useAppState.js'
+import ImageViewerOverlay from '../components/common/ImageViewerOverlay.vue'
 
 const { state: appState, refreshState } = useAppState()
 const route = useRoute()
@@ -124,8 +128,15 @@ const total = ref(0)
 const lastLoadedAt = ref('')
 const detailVisible = ref(false)
 const currentRun = ref(null)
+const imagePreviewVisible = ref(false)
+const imagePreviewIndex = ref(0)
 const filters = reactive({ account_id: null, task_id: null, source: '', status: '' })
 const ownerUserId = computed(() => Number(route.query.owner_user_id) || null)
+
+function openImagePreview(index) {
+  imagePreviewIndex.value = index
+  imagePreviewVisible.value = true
+}
 
 const accounts = computed(() => appState.value.accounts || [])
 const taskOptions = computed(() => accounts.value.flatMap(account =>

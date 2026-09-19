@@ -136,5 +136,4 @@ watch(() => props.visible, visible => {
 .info-row--wide .info-value { align-items: flex-start; }
 .password-text { font-family: monospace; font-size: 14px; letter-spacing: 0.5px; }
 .muted { color: #94a3b8; font-size: 12px; }
-.info-tip { margin: 4px 2px 0; color: #94a3b8; font-size: 11px; line-height: 1.5; }
 </style>
