@@ -364,6 +364,16 @@ class AccountRepository:
                 )
             ) or 0)
 
+    def get_owner_username(self, owner_user_id: int | None) -> str | None:
+        if owner_user_id is None:
+            return None
+        with self.database.session() as session:
+            return session.scalar(
+                select(UserRow.username).where(
+                    UserRow.id == int(owner_user_id)
+                )
+            )
+
     def delete_accounts_by_owner(self, owner_user_id: int) -> int:
         with self.database.session() as session:
             rows = session.scalars(

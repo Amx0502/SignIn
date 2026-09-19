@@ -1285,6 +1285,10 @@ class ClassCubeService:
                 or "-"
             ),
             "course_name": course.get("name", "-"),
+            "owner_username": (
+                self.repository.get_owner_username(task.get("owner_user_id"))
+                or "未归属"
+            ),
             "trigger": trigger,
             "started_at": started_at,
             "parameters": task_parameters,
@@ -1887,6 +1891,13 @@ class ClassCubeService:
                 or "-"
             ),
             "course_name": course.get("name", "-"),
+            "owner_username": (
+                self.repository.get_owner_username(
+                    context.get("card_owner_user_id")
+                    or context.get("actor_user_id")
+                )
+                or "未归属"
+            ),
             "trigger": "course_manual",
             "started_at": started_at.isoformat(),
             "parameters": self._manual_parameters(payload),

@@ -151,6 +151,7 @@ class ClassCubeNotifier:
         content = (
             "## 📊 班级魔方通知汇总\n\n"
             f"时间：{self._time_text(summary.get('started_at'))}\n\n"
+            f"系统用户：{summary.get('owner_username') or '未归属'}\n\n"
             f"课程：{summary.get('course_name', '-')}\n\n"
             f"触发：{trigger}\n\n"
             f"成功：{success_count} 个｜失败：{failed_count} 个"

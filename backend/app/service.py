@@ -674,7 +674,11 @@ class AppState:
         for name, result, success, time_str in records:
             real_title = result.get("real_title", result.get("title", "未知项目"))
             status = "✅" if success else "❌"
-            line = f"- {status} **{name}** [{time_str}]：{real_title}"
+            system_username = result.get("system_username") or "未归属"
+            line = (
+                f"- {status} **{name}** [{time_str}]"
+                f"（系统用户：{system_username}）：{real_title}"
+            )
             if result.get("text"):
                 line += f"（📝文本：{result['text']}）"
             if result.get("image_urls"):
@@ -705,7 +709,17 @@ class AppState:
             except Exception as exc:
                 self.logger.error(f"企业微信汇总通知：发送失败，错误={str(exc)}")
 
-    def _cache_wechat_notification(self, account_name: str, result: dict, success: bool) -> None:
+    def _cache_wechat_notification(
+        self,
+        account_name: str,
+        result: dict,
+        success: bool,
+        owner_user_id: int | None = None,
+    ) -> None:
+        result["system_username"] = (
+            self.repository.get_owner_username(owner_user_id)
+            or "未归属"
+        )
         now = dt.datetime.now()
         cache_key = now.strftime("%Y-%m-%d %H:%M")
         time_str = now.strftime("%H:%M:%S")
@@ -1053,7 +1067,12 @@ class AppState:
             self.logger.info(message)
             try:
                 if task.get("notify_wechat", True):
-                    self._cache_wechat_notification(name, result, success=True)
+                    self._cache_wechat_notification(
+                        name,
+                        result,
+                        success=True,
+                        owner_user_id=account.get("owner_user_id"),
+                    )
                 else:
                     self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task.get("title"))
             except Exception:
@@ -1065,7 +1084,12 @@ class AppState:
             self.logger.error(error_msg)
             try:
                 if task.get("notify_wechat", True):
-                    self._cache_wechat_notification(name, result, success=False)
+                    self._cache_wechat_notification(
+                        name,
+                        result,
+                        success=False,
+                        owner_user_id=account.get("owner_user_id"),
+                    )
                 else:
                     self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task.get("title"))
             except Exception:
@@ -1161,7 +1185,12 @@ class AppState:
 
         try:
             if task.get("notify_wechat", True):
-                self._cache_wechat_notification(name, result, success=success)
+                self._cache_wechat_notification(
+                    name,
+                    result,
+                    success=success,
+                    owner_user_id=account.get("owner_user_id"),
+                )
             else:
                 self.logger.debug("任务《%s》已禁用企业微信通知，跳过发送", task_title)
         except Exception as exc:

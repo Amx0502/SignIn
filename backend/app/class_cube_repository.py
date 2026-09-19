@@ -494,6 +494,19 @@ class ClassCubeRepository:
             session.flush()
             return len(rows)
 
+    def get_owner_username(self, owner_user_id: int | None) -> str | None:
+        if owner_user_id is None:
+            return None
+        try:
+            with self.database.session() as session:
+                return session.scalar(
+                    select(UserRow.username).where(
+                        UserRow.id == int(owner_user_id)
+                    )
+                )
+        except OperationalError:
+            return None
+
     def upsert_scanned_account(
         self,
         owner_user_id: int,
