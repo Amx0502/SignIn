@@ -74,7 +74,7 @@
               />
               <em>秒</em>
             </div>
-            <div class="field-help">默认 30 秒；设为 0 表示立即失效并清理平台数据。</div>
+            <div class="field-help">默认 60 秒；设为 0 表示立即失效并清理平台数据。</div>
           </el-form-item>
           <el-form-item v-if="!editingId" label="初始密码" prop="password">
             <el-input v-model="form.password" type="password" show-password />

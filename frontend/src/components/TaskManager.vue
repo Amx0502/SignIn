@@ -370,7 +370,7 @@
                     <el-tooltip
                       v-for="item in displayFillOptions"
                       :key="item.key"
-                      :content="Number(item.key) === LOCATION_KEY ? '位置信息始终提交' : '点击切换是否提交该项'"
+                      :content="Number(item.key) === LOCATION_KEY ? '点击切换是否提交位置（同下方签到位置模式）' : '点击切换是否提交该项'"
                       placement="top"
                     >
                       <el-tag
@@ -413,7 +413,7 @@
                     <el-radio-button value="auto">自动获取</el-radio-button>
                     <el-radio-button value="map">地图选择</el-radio-button>
                   </el-radio-group>
-                  <div class="location-mode-tip">位置信息始终随签到提交，选择「地图选择」可指定准确坐标</div>
+                  <div class="location-mode-tip">「不显示」时不提交位置；「自动获取」使用定位坐标，「地图选择」可指定准确坐标</div>
                   <div v-if="locationMode === 'map'" class="location-choice-card">
                     <div class="location-choice-icon">
                       <el-icon><MapLocation /></el-icon>
@@ -604,13 +604,17 @@ const customFillItems = computed(() =>
 );
 
 function isFillKeySelected(key) {
-  if (Number(key) === LOCATION_KEY) return true; // 位置始终提交
+  if (Number(key) === LOCATION_KEY) {
+    // 位置是否提交由「签到位置」模式决定：不显示=不提交
+    return locationMode.value !== "none";
+  }
   return selectedFillKeys.value.has(String(key));
 }
 
 function toggleFillKey(key) {
   if (Number(key) === LOCATION_KEY) {
-    ElMessage.info("位置信息始终提交，无法取消");
+    // 点击位置标签 = 在「不显示 / 自动获取」间切换
+    locationMode.value = locationMode.value === "none" ? "auto" : "none";
     return;
   }
   const next = new Set(selectedFillKeys.value);
@@ -877,7 +881,8 @@ function buildSavedFillOptions(task) {
   if (!Array.isArray(task.fill_fields) || !task.fill_fields.length) return null;
   const knownNames = { 1: "签到文本", 2: "签到图片" };
   const items = [];
-  const keys = new Set([String(LOCATION_KEY)]); // 位置始终提交
+  // 位置是否提交跟随任务配置（use_location），展示逻辑会自动补位置标签
+  const keys = new Set(task.use_location ? [String(LOCATION_KEY)] : []);
   let nameAssigned = false;
   for (const raw of task.fill_fields) {
     const k = String(raw);
@@ -976,10 +981,11 @@ async function detectFillOptions() {
     selectedFillKeys.value = new Set(
       savedFields ?? fillOptions.value.map((item) => String(item.key)),
     );
-    // 位置填写项始终勾选并提交
-    selectedFillKeys.value.add(String(LOCATION_KEY));
-    // 位置始终提交，默认改为自动获取位置
-    if (locationMode.value === "none") {
+    // 位置是否提交由「签到位置」模式决定；检测到位置要求时默认改为自动获取
+    if (
+      fillOptions.value.some((item) => Number(item.key) === LOCATION_KEY)
+      && locationMode.value === "none"
+    ) {
       locationMode.value = "auto";
     }
     ElMessage.success(
@@ -1050,12 +1056,7 @@ function restoreFillOptionsState() {
   fillOptionsError.value = "";
   selectedFillKeys.value =
     cached.keys ?? new Set(cached.items.map((item) => String(item.key)));
-  // 位置始终提交
-  selectedFillKeys.value.add(String(LOCATION_KEY));
-  // 与检测成功后的行为保持一致：默认改为自动获取位置
-  if (locationMode.value === "none") {
-    locationMode.value = "auto";
-  }
+  // 位置是否提交由「签到位置」模式决定，不在缓存恢复时强制勾选
 }
 
 function fillTagType(item) {
@@ -1144,8 +1145,14 @@ async function saveTask() {
   // Parse the latest raw value before validation/submission without rewriting
   // what the user typed into the input.
   form.times = parseTimesText(timesText.value);
-  // 位置始终提交，保存时强制带上
-  form.fill_fields = [...new Set([...selectedFillKeys.value, String(LOCATION_KEY)])];
+  // 位置是否提交由「签到位置」模式决定：不显示时从 fill_fields 移除
+  const fillKeys = new Set(selectedFillKeys.value);
+  if (locationMode.value === "none") {
+    fillKeys.delete(String(LOCATION_KEY));
+  } else {
+    fillKeys.add(String(LOCATION_KEY));
+  }
+  form.fill_fields = [...fillKeys];
   if (
     hasLocationFill.value
     && locationMode.value === "map"

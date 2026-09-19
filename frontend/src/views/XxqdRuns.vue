@@ -142,6 +142,7 @@ const statuses = {
 }
 const sourceNames = {
   manual: '手动执行',
+  manual_task: '手动执行',
   manual_all: '批量执行',
   schedule: '定时执行',
   scheduled: '定时执行',

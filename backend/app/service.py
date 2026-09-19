@@ -407,8 +407,8 @@ class CheckinService:
                 selected_keys = {int(k) for k in fill_fields_raw}
             except (TypeError, ValueError):
                 selected_keys = None
-        # 位置填写项始终提交，不受检测结果影响
-        force_location = selected_keys is None or 6 in selected_keys
+        # 位置提交遵循「签到位置」模式：不显示=不提交；自动获取/地图选择=提交
+        use_location = bool(task.get("use_location"))
         if selected_keys is not None:
             fill_options = [
                 option
@@ -416,8 +416,8 @@ class CheckinService:
                 if option.get("field_key") in selected_keys
             ]
             if not fill_options:
-                # 用户取消全部填写项：按普通签到直接提交，但位置仍始终提交
-                if force_location:
+                # 用户取消全部填写项：按普通签到直接提交
+                if use_location:
                     self._append_location_param(payload, task, detail)
                 return payload
 
@@ -430,7 +430,7 @@ class CheckinService:
                 raise ValueError(
                     "无法读取该签到项目的填写项定义，请稍后重试或清空签到姓名"
                 )
-            if task.get("use_location") or force_location:
+            if use_location:
                 self._append_location_param(payload, task, detail)
             return payload
 
@@ -477,8 +477,8 @@ class CheckinService:
                 f"该签到项目包含暂不支持的填写项「{label}」"
                 f"（类型 {field_type}），无法自动提交"
             )
-        # 检测结果不含位置时，位置仍始终提交
-        if force_location and 6 not in required_keys:
+        # 任务配置了位置（自动获取/地图选择）而检测结果不含位置时，补提交
+        if use_location and 6 not in required_keys:
             self._append_location_param(payload, task, detail)
         return payload
 

@@ -6,7 +6,7 @@ export const PLATFORM_XXQD = 'xxqd'
 export const PLATFORM_CLASS_CUBE = 'class_cube'
 
 export const MONTHLY_CARD_DAYS = 30
-export const DEFAULT_CARD_DELETE_DELAY_SECONDS = 30
+export const DEFAULT_CARD_DELETE_DELAY_SECONDS = 60
 export const MAX_CARD_DELETE_DELAY_SECONDS = 24 * 60 * 60
 export const MIN_CARD_TOTAL_USES = 1
 export const MAX_CARD_TOTAL_USES = 999

@@ -247,7 +247,7 @@
                       <el-radio-button value="auto">自动获取</el-radio-button>
                       <el-radio-button value="map">地图选择</el-radio-button>
                     </el-radio-group>
-                    <div class="location-mode-tip">位置信息始终随签到提交，选择「地图选择」可指定准确坐标</div>
+                    <div class="location-mode-tip">「不显示」时不提交位置；「自动获取」使用定位坐标，「地图选择」可指定准确坐标</div>
                     <div v-if="editLocationModes[getTaskKey(task)] === 'map'" class="location-choice-card">
                       <div class="location-choice-icon">
                         <el-icon><MapLocation /></el-icon>

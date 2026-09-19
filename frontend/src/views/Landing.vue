@@ -7,10 +7,7 @@
           <span>轻签</span>
         </a>
         <div class="nav-links">
-          <a href="#platforms">支持平台</a>
-          <a href="#features">核心能力</a>
-          <a href="#guide">使用说明</a>
-          <a href="#pricing">会员卡</a>
+          <a class="btn-guide" :href="GUIDE_URL" target="_blank" rel="noopener noreferrer">使用说明指南</a>
           <button class="btn-outline" @click="goLogin">登录</button>
           <button class="btn-primary" @click="goBuy">立即购买</button>
         </div>
@@ -28,6 +25,7 @@
           <div class="hero-actions">
             <button class="btn-primary btn-lg" @click="goBuy">购买次卡或月卡</button>
             <button class="btn-outline btn-lg" @click="goLogin">登录使用</button>
+            <a class="btn-outline btn-lg hero-guide" :href="GUIDE_URL" target="_blank" rel="noopener noreferrer">使用说明指南</a>
           </div>
           <div class="hero-points"><span>多平台统一管理</span><span>自动任务稳定运行</span><span>运行记录长期保留</span></div>
         </div>
@@ -128,6 +126,7 @@ import miaoyingImage from '../img/miaoying.png'
 
 const router = useRouter()
 const DEFAULT_BUY_URL = 'https://m.tb.cn/h.8sGQxfh?tk=Dz6vT8OEx7h'
+const GUIDE_URL = 'https://my.feishu.cn/wiki/space/7686887090772003768?ccm_open_type=lark_wiki_spaceLink&open_tab_from=wiki_home'
 const purchaseUrl = ref(DEFAULT_BUY_URL)
 const platforms = [
   { name: '小小签到', status: '已支持', image: xxqdImage, description: '适合日常任务签到，支持账号、自动任务及运行记录。', features: ['自动任务', '多账号管理', '运行记录'] },
@@ -168,6 +167,8 @@ onMounted(loadSiteConfig)
 .nav-links { display:flex; align-items:center; gap:22px; }
 .nav-links a { color:#475569; font-size:14px; font-weight:600; text-decoration:none; }
 .nav-links a:hover { color:var(--primary); }
+.nav-links a.btn-guide { display:inline-flex; min-height:36px; align-items:center; padding:0 14px; border:1px solid #d6e2fb; border-radius:999px; background:#f4f8ff; color:var(--primary); font-size:13px; }
+.nav-links a.btn-guide:hover { border-color:var(--primary); background:#eaf1ff; color:var(--primary); }
 button { font:inherit; }
 .btn-primary,.btn-outline { display:inline-flex; min-height:40px; padding:0 20px; align-items:center; justify-content:center; border-radius:10px; font-weight:700; cursor:pointer; transition:.2s ease; }
 .btn-primary { border:1px solid var(--primary); color:#fff; background:var(--primary); }
@@ -186,6 +187,7 @@ button { font:inherit; }
 .hero h2 { margin:14px 0 0; color:#24334f; font-size:27px; line-height:1.35; }
 .hero-desc { max-width:780px; margin:22px auto 0; color:var(--muted); font-size:16px; line-height:1.85; }
 .hero-actions { display:flex; margin-top:30px; justify-content:center; gap:12px; }
+.hero-actions .hero-guide { display:none; align-items:center; justify-content:center; text-decoration:none; }
 .hero-points { display:flex; margin-top:28px; justify-content:center; flex-wrap:wrap; gap:10px 22px; color:#52647e; font-size:13px; font-weight:600; }
 .hero-points span::before { margin-right:6px; color:#22a06b; content:"✓"; }
 .section { padding:78px 24px; }
@@ -234,7 +236,7 @@ button { font:inherit; }
 .footer p { margin:0; color:#9ca9bd; font-size:13px; }
 .footer .btn-outline { border-color:#465268; color:#fff; background:transparent; }
 @media (max-width:900px) {
-  .nav-links a { display:none; }
+  .nav-links a:not(.btn-guide) { display:none; }
   .feature-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .platform-grid { grid-template-columns:1fr; }
 }
@@ -251,6 +253,7 @@ button { font:inherit; }
   .hero h2 { font-size:20px; }
   .hero-desc { font-size:14px; }
   .hero-actions { display:grid; grid-template-columns:1fr; }
+  .hero-actions .hero-guide { display:inline-flex; }
   .hero-points { align-items:center; flex-direction:row; flex-wrap:wrap; justify-content:center; gap:6px 14px; font-size:12px; }
   .section { padding:54px 16px; }
   .section-heading { margin-bottom:28px; }

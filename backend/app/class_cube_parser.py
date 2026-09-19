@@ -36,6 +36,9 @@ class ParsedItem:
     remote_module: str = "punchs"
     detail_url: str = ""
     mode_hint: str = "unknown"
+    # active=进行中可签到；pending=未开始（平台尚未暴露 item id）
+    state: str = "active"
+    start_at_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -173,6 +176,8 @@ def parse_checkin_items(
         remote_module: str = "",
         detail_url: str = "",
         mode_hint: str = "unknown",
+        state: str = "active",
+        start_at_text: str = "",
     ) -> None:
         remote_item_id = unquote(remote_item_id).strip()
         if not remote_item_id:
@@ -187,6 +192,8 @@ def parse_checkin_items(
                     remote_module=remote_module or normalized_module,
                     detail_url=detail_url,
                     mode_hint=mode_hint,
+                    state=state,
+                    start_at_text=start_at_text,
                 )
             )
             return
@@ -309,7 +316,65 @@ def parse_checkin_items(
             detail_url=response_url,
             mode_hint="qr",
         )
+    # 「未开始」的签到卡片：平台在开始前不暴露 item id，合成占位项供展示与到点刷新
+    _collect_pending_items(soup, course_id, normalized_module, add_item)
     return items
+
+
+_PENDING_MODE_ICONS = {
+    "la-map-marker": "gps",
+    "la-location-arrow": "gps",
+    "la-compass": "gps",
+    "la-camera": "gps_photo",
+    "la-qrcode": "qr",
+    "la-key": "password",
+    "la-font": "text",
+}
+
+
+def _collect_pending_items(
+    soup: BeautifulSoup,
+    course_id: str,
+    normalized_module: str,
+    add_item,
+) -> None:
+    """收集「未开始」的签到卡片（punch-status 含“未开始”）。"""
+    for card in soup.select(".punch-card"):
+        status_node = card.select_one(".punch-status")
+        status_text = (
+            status_node.get_text(" ", strip=True)
+            if isinstance(status_node, Tag)
+            else ""
+        )
+        if "未开始" not in status_text:
+            continue
+        mode_hint = "unknown"
+        for icon in card.select("i[class*=la-]"):
+            classes = " ".join(_attribute_text(icon.get("class")).split())
+            for marker, hint in _PENDING_MODE_ICONS.items():
+                if marker in classes:
+                    mode_hint = hint
+                    break
+            if mode_hint != "unknown":
+                break
+        start_at_text = ""
+        for node in card.find_all(["div", "span", "p", "strong", "b"]):
+            text = node.get_text(" ", strip=True)
+            match = re.search(r"\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?", text)
+            if match:
+                start_at_text = match.group(0)
+                break
+        if not start_at_text:
+            continue
+        add_item(
+            f"pending-{course_id}-{start_at_text.replace(' ', '-')}",
+            title=f"未开始 {start_at_text}",
+            remote_module=normalized_module,
+            detail_url="",
+            mode_hint=mode_hint,
+            state="pending",
+            start_at_text=start_at_text,
+        )
 
 
 def parse_checkin_form(

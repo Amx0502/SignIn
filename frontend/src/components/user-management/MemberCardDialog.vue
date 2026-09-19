@@ -51,7 +51,7 @@
           />
           <em>秒</em>
         </div>
-        <small>默认 30 秒；设为 0 表示立即失效并清理平台数据</small>
+        <small>默认 60 秒；设为 0 表示立即失效并清理平台数据</small>
       </label>
       <label class="member-delay-field">
         <span>备注</span>
